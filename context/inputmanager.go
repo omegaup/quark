@@ -2,11 +2,13 @@ package context
 
 import (
 	"container/list"
+	"crypto/sha1"
 	"errors"
 	"expvar"
 	"fmt"
 	"hash"
 	"io"
+	"os"
 	"sync"
 )
 
@@ -243,4 +245,19 @@ func (r *HashReader) Read(b []byte) (int, error) {
 
 func (r *HashReader) Sum(b []byte) []byte {
 	return r.hasher.Sum(b)
+}
+
+func Sha1sum(path string) ([]byte, error) {
+	hash := sha1.New()
+	fd, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fd.Close()
+
+	if _, err := io.Copy(hash, fd); err != nil {
+		return nil, err
+	}
+
+	return hash.Sum(nil), nil
 }

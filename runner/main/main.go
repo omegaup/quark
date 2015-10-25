@@ -91,5 +91,6 @@ func main() {
 			panic(err)
 		}
 		ctx.Log.Info("Grading", "run", run, "input", input)
+		input.Release()
 	}
 }

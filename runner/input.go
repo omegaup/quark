@@ -2,6 +2,7 @@ package runner
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"crypto/sha1"
 	"errors"
@@ -14,6 +15,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strings"
 )
 
 type baseRunnerInput struct {
@@ -61,22 +64,59 @@ func (factory *RunnerInputFactory) NewInput(mgr *context.InputManager) context.I
 	}
 }
 
+func (input *baseRunnerInput) getStoredHashes() (map[string]string, error) {
+	result := make(map[string]string)
+	dir := filepath.Dir(input.path)
+	hashPath := fmt.Sprintf("%s.sha1", input.path)
+	hashFd, err := os.Open(hashPath)
+	if err != nil {
+		return result, err
+	}
+	defer hashFd.Close()
+	scanner := bufio.NewScanner(hashFd)
+	scanner.Split(bufio.ScanLines)
+	sha1sumRe := regexp.MustCompile("^([a-f0-9]{40}) [ *](.*)$")
+	for scanner.Scan() {
+		res := sha1sumRe.FindStringSubmatch(scanner.Text())
+		if res == nil {
+			return result, errors.New(fmt.Sprintf("sha1sum file format error '%s",
+				hashPath))
+		}
+		expectedHash := res[1]
+		filePath := filepath.Join(dir, res[2])
+		if !strings.HasPrefix(filePath, input.path) {
+			return result, errors.New(fmt.Sprintf("path is outside expected directory: '%s",
+				filePath))
+		}
+		result[filePath] = expectedHash
+	}
+	if scanner.Err() != nil {
+		return result, scanner.Err()
+	}
+	return result, nil
+}
+
 func (input *baseRunnerInput) Verify() error {
-	_, err := os.Stat(input.path)
+	hashes, err := input.getStoredHashes()
 	if err != nil {
 		return err
 	}
 
 	var size int64 = 0
-	err = filepath.Walk(input.path, func(_ string, info os.FileInfo, err error) error {
+	for path, expectedHashStr := range hashes {
+		actualHash, err := context.Sha1sum(path)
 		if err != nil {
 			return err
 		}
-		size += info.Size()
-		return nil
-	})
-	if err != nil {
-		return err
+		actualHashStr := fmt.Sprintf("%0x", actualHash)
+		if actualHashStr != expectedHashStr {
+			return errors.New(fmt.Sprintf("hash mismatch for '%s'", path))
+		}
+		stat, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		size += stat.Size()
 	}
 
 	input.Commit(size)
@@ -172,19 +212,4 @@ func (input *RunnerInput) DeleteArchive() error {
 	os.RemoveAll(fmt.Sprintf("%s.tmp", input.path))
 	os.Remove(fmt.Sprintf("%s.sha1", input.path))
 	return os.RemoveAll(input.path)
-}
-
-func sha1sum(path string) ([]byte, error) {
-	hash := sha1.New()
-	fd, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer fd.Close()
-
-	if _, err := io.Copy(hash, fd); err != nil {
-		return nil, err
-	}
-
-	return hash.Sum(nil), nil
 }

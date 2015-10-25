@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
-	"crypto/sha1"
 	"errors"
 	"fmt"
 	"github.com/omegaup/quark/context"
@@ -100,7 +99,7 @@ func (input *GraderInput) Verify() error {
 	if err != nil {
 		return err
 	}
-	hash, err := sha1sum(input.path)
+	hash, err := context.Sha1sum(input.path)
 	if err != nil {
 		return err
 	}
@@ -131,7 +130,7 @@ func (input *GraderInput) CreateArchive() error {
 		return err
 	}
 
-	hash, err := sha1sum(tmpPath)
+	hash, err := context.Sha1sum(tmpPath)
 	if err != nil {
 		return err
 	}
@@ -243,19 +242,4 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 	})
 
 	return walkErr
-}
-
-func sha1sum(path string) ([]byte, error) {
-	hash := sha1.New()
-	fd, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer fd.Close()
-
-	if _, err := io.Copy(hash, fd); err != nil {
-		return nil, err
-	}
-
-	return hash.Sum(nil), nil
 }
