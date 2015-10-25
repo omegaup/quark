@@ -15,11 +15,19 @@ var DefaultInputManager *InputManager
 // Configuration
 type GraderConfig struct {
 	CacheSize     int64
-	CertFile      string
 	ChannelLength int
-	KeyFile       string
 	Port          uint16
 	RuntimePath   string
+}
+
+type TLSConfig struct {
+	CertFile string
+	KeyFile  string
+}
+
+type RunnerConfig struct {
+	GraderURL   string
+	RuntimePath string
 }
 
 type DbConfig struct {
@@ -36,6 +44,8 @@ type Config struct {
 	Grader  GraderConfig
 	Db      DbConfig
 	Logging LoggingConfig
+	Runner  RunnerConfig
+	TLS     TLSConfig
 }
 
 var defaultConfig = Config{
@@ -49,11 +59,17 @@ var defaultConfig = Config{
 	},
 	Grader: GraderConfig{
 		CacheSize:     1024 * 1024 * 1024, // 1 GiB
-		CertFile:      "/etc/omegaup/grader/certificate.pem",
 		ChannelLength: 1024,
-		KeyFile:       "/etc/omegaup/grader/key.pem",
 		Port:          11302,
 		RuntimePath:   "/var/lib/omegaup/",
+	},
+	Runner: RunnerConfig{
+		RuntimePath: "/var/lib/omegaup/runner",
+		GraderURL:   "https://omegaup.com:11302",
+	},
+	TLS: TLSConfig{
+		CertFile: "/etc/omegaup/grader/certificate.pem",
+		KeyFile:  "/etc/omegaup/grader/key.pem",
 	},
 }
 

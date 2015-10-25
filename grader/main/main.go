@@ -28,25 +28,6 @@ var (
 	server        *http.Server
 )
 
-type RunContext struct {
-	Run   *queue.Run
-	Input context.Input
-}
-
-func NewRunContext(run *queue.Run, ctx *context.Context) (*RunContext, error) {
-	input, err := context.DefaultInputManager.Get(run.InputHash,
-		grader.NewGraderInputFactory(run, &ctx.Config))
-	if err != nil {
-		return nil, err
-	}
-
-	runctx := &RunContext{
-		Run:   run,
-		Input: input,
-	}
-	return runctx, nil
-}
-
 func loadContext() error {
 	ctx, err := context.NewContext(*configPath)
 	if err != nil {
@@ -66,7 +47,7 @@ func startServer(ctx *context.Context) error {
 	if *insecure {
 		return server.ListenAndServe()
 	} else {
-		cert, err := ioutil.ReadFile(ctx.Config.Grader.CertFile)
+		cert, err := ioutil.ReadFile(ctx.Config.TLS.CertFile)
 		if err != nil {
 			return err
 		}
@@ -80,8 +61,8 @@ func startServer(ctx *context.Context) error {
 		tlsConfig.BuildNameToCertificate()
 		server.TLSConfig = tlsConfig
 
-		return server.ListenAndServeTLS(ctx.Config.Grader.CertFile,
-			ctx.Config.Grader.KeyFile)
+		return server.ListenAndServeTLS(ctx.Config.TLS.CertFile,
+			ctx.Config.TLS.KeyFile)
 	}
 }
 
@@ -94,7 +75,7 @@ func main() {
 
 	expvar.Publish("config", &globalContext.Load().(*context.Context).Config)
 
-	var runs = make(chan *RunContext,
+	var runs = make(chan *grader.RunContext,
 		globalContext.Load().(*context.Context).Config.Grader.ChannelLength)
 	context.InitInputManager(globalContext.Load().(*context.Context))
 
@@ -120,7 +101,7 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		runCtx, err := NewRunContext(run, ctx)
+		runCtx, err := grader.NewRunContext(run, ctx)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -132,11 +113,32 @@ func main() {
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})
 	http.HandleFunc("/run/request", func(w http.ResponseWriter, r *http.Request) {
-		run := <-runs
+		runCtx := <-runs
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		encoder := json.NewEncoder(w)
-		encoder.Encode(run)
-		run.Input.Release()
+		encoder.Encode(runCtx.Run)
+		runCtx.Input.Release()
+	})
+	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
+	http.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
+		ctx := globalContext.Load().(*context.Context)
+		res := inputRe.FindStringSubmatch(r.URL.Path)
+		if res == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		hash := res[1]
+		input, err := context.DefaultInputManager.Get(hash)
+		if err != nil {
+			ctx.Log.Error("Input not found", "hash", hash)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		defer input.Release()
+		if err := input.(*grader.GraderInput).Transmit(w); err != nil {
+			ctx.Log.Error("Error transmitting input", "hash", hash, "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	})
 
 	if err := startServer(globalContext.Load().(*context.Context)); err != nil {

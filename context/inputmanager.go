@@ -2,12 +2,11 @@ package context
 
 import (
 	"container/list"
-	"crypto/sha1"
 	"errors"
 	"expvar"
 	"fmt"
+	"hash"
 	"io"
-	"os"
 	"sync"
 )
 
@@ -55,6 +54,11 @@ type InputFactory interface {
 	NewInput(mgr *InputManager) Input
 }
 
+type HashReader struct {
+	hasher hash.Hash
+	reader io.Reader
+}
+
 func InitInputManager(ctx *Context) {
 	DefaultInputManager = &InputManager{
 		mapping:   make(map[string]*cacheEntry),
@@ -91,7 +95,21 @@ func (mgr *InputManager) getEntryLocked(hash string, factory InputFactory) *cach
 	return entry
 }
 
-func (mgr *InputManager) Get(hash string, factory InputFactory) (Input, error) {
+func (mgr *InputManager) Get(hash string) (Input, error) {
+	mgr.Lock()
+	defer mgr.Unlock()
+
+	if ent, ok := mgr.mapping[hash]; ok {
+		ent.input.Lock()
+		defer ent.input.Unlock()
+
+		ent.input.Acquire()
+		return ent.input, nil
+	}
+	return nil, errors.New(fmt.Sprintf("hash %s not found", hash))
+}
+
+func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
 	entry := mgr.getEntry(hash, factory)
 	input := entry.input
 
@@ -148,17 +166,19 @@ func (mgr *InputManager) Insert(input Input) {
 	}
 }
 
-func sha1sum(path string) ([]byte, error) {
-	hash := sha1.New()
-	fd, err := os.Open(path)
-	if err != nil {
-		return nil, err
+func NewHashReader(r io.Reader, h hash.Hash) *HashReader {
+	return &HashReader{
+		hasher: h,
+		reader: r,
 	}
-	defer fd.Close()
+}
 
-	if _, err := io.Copy(hash, fd); err != nil {
-		return nil, err
-	}
+func (r *HashReader) Read(b []byte) (int, error) {
+	n, err := r.reader.Read(b)
+	r.hasher.Write(b[:n])
+	return n, err
+}
 
-	return hash.Sum(nil), nil
+func (r *HashReader) Sum(b []byte) []byte {
+	return r.hasher.Sum(b)
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/omegaup/quark/queue"
 	git "gopkg.in/libgit2/git2go.v22"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"sync"
@@ -25,6 +26,25 @@ type GraderInput struct {
 	repositoryPath string
 	refcount       int
 	mgr            *context.InputManager
+}
+
+type RunContext struct {
+	Run   *queue.Run
+	Input context.Input
+}
+
+func NewRunContext(run *queue.Run, ctx *context.Context) (*RunContext, error) {
+	input, err := context.DefaultInputManager.Add(run.InputHash,
+		NewGraderInputFactory(run, &ctx.Config))
+	if err != nil {
+		return nil, err
+	}
+
+	runctx := &RunContext{
+		Run:   run,
+		Input: input,
+	}
+	return runctx, nil
 }
 
 type GraderInputFactory struct {
@@ -60,6 +80,40 @@ func (input *GraderInput) Hash() string {
 	return input.hash
 }
 
+func (input *GraderInput) Transmit(w http.ResponseWriter) error {
+	hash, err := input.getStoredHash()
+	if err != nil {
+		return err
+	}
+	fd, err := os.Open(input.path)
+	if err != nil {
+		return err
+	}
+	defer fd.Close()
+	w.Header().Add("Content-SHA1", hash)
+	fmt.Println(hash)
+	w.WriteHeader(http.StatusOK)
+	_, err = io.Copy(w, fd)
+	return err
+}
+
+func (input *GraderInput) getStoredHash() (string, error) {
+	hashFd, err := os.Open(fmt.Sprintf("%s.sha1", input.path))
+	if err != nil {
+		return "", err
+	}
+	defer hashFd.Close()
+	scanner := bufio.NewScanner(hashFd)
+	scanner.Split(bufio.ScanWords)
+	if !scanner.Scan() {
+		if scanner.Err() != nil {
+			return "", scanner.Err()
+		}
+		return "", io.ErrUnexpectedEOF
+	}
+	return scanner.Text(), nil
+}
+
 func (input *GraderInput) Verify() error {
 	stat, err := os.Stat(input.path)
 	if err != nil {
@@ -69,20 +123,11 @@ func (input *GraderInput) Verify() error {
 	if err != nil {
 		return err
 	}
-	hashFd, err := os.Open(fmt.Sprintf("%s.sha1", input.path))
+	storedHash, err := input.getStoredHash()
 	if err != nil {
 		return err
 	}
-	defer hashFd.Close()
-	scanner := bufio.NewScanner(hashFd)
-	scanner.Split(bufio.ScanWords)
-	if !scanner.Scan() {
-		if scanner.Err() != nil {
-			return scanner.Err()
-		}
-		return io.ErrUnexpectedEOF
-	}
-	if scanner.Text() != fmt.Sprintf("%0x", hash) {
+	if storedHash != fmt.Sprintf("%0x", hash) {
 		return errors.New("Hash verification failed")
 	}
 
@@ -107,6 +152,9 @@ func (input *GraderInput) Release() {
 }
 
 func (input *GraderInput) CreateArchive() error {
+	if err := os.MkdirAll(path.Dir(input.path), 0755); err != nil {
+		return err
+	}
 	tmpPath := fmt.Sprintf("%s.tmp", input.path)
 	defer os.Remove(tmpPath)
 	if err := input.createArchiveFromGit(tmpPath); err != nil {
@@ -129,7 +177,7 @@ func (input *GraderInput) CreateArchive() error {
 	}
 	defer hashFd.Close()
 
-	if _, err := fmt.Fprintf(hashFd, "%0x *%s", hash, path.Base(input.path)); err != nil {
+	if _, err := fmt.Fprintf(hashFd, "%0x *%s\n", hash, path.Base(input.path)); err != nil {
 		return err
 	}
 
@@ -192,9 +240,10 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 		switch entry.Type {
 		case git.ObjectTree:
 			hdr := &tar.Header{
-				Name: path.Join(parent, entry.Name),
-				Mode: 0755,
-				Size: 0,
+				Name:     path.Join(parent, entry.Name),
+				Typeflag: tar.TypeDir,
+				Mode:     0755,
+				Size:     0,
 			}
 			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
 				return -1
@@ -207,9 +256,10 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 			defer blob.Free()
 
 			hdr := &tar.Header{
-				Name: path.Join(parent, entry.Name),
-				Mode: 0755,
-				Size: blob.Size(),
+				Name:     path.Join(parent, entry.Name),
+				Typeflag: tar.TypeReg,
+				Mode:     0644,
+				Size:     blob.Size(),
 			}
 			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
 				return -1
