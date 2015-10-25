@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/omegaup/quark/context"
+	"github.com/omegaup/quark/queue"
 	git "gopkg.in/libgit2/git2go.v22"
 	"io"
 	"os"
@@ -27,11 +28,11 @@ type GraderInput struct {
 }
 
 type GraderInputFactory struct {
-	run    *Run
+	run    *queue.Run
 	config *context.Config
 }
 
-func NewGraderInputFactory(run *Run, config *context.Config) context.InputFactory {
+func NewGraderInputFactory(run *queue.Run, config *context.Config) context.InputFactory {
 	return &GraderInputFactory{
 		run:    run,
 		config: config,

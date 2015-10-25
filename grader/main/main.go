@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/omegaup/quark/context"
+	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/queue"
 	"golang.org/x/net/http2"
 	"html"
@@ -26,6 +27,25 @@ var (
 	globalContext atomic.Value
 	server        *http.Server
 )
+
+type RunContext struct {
+	Run   *queue.Run
+	Input context.Input
+}
+
+func NewRunContext(run *queue.Run, ctx *context.Context) (*RunContext, error) {
+	input, err := context.DefaultInputManager.Get(run.InputHash,
+		grader.NewGraderInputFactory(run, &ctx.Config))
+	if err != nil {
+		return nil, err
+	}
+
+	runctx := &RunContext{
+		Run:   run,
+		Input: input,
+	}
+	return runctx, nil
+}
 
 func loadContext() error {
 	ctx, err := context.NewContext(*configPath)
@@ -74,7 +94,7 @@ func main() {
 
 	expvar.Publish("config", &globalContext.Load().(*context.Context).Config)
 
-	var runs = make(chan *queue.RunContext,
+	var runs = make(chan *RunContext,
 		globalContext.Load().(*context.Context).Config.Grader.ChannelLength)
 	context.InitInputManager(globalContext.Load().(*context.Context))
 
@@ -94,13 +114,19 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		run, err := queue.NewRunContext(id, ctx)
+		run, err := queue.NewRun(id, ctx)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		runs <- run
+		runCtx, err := NewRunContext(run, ctx)
+		if err != nil {
+			ctx.Log.Error(err.Error(), "id", id)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		runs <- runCtx
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		ctx.Log.Info("enqueued run", "run", run)
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
@@ -111,8 +137,6 @@ func main() {
 		encoder := json.NewEncoder(w)
 		encoder.Encode(run)
 		run.Input.Release()
-		ctx := globalContext.Load().(*context.Context)
-		ctx.Log.Debug("Input release", "input", run.Input)
 	})
 
 	if err := startServer(globalContext.Load().(*context.Context)); err != nil {

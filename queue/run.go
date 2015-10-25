@@ -33,11 +33,6 @@ type Run struct {
 	Problem   Problem
 }
 
-type RunContext struct {
-	Run   *Run
-	Input context.Input
-}
-
 func newRunID() uint64 {
 	return atomic.AddUint64(&runID, 1)
 }
@@ -51,7 +46,7 @@ func (run *Run) GetInputPath(config *context.Config) string {
 		fmt.Sprintf("%s.tar.gz", run.InputHash))
 }
 
-func NewRunContext(id int64, ctx *context.Context) (*RunContext, error) {
+func NewRun(id int64, ctx *context.Context) (*Run, error) {
 	run := &Run{
 		ID: newRunID(),
 	}
@@ -84,16 +79,5 @@ func NewRunContext(id int64, ctx *context.Context) (*RunContext, error) {
 	if contestPoints.Valid {
 		run.Problem.Points = &contestPoints.Float64
 	}
-
-	input, err := context.DefaultInputManager.Get(run.InputHash,
-		NewGraderInputFactory(run, &ctx.Config))
-	if err != nil {
-		return nil, err
-	}
-
-	runctx := &RunContext{
-		Run:   run,
-		Input: input,
-	}
-	return runctx, nil
+	return run, nil
 }
