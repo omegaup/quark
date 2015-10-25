@@ -50,6 +50,15 @@ type Input interface {
 	DeleteArchive() error
 }
 
+type BaseInput struct {
+	sync.Mutex
+	committed bool
+	refcount  int
+	size      int64
+	hash      string
+	mgr       *InputManager
+}
+
 type InputFactory interface {
 	NewInput(mgr *InputManager) Input
 }
@@ -133,6 +142,7 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
 
 			if err := input.CreateArchive(); err != nil {
 				mgr.ctx.Log.Error("Error creating archive", "hash", input.Hash())
+				delete(mgr.mapping, hash)
 				return nil, err
 			}
 			mgr.ctx.Log.Info("Generated input", "hash", input.Hash())
@@ -163,6 +173,58 @@ func (mgr *InputManager) Insert(input Input) {
 
 		delete(mgr.mapping, input.Hash())
 		input.DeleteArchive()
+	}
+}
+
+func NewBaseInput(hash string, mgr *InputManager) *BaseInput {
+	return &BaseInput{
+		hash: hash,
+		mgr:  mgr,
+	}
+}
+
+func (input *BaseInput) Committed() bool {
+	return input.committed
+}
+
+func (input *BaseInput) Size() int64 {
+	return input.size
+}
+
+func (input *BaseInput) Hash() string {
+	return input.hash
+}
+
+func (input *BaseInput) Commit(size int64) {
+	input.size = size
+	input.committed = true
+}
+
+func (input *BaseInput) Verify() error {
+	return nil
+}
+
+func (input *BaseInput) CreateArchive() error {
+	return nil
+}
+
+func (input *BaseInput) DeleteArchive() error {
+	return nil
+}
+
+func (input *BaseInput) Acquire() {
+	input.refcount++
+}
+
+func (input *BaseInput) Release() {
+	input.Lock()
+	defer input.Unlock()
+
+	input.refcount--
+	if input.refcount == 0 {
+		// There are no outstanding references to this input. Return it to the
+		// input manager where it can be deleted if we need more space.
+		input.mgr.Insert(input)
 	}
 }
 

@@ -14,17 +14,16 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sync"
 )
 
+type baseRunnerInput struct {
+	context.BaseInput
+	path string
+}
+
 type RunnerInput struct {
-	sync.Mutex
-	committed  bool
-	size       int64
-	hash       string
-	path       string
+	baseRunnerInput
 	requestURL string
-	mgr        *context.InputManager
 	client     *http.Client
 }
 
@@ -52,28 +51,17 @@ func (factory *RunnerInputFactory) NewInput(mgr *context.InputManager) context.I
 		panic(err)
 	}
 	return &RunnerInput{
-		mgr:        mgr,
+		baseRunnerInput: baseRunnerInput{
+			BaseInput: *context.NewBaseInput(factory.run.InputHash, mgr),
+			path: path.Join(factory.config.Runner.RuntimePath,
+				"input", factory.run.InputHash),
+		},
 		client:     factory.client,
-		hash:       factory.run.InputHash,
 		requestURL: requestURL.String(),
-		path: path.Join(factory.config.Runner.RuntimePath,
-			"input", factory.run.InputHash),
 	}
 }
 
-func (input *RunnerInput) Committed() bool {
-	return input.committed
-}
-
-func (input *RunnerInput) Size() int64 {
-	return input.size
-}
-
-func (input *RunnerInput) Hash() string {
-	return input.hash
-}
-
-func (input *RunnerInput) Verify() error {
+func (input *baseRunnerInput) Verify() error {
 	_, err := os.Stat(input.path)
 	if err != nil {
 		return err
@@ -91,18 +79,8 @@ func (input *RunnerInput) Verify() error {
 		return err
 	}
 
-	input.commit(size)
+	input.Commit(size)
 	return nil
-}
-
-func (input *RunnerInput) Acquire() {
-}
-
-func (input *RunnerInput) Release() {
-	// The RunnerInput can have at most one reference in-flight. This was the
-	// last one, so return it to the input manager where it can be deleted if we
-	// need more space.
-	input.mgr.Insert(input)
 }
 
 func (input *RunnerInput) CreateArchive() error {
@@ -168,7 +146,7 @@ func (input *RunnerInput) CreateArchive() error {
 				return err
 			}
 			_, err = fmt.Fprintf(sha1sumFile, "%0x *%s/%s\n", innerHasher.Sum(nil),
-				input.hash, hdr.Name)
+				input.Hash(), hdr.Name)
 			if err != nil {
 				panic(err)
 				return err
@@ -186,7 +164,7 @@ func (input *RunnerInput) CreateArchive() error {
 		return err
 	}
 
-	input.commit(size)
+	input.Commit(size)
 	return nil
 }
 
@@ -194,11 +172,6 @@ func (input *RunnerInput) DeleteArchive() error {
 	os.RemoveAll(fmt.Sprintf("%s.tmp", input.path))
 	os.Remove(fmt.Sprintf("%s.sha1", input.path))
 	return os.RemoveAll(input.path)
-}
-
-func (input *RunnerInput) commit(size int64) {
-	input.size = size
-	input.committed = true
 }
 
 func sha1sum(path string) ([]byte, error) {

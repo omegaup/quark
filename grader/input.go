@@ -14,18 +14,12 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"sync"
 )
 
 type GraderInput struct {
-	sync.Mutex
-	committed      bool
-	size           int64
-	hash           string
+	context.BaseInput
 	path           string
 	repositoryPath string
-	refcount       int
-	mgr            *context.InputManager
 }
 
 type RunContext struct {
@@ -61,23 +55,10 @@ func NewGraderInputFactory(run *queue.Run, config *context.Config) context.Input
 
 func (factory *GraderInputFactory) NewInput(mgr *context.InputManager) context.Input {
 	return &GraderInput{
-		mgr:            mgr,
-		hash:           factory.run.InputHash,
+		BaseInput:      *context.NewBaseInput(factory.run.InputHash, mgr),
 		path:           factory.run.GetInputPath(factory.config),
 		repositoryPath: factory.run.GetRepositoryPath(factory.config),
 	}
-}
-
-func (input *GraderInput) Committed() bool {
-	return input.committed
-}
-
-func (input *GraderInput) Size() int64 {
-	return input.size
-}
-
-func (input *GraderInput) Hash() string {
-	return input.hash
 }
 
 func (input *GraderInput) Transmit(w http.ResponseWriter) error {
@@ -131,24 +112,8 @@ func (input *GraderInput) Verify() error {
 		return errors.New("Hash verification failed")
 	}
 
-	input.commit(stat.Size())
+	input.Commit(stat.Size())
 	return nil
-}
-
-func (input *GraderInput) Acquire() {
-	input.refcount++
-}
-
-func (input *GraderInput) Release() {
-	input.Lock()
-	defer input.Unlock()
-
-	input.refcount--
-	if input.refcount == 0 {
-		// There are no outstanding references to this input. Return it to the
-		// input manager where it can be deleted if we need more space.
-		input.mgr.Insert(input)
-	}
 }
 
 func (input *GraderInput) CreateArchive() error {
@@ -185,7 +150,7 @@ func (input *GraderInput) CreateArchive() error {
 		return err
 	}
 
-	input.commit(stat.Size())
+	input.Commit(stat.Size())
 	return nil
 }
 
@@ -195,11 +160,6 @@ func (input *GraderInput) DeleteArchive() error {
 	return os.Remove(input.path)
 }
 
-func (input *GraderInput) commit(size int64) {
-	input.size = size
-	input.committed = true
-}
-
 func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 	repository, err := git.OpenRepository(input.repositoryPath)
 	if err != nil {
@@ -207,7 +167,7 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 	}
 	defer repository.Free()
 
-	treeOid, err := git.NewOid(input.hash)
+	treeOid, err := git.NewOid(input.Hash())
 	if err != nil {
 		return err
 	}
