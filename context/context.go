@@ -10,6 +10,8 @@ import (
 	"os"
 )
 
+var DefaultInputManager *InputManager
+
 // Configuration
 type GraderConfig struct {
 	CacheSize     int64
@@ -56,7 +58,7 @@ var defaultConfig = Config{
 }
 
 func (config *Config) String() string {
-	buf, err := json.Marshal(*config)
+	buf, err := json.MarshalIndent(*config, "", "  ")
 	if err != nil {
 		return err.Error()
 	}

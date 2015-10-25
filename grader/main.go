@@ -76,7 +76,7 @@ func main() {
 
 	var runs = make(chan *queue.RunContext,
 		globalContext.Load().(*context.Context).Config.Grader.ChannelLength)
-	queue.InitCodeManager(globalContext.Load().(*context.Context))
+	context.InitInputManager(globalContext.Load().(*context.Context))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q %q", html.EscapeString(r.URL.Path), r.TLS.PeerCertificates[0].Subject.CommonName)
@@ -111,6 +111,8 @@ func main() {
 		encoder := json.NewEncoder(w)
 		encoder.Encode(run)
 		run.Input.Release()
+		ctx := globalContext.Load().(*context.Context)
+		ctx.Log.Debug("Input release", "input", run.Input)
 	})
 
 	if err := startServer(globalContext.Load().(*context.Context)); err != nil {

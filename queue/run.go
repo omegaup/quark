@@ -21,21 +21,21 @@ func init() {
 
 type Problem struct {
 	Name   string
-	Hash   string
 	Points *float64
 }
 
 type Run struct {
-	ID       uint64
-	GUID     string
-	Contest  *string
-	Language string
-	Problem  Problem
+	ID        uint64
+	GUID      string
+	Contest   *string
+	Language  string
+	InputHash string
+	Problem   Problem
 }
 
 type RunContext struct {
 	Run   *Run
-	Input *Input
+	Input context.Input
 }
 
 func newRunID() uint64 {
@@ -48,16 +48,16 @@ func (run *Run) GetRepositoryPath(config *context.Config) string {
 
 func (run *Run) GetInputPath(config *context.Config) string {
 	return path.Join(config.Grader.RuntimePath, "cache",
-		fmt.Sprintf("%s.tar.gz", run.Problem.Hash))
+		fmt.Sprintf("%s.tar.gz", run.InputHash))
 }
 
-func NewRunContext(id int64, context *context.Context) (*RunContext, error) {
+func NewRunContext(id int64, ctx *context.Context) (*RunContext, error) {
 	run := &Run{
 		ID: newRunID(),
 	}
 	var contestName sql.NullString
 	var contestPoints sql.NullFloat64
-	err := context.DB.QueryRow(
+	err := ctx.DB.QueryRow(
 		`SELECT
 			s.guid, c.alias, s.language, p.alias, pv.hash, cp.points
 		FROM
@@ -74,7 +74,7 @@ func NewRunContext(id int64, context *context.Context) (*RunContext, error) {
 		WHERE
 			s.submission_id = ?;`, id).Scan(
 		&run.GUID, &contestName, &run.Language, &run.Problem.Name,
-		&run.Problem.Hash, &contestPoints)
+		&run.InputHash, &contestPoints)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,8 @@ func NewRunContext(id int64, context *context.Context) (*RunContext, error) {
 		run.Problem.Points = &contestPoints.Float64
 	}
 
-	input, err := DefaultCodeManager.Get(run)
+	input, err := context.DefaultInputManager.Get(run.InputHash,
+		NewGraderInputFactory(run, &ctx.Config))
 	if err != nil {
 		return nil, err
 	}
