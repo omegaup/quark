@@ -7,9 +7,10 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
-	"github.com/omegaup/quark/context"
+	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/queue"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,7 +21,7 @@ import (
 )
 
 type baseRunnerInput struct {
-	context.BaseInput
+	common.BaseInput
 	path string
 }
 
@@ -33,10 +34,54 @@ type RunnerInput struct {
 type RunnerInputFactory struct {
 	run    *queue.Run
 	client *http.Client
-	config *context.Config
+	config *common.Config
 }
 
-func NewRunnerInputFactory(run *queue.Run, client *http.Client, config *context.Config) context.InputFactory {
+type RunnerCachedInputFactory struct {
+	config *common.Config
+	hash   string
+}
+
+func NewRunnerCachedInputFactory(hash string, config *common.Config) common.InputFactory {
+	return &RunnerCachedInputFactory{
+		config: config,
+		hash:   hash,
+	}
+}
+
+func (factory *RunnerCachedInputFactory) NewInput(mgr *common.InputManager) common.Input {
+	return &baseRunnerInput{
+		BaseInput: *common.NewBaseInput(factory.hash, mgr),
+		path: path.Join(factory.config.Runner.RuntimePath,
+			"input", factory.hash),
+	}
+}
+
+func PreloadInputs(ctx *common.Context) error {
+	path := path.Join(ctx.Config.Runner.RuntimePath, "input")
+	contents, err := ioutil.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	for _, info := range contents {
+		if !info.IsDir() {
+			continue
+		}
+		hash := info.Name()
+		factory := NewRunnerCachedInputFactory(hash, &ctx.Config)
+		input, err := common.DefaultInputManager.Add(info.Name(), factory)
+		if err != nil {
+			ctx.Log.Error("Cached input corrupted", "hash", hash)
+		} else {
+			input.Release()
+		}
+	}
+	ctx.Log.Info("Finished preloading cached inputs",
+		"cache_size", common.DefaultInputManager.Size())
+	return nil
+}
+
+func NewRunnerInputFactory(run *queue.Run, client *http.Client, config *common.Config) common.InputFactory {
 	return &RunnerInputFactory{
 		run:    run,
 		client: client,
@@ -44,7 +89,7 @@ func NewRunnerInputFactory(run *queue.Run, client *http.Client, config *context.
 	}
 }
 
-func (factory *RunnerInputFactory) NewInput(mgr *context.InputManager) context.Input {
+func (factory *RunnerInputFactory) NewInput(mgr *common.InputManager) common.Input {
 	baseURL, err := url.Parse(factory.config.Runner.GraderURL)
 	if err != nil {
 		panic(err)
@@ -55,7 +100,7 @@ func (factory *RunnerInputFactory) NewInput(mgr *context.InputManager) context.I
 	}
 	return &RunnerInput{
 		baseRunnerInput: baseRunnerInput{
-			BaseInput: *context.NewBaseInput(factory.run.InputHash, mgr),
+			BaseInput: *common.NewBaseInput(factory.run.InputHash, mgr),
 			path: path.Join(factory.config.Runner.RuntimePath,
 				"input", factory.run.InputHash),
 		},
@@ -104,7 +149,7 @@ func (input *baseRunnerInput) Verify() error {
 
 	var size int64 = 0
 	for path, expectedHashStr := range hashes {
-		actualHash, err := context.Sha1sum(path)
+		actualHash, err := common.Sha1sum(path)
 		if err != nil {
 			return err
 		}
@@ -123,6 +168,10 @@ func (input *baseRunnerInput) Verify() error {
 	return nil
 }
 
+func (input *baseRunnerInput) CreateArchive() error {
+	return errors.New("baseRunnerInput cannot create archives")
+}
+
 func (input *RunnerInput) CreateArchive() error {
 	tmpPath := fmt.Sprintf("%s.tmp", input.path)
 	if err := os.MkdirAll(tmpPath, 0755); err != nil {
@@ -136,7 +185,7 @@ func (input *RunnerInput) CreateArchive() error {
 	}
 	defer resp.Body.Close()
 
-	hasher := context.NewHashReader(resp.Body, sha1.New())
+	hasher := common.NewHashReader(resp.Body, sha1.New())
 
 	gz, err := gzip.NewReader(hasher)
 	if err != nil {
@@ -180,7 +229,7 @@ func (input *RunnerInput) CreateArchive() error {
 			}
 			defer fd.Close()
 
-			innerHasher := context.NewHashReader(archive, sha1.New())
+			innerHasher := common.NewHashReader(archive, sha1.New())
 			if _, err := io.Copy(fd, innerHasher); err != nil {
 				panic(err)
 				return err

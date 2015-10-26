@@ -1,4 +1,4 @@
-package context
+package common
 
 import (
 	"container/list"
@@ -176,6 +176,10 @@ func (mgr *InputManager) Insert(input Input) {
 		delete(mgr.mapping, input.Hash())
 		input.DeleteArchive()
 	}
+}
+
+func (mgr *InputManager) Size() int64 {
+	return mgr.totalSize
 }
 
 func NewBaseInput(hash string, mgr *InputManager) *BaseInput {

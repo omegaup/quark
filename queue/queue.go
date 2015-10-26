@@ -10,9 +10,11 @@ type Queue struct {
 	ready chan struct{}
 }
 
-func NewQueue(channelLength int) *Queue {
-	queue := &Queue{}
-	queue.ready = make(chan struct{}, channelLength)
+func NewQueue(name string, channelLength int) *Queue {
+	queue := &Queue{
+		Name:  name,
+		ready: make(chan struct{}, channelLength),
+	}
 	for r := range queue.runs {
 		queue.runs[r] = make(chan *Run, channelLength)
 	}

@@ -6,7 +6,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
-	"github.com/omegaup/quark/context"
+	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/queue"
 	git "gopkg.in/libgit2/git2go.v22"
 	"io"
@@ -16,18 +16,18 @@ import (
 )
 
 type GraderInput struct {
-	context.BaseInput
+	common.BaseInput
 	path           string
 	repositoryPath string
 }
 
 type RunContext struct {
 	Run   *queue.Run
-	Input context.Input
+	Input common.Input
 }
 
-func NewRunContext(run *queue.Run, ctx *context.Context) (*RunContext, error) {
-	input, err := context.DefaultInputManager.Add(run.InputHash,
+func NewRunContext(run *queue.Run, ctx *common.Context) (*RunContext, error) {
+	input, err := common.DefaultInputManager.Add(run.InputHash,
 		NewGraderInputFactory(run, &ctx.Config))
 	if err != nil {
 		return nil, err
@@ -42,19 +42,19 @@ func NewRunContext(run *queue.Run, ctx *context.Context) (*RunContext, error) {
 
 type GraderInputFactory struct {
 	run    *queue.Run
-	config *context.Config
+	config *common.Config
 }
 
-func NewGraderInputFactory(run *queue.Run, config *context.Config) context.InputFactory {
+func NewGraderInputFactory(run *queue.Run, config *common.Config) common.InputFactory {
 	return &GraderInputFactory{
 		run:    run,
 		config: config,
 	}
 }
 
-func (factory *GraderInputFactory) NewInput(mgr *context.InputManager) context.Input {
+func (factory *GraderInputFactory) NewInput(mgr *common.InputManager) common.Input {
 	return &GraderInput{
-		BaseInput:      *context.NewBaseInput(factory.run.InputHash, mgr),
+		BaseInput:      *common.NewBaseInput(factory.run.InputHash, mgr),
 		path:           factory.run.GetInputPath(factory.config),
 		repositoryPath: factory.run.GetRepositoryPath(factory.config),
 	}
@@ -99,7 +99,7 @@ func (input *GraderInput) Verify() error {
 	if err != nil {
 		return err
 	}
-	hash, err := context.Sha1sum(input.path)
+	hash, err := common.Sha1sum(input.path)
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func (input *GraderInput) CreateArchive() error {
 		return err
 	}
 
-	hash, err := context.Sha1sum(tmpPath)
+	hash, err := common.Sha1sum(tmpPath)
 	if err != nil {
 		return err
 	}

@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"expvar"
 	"flag"
-	"github.com/omegaup/quark/context"
+	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/queue"
 	"github.com/omegaup/quark/runner"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -23,7 +24,7 @@ var (
 )
 
 func loadContext() error {
-	ctx, err := context.NewContext(*configPath)
+	ctx, err := common.NewContext(*configPath)
 	if err != nil {
 		return err
 	}
@@ -38,9 +39,10 @@ func main() {
 		panic(err)
 	}
 
-	ctx := globalContext.Load().(*context.Context)
-	expvar.Publish("config", &globalContext.Load().(*context.Context).Config)
-	context.InitInputManager(ctx)
+	ctx := globalContext.Load().(*common.Context)
+	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
+	common.InitInputManager(ctx)
+	go runner.PreloadInputs(ctx)
 	var client *http.Client
 	if *insecure {
 		client = http.DefaultClient
@@ -66,31 +68,49 @@ func main() {
 		client = &http.Client{Transport: tr}
 	}
 
-	for {
-		baseUrl, err := url.Parse(ctx.Config.Runner.GraderURL)
-		if err != nil {
-			panic(err)
-		}
-		requestUrl, err := baseUrl.Parse("run/request")
-		if err != nil {
-			panic(err)
-		}
-		resp, err := client.Get(requestUrl.String())
-		if err != nil {
-			panic(err)
-		}
-		defer resp.Body.Close()
-		decoder := json.NewDecoder(resp.Body)
-		var run queue.Run
-		if err := decoder.Decode(&run); err != nil {
-			panic(err)
-		}
-		input, err := context.DefaultInputManager.Add(run.InputHash,
-			runner.NewRunnerInputFactory(&run, client, &ctx.Config))
-		if err != nil {
-			panic(err)
-		}
-		ctx.Log.Info("Grading", "run", run, "input", input)
-		input.Release()
+	baseUrl, err := url.Parse(ctx.Config.Runner.GraderURL)
+	if err != nil {
+		panic(err)
 	}
+	requestUrl, err := baseUrl.Parse("run/request")
+	if err != nil {
+		panic(err)
+	}
+
+	ctx.Log.Info("omegaUp runner ready to serve")
+
+	var sleepTime int64 = 1
+
+	for {
+		if err := processRun(ctx, client, requestUrl.String()); err != nil {
+			ctx.Log.Error("error grading run", "err", err)
+			time.Sleep(time.Duration(sleepTime) * time.Second)
+			if sleepTime < 64 {
+				sleepTime *= 2
+			}
+		} else {
+			sleepTime = 1
+		}
+	}
+}
+
+func processRun(ctx *common.Context, client *http.Client, requestURL string) error {
+	resp, err := client.Get(requestURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	decoder := json.NewDecoder(resp.Body)
+	var run queue.Run
+	if err := decoder.Decode(&run); err != nil {
+		return err
+	}
+	ctx.Log.Info("Grading", "run", run)
+	input, err := common.DefaultInputManager.Add(run.InputHash,
+		runner.NewRunnerInputFactory(&run, client, &ctx.Config))
+	if err != nil {
+		return err
+	}
+	input.Release()
+	return nil
 }

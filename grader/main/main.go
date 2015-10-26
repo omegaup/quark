@@ -7,7 +7,7 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"github.com/omegaup/quark/context"
+	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/queue"
 	"golang.org/x/net/http2"
@@ -29,7 +29,7 @@ var (
 )
 
 func loadContext() error {
-	ctx, err := context.NewContext(*configPath)
+	ctx, err := common.NewContext(*configPath)
 	if err != nil {
 		return err
 	}
@@ -37,7 +37,7 @@ func loadContext() error {
 	return nil
 }
 
-func startServer(ctx *context.Context) error {
+func startServer(ctx *common.Context) error {
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%d", ctx.Config.Grader.Port),
 	}
@@ -73,18 +73,18 @@ func main() {
 		panic(err)
 	}
 
-	expvar.Publish("config", &globalContext.Load().(*context.Context).Config)
+	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
 
 	var runs = make(chan *grader.RunContext,
-		globalContext.Load().(*context.Context).Config.Grader.ChannelLength)
-	context.InitInputManager(globalContext.Load().(*context.Context))
+		globalContext.Load().(*common.Context).Config.Grader.ChannelLength)
+	common.InitInputManager(globalContext.Load().(*common.Context))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q %q", html.EscapeString(r.URL.Path), r.TLS.PeerCertificates[0].Subject.CommonName)
 	})
 	gradeRe := regexp.MustCompile("/run/grade/(\\d+)/?")
 	http.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := globalContext.Load().(*context.Context)
+		ctx := globalContext.Load().(*common.Context)
 		res := gradeRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
@@ -113,22 +113,32 @@ func main() {
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})
 	http.HandleFunc("/run/request", func(w http.ResponseWriter, r *http.Request) {
-		runCtx := <-runs
-		w.Header().Set("Content-Type", "text/json; charset=utf-8")
-		encoder := json.NewEncoder(w)
-		encoder.Encode(runCtx.Run)
-		runCtx.Input.Release()
+		ctx := globalContext.Load().(*common.Context)
+		ctx.Log.Debug("requesting run",
+			"proto", r.Proto, "client", r.TLS.PeerCertificates[0].Subject.CommonName)
+		select {
+		case <-w.(http.CloseNotifier).CloseNotify():
+			ctx.Log.Debug("client gone",
+				"client", r.TLS.PeerCertificates[0].Subject.CommonName)
+		case runCtx := <-runs:
+			ctx.Log.Debug("served run", "run", runCtx.Run,
+				"client", r.TLS.PeerCertificates[0].Subject.CommonName)
+			w.Header().Set("Content-Type", "text/json; charset=utf-8")
+			encoder := json.NewEncoder(w)
+			encoder.Encode(runCtx.Run)
+			runCtx.Input.Release()
+		}
 	})
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
 	http.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := globalContext.Load().(*context.Context)
+		ctx := globalContext.Load().(*common.Context)
 		res := inputRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		hash := res[1]
-		input, err := context.DefaultInputManager.Get(hash)
+		input, err := common.DefaultInputManager.Get(hash)
 		if err != nil {
 			ctx.Log.Error("Input not found", "hash", hash)
 			w.WriteHeader(http.StatusNotFound)
@@ -141,7 +151,7 @@ func main() {
 		}
 	})
 
-	if err := startServer(globalContext.Load().(*context.Context)); err != nil {
+	if err := startServer(globalContext.Load().(*common.Context)); err != nil {
 		panic(err)
 	}
 }
