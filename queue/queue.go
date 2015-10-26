@@ -1,12 +1,13 @@
 package queue
 
 import (
+	"github.com/omegaup/quark/common"
 	"reflect"
 )
 
 type Queue struct {
 	Name  string
-	runs  [3]chan *Run
+	runs  [3]chan *common.Run
 	ready chan struct{}
 }
 
@@ -16,7 +17,7 @@ func NewQueue(name string, channelLength int) *Queue {
 		ready: make(chan struct{}, channelLength),
 	}
 	for r := range queue.runs {
-		queue.runs[r] = make(chan *Run, channelLength)
+		queue.runs[r] = make(chan *common.Run, channelLength)
 	}
 	return queue
 }
@@ -24,7 +25,7 @@ func NewQueue(name string, channelLength int) *Queue {
 // TryGetRun goes through the channels in order of priority, and if one of them
 // has something ready, it returns it. This behaves more or less like
 //     run, ok := <-queue
-func (queue *Queue) TryGetRun() (*Run, bool) {
+func (queue *Queue) TryGetRun() (*common.Run, bool) {
 	for i := range queue.runs {
 		if run, ok := <-queue.runs[i]; ok {
 			return run, ok
@@ -34,7 +35,7 @@ func (queue *Queue) TryGetRun() (*Run, bool) {
 }
 
 // GetRun
-func (queue *Queue) GetRun(output chan<- *Run) {
+func (queue *Queue) GetRun(output chan<- *common.Run) {
 	if run, ok := queue.TryGetRun(); ok {
 		output <- run
 		return
@@ -52,7 +53,7 @@ func (queue *Queue) GetRun(output chan<- *Run) {
 }
 
 // Close closes all of the Queue's run queues and drains them into output.
-func (queue *Queue) Close(output chan<- *Run) {
+func (queue *Queue) Close(output chan<- *common.Run) {
 	close(queue.ready)
 	for run := range queue.runs[0] {
 		output <- run
@@ -87,7 +88,7 @@ func NewPool(name string, queues []*Queue) *Pool {
 	return pool
 }
 
-func (pool *Pool) GetRun(output chan<- *Run) {
+func (pool *Pool) GetRun(output chan<- *common.Run) {
 	for i := range pool.queues {
 		if _, ok := <-pool.queues[i].ready; ok {
 			pool.queues[i].GetRun(output)

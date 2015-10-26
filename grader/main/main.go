@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
-	"github.com/omegaup/quark/queue"
 	"golang.org/x/net/http2"
 	"html"
 	"io/ioutil"
@@ -95,7 +94,7 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		run, err := queue.NewRun(id, ctx)
+		run, err := common.NewRun(id, ctx)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
 			w.WriteHeader(http.StatusNotFound)

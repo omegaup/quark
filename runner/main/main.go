@@ -7,7 +7,6 @@ import (
 	"expvar"
 	"flag"
 	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/queue"
 	"github.com/omegaup/quark/runner"
 	"io/ioutil"
 	"net/http"
@@ -101,7 +100,7 @@ func processRun(ctx *common.Context, client *http.Client, requestURL string) err
 	}
 	defer resp.Body.Close()
 	decoder := json.NewDecoder(resp.Body)
-	var run queue.Run
+	var run common.Run
 	if err := decoder.Decode(&run); err != nil {
 		return err
 	}

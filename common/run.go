@@ -1,11 +1,8 @@
-package queue
+package common
 
 import (
 	"database/sql"
-	"fmt"
-	"github.com/omegaup/quark/common"
 	"math/rand"
-	"path"
 	"sync/atomic"
 	"time"
 )
@@ -37,16 +34,7 @@ func newRunID() uint64 {
 	return atomic.AddUint64(&runID, 1)
 }
 
-func (run *Run) GetRepositoryPath(config *common.Config) string {
-	return path.Join(config.Grader.RuntimePath, "problems.git", run.Problem.Name)
-}
-
-func (run *Run) GetInputPath(config *common.Config) string {
-	return path.Join(config.Grader.RuntimePath, "cache",
-		fmt.Sprintf("%s.tar.gz", run.InputHash))
-}
-
-func NewRun(id int64, ctx *common.Context) (*Run, error) {
+func NewRun(id int64, ctx *Context) (*Run, error) {
 	run := &Run{
 		ID: newRunID(),
 	}

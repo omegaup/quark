@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/queue"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -32,7 +31,7 @@ type RunnerInput struct {
 }
 
 type RunnerInputFactory struct {
-	run    *queue.Run
+	run    *common.Run
 	client *http.Client
 	config *common.Config
 }
@@ -81,7 +80,7 @@ func PreloadInputs(ctx *common.Context) error {
 	return nil
 }
 
-func NewRunnerInputFactory(run *queue.Run, client *http.Client, config *common.Config) common.InputFactory {
+func NewRunnerInputFactory(run *common.Run, client *http.Client, config *common.Config) common.InputFactory {
 	return &RunnerInputFactory{
 		run:    run,
 		client: client,

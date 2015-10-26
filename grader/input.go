@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/queue"
 	git "gopkg.in/libgit2/git2go.v22"
 	"io"
 	"net/http"
@@ -22,11 +21,11 @@ type GraderInput struct {
 }
 
 type RunContext struct {
-	Run   *queue.Run
+	Run   *common.Run
 	Input common.Input
 }
 
-func NewRunContext(run *queue.Run, ctx *common.Context) (*RunContext, error) {
+func NewRunContext(run *common.Run, ctx *common.Context) (*RunContext, error) {
 	input, err := common.DefaultInputManager.Add(run.InputHash,
 		NewGraderInputFactory(run, &ctx.Config))
 	if err != nil {
@@ -41,11 +40,11 @@ func NewRunContext(run *queue.Run, ctx *common.Context) (*RunContext, error) {
 }
 
 type GraderInputFactory struct {
-	run    *queue.Run
+	run    *common.Run
 	config *common.Config
 }
 
-func NewGraderInputFactory(run *queue.Run, config *common.Config) common.InputFactory {
+func NewGraderInputFactory(run *common.Run, config *common.Config) common.InputFactory {
 	return &GraderInputFactory{
 		run:    run,
 		config: config,
@@ -54,9 +53,11 @@ func NewGraderInputFactory(run *queue.Run, config *common.Config) common.InputFa
 
 func (factory *GraderInputFactory) NewInput(mgr *common.InputManager) common.Input {
 	return &GraderInput{
-		BaseInput:      *common.NewBaseInput(factory.run.InputHash, mgr),
-		path:           factory.run.GetInputPath(factory.config),
-		repositoryPath: factory.run.GetRepositoryPath(factory.config),
+		BaseInput: *common.NewBaseInput(factory.run.InputHash, mgr),
+		path: path.Join(factory.config.Grader.RuntimePath,
+			"cache", fmt.Sprintf("%s.tar.gz", factory.run.InputHash)),
+		repositoryPath: path.Join(factory.config.Grader.RuntimePath,
+			"problems.git", factory.run.Problem.Name),
 	}
 }
 
