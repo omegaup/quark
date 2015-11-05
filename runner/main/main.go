@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -20,6 +21,7 @@ var (
 	configPath = flag.String("config", "/etc/omegaup/grader/config.json",
 		"Grader configuration file")
 	globalContext atomic.Value
+	ioLock        sync.Mutex
 )
 
 func loadContext() error {
@@ -41,7 +43,7 @@ func main() {
 	ctx := globalContext.Load().(*common.Context)
 	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
 	common.InitInputManager(ctx)
-	go runner.PreloadInputs(ctx)
+	go runner.PreloadInputs(ctx, &ioLock)
 	var client *http.Client
 	if *insecure {
 		client = http.DefaultClient
@@ -104,7 +106,11 @@ func processRun(ctx *common.Context, client *http.Client, requestURL string) err
 	if err := decoder.Decode(&run); err != nil {
 		return err
 	}
-	ctx.Log.Info("Grading", "run", run)
+
+	// Make sure no other I/O is being made while we grade this run.
+	ioLock.Lock()
+	defer ioLock.Unlock()
+
 	input, err := common.DefaultInputManager.Add(run.InputHash,
 		runner.NewRunnerInputFactory(&run, client, &ctx.Config))
 	if err != nil {

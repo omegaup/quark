@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 type baseRunnerInput struct {
@@ -56,7 +57,7 @@ func (factory *RunnerCachedInputFactory) NewInput(mgr *common.InputManager) comm
 	}
 }
 
-func PreloadInputs(ctx *common.Context) error {
+func PreloadInputs(ctx *common.Context, ioLock *sync.Mutex) error {
 	path := path.Join(ctx.Config.Runner.RuntimePath, "input")
 	contents, err := ioutil.ReadDir(path)
 	if err != nil {
@@ -68,12 +69,16 @@ func PreloadInputs(ctx *common.Context) error {
 		}
 		hash := info.Name()
 		factory := NewRunnerCachedInputFactory(hash, &ctx.Config)
+
+		// Make sure no other I/O is being made while we pre-fetch this input.
+		ioLock.Lock()
 		input, err := common.DefaultInputManager.Add(info.Name(), factory)
 		if err != nil {
 			ctx.Log.Error("Cached input corrupted", "hash", hash)
 		} else {
 			input.Release()
 		}
+		ioLock.Unlock()
 	}
 	ctx.Log.Info("Finished preloading cached inputs",
 		"cache_size", common.DefaultInputManager.Size())
