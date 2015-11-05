@@ -20,25 +20,6 @@ type GraderInput struct {
 	repositoryPath string
 }
 
-type RunContext struct {
-	Run   *common.Run
-	Input common.Input
-}
-
-func NewRunContext(run *common.Run, ctx *common.Context) (*RunContext, error) {
-	input, err := common.DefaultInputManager.Add(run.InputHash,
-		NewGraderInputFactory(run, &ctx.Config))
-	if err != nil {
-		return nil, err
-	}
-
-	runctx := &RunContext{
-		Run:   run,
-		Input: input,
-	}
-	return runctx, nil
-}
-
 type GraderInputFactory struct {
 	run    *common.Run
 	config *common.Config

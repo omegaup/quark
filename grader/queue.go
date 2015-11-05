@@ -1,14 +1,42 @@
-package queue
+package grader
 
 import (
 	"github.com/omegaup/quark/common"
 	"reflect"
 )
 
+type RunContext struct {
+	Run   *common.Run
+	Input common.Input
+	tries int
+	queue *Queue
+	pool  *Pool
+}
+
 type Queue struct {
 	Name  string
-	runs  [3]chan *common.Run
+	runs  [3]chan *RunContext
 	ready chan struct{}
+}
+
+func NewRunContext(run *common.Run, ctx *common.Context) (*RunContext, error) {
+	input, err := common.DefaultInputManager.Add(run.InputHash,
+		NewGraderInputFactory(run, &ctx.Config))
+	if err != nil {
+		return nil, err
+	}
+
+	runctx := &RunContext{
+		Run:   run,
+		Input: input,
+	}
+	return runctx, nil
+}
+
+func (run *RunContext) Requeue() {
+	run.Run.UpdateID()
+	run.queue.runs[0] <- run
+	run.queue.ready <- struct{}{}
 }
 
 func NewQueue(name string, channelLength int) *Queue {
@@ -17,7 +45,7 @@ func NewQueue(name string, channelLength int) *Queue {
 		ready: make(chan struct{}, channelLength),
 	}
 	for r := range queue.runs {
-		queue.runs[r] = make(chan *common.Run, channelLength)
+		queue.runs[r] = make(chan *RunContext, channelLength)
 	}
 	return queue
 }
@@ -25,7 +53,7 @@ func NewQueue(name string, channelLength int) *Queue {
 // TryGetRun goes through the channels in order of priority, and if one of them
 // has something ready, it returns it. This behaves more or less like
 //     run, ok := <-queue
-func (queue *Queue) TryGetRun() (*common.Run, bool) {
+func (queue *Queue) TryGetRun() (*RunContext, bool) {
 	for i := range queue.runs {
 		if run, ok := <-queue.runs[i]; ok {
 			return run, ok
@@ -35,7 +63,7 @@ func (queue *Queue) TryGetRun() (*common.Run, bool) {
 }
 
 // GetRun
-func (queue *Queue) GetRun(output chan<- *common.Run) {
+func (queue *Queue) GetRun(output chan<- *RunContext) {
 	if run, ok := queue.TryGetRun(); ok {
 		output <- run
 		return
@@ -53,7 +81,7 @@ func (queue *Queue) GetRun(output chan<- *common.Run) {
 }
 
 // Close closes all of the Queue's run queues and drains them into output.
-func (queue *Queue) Close(output chan<- *common.Run) {
+func (queue *Queue) Close(output chan<- *RunContext) {
 	close(queue.ready)
 	for run := range queue.runs[0] {
 		output <- run
@@ -88,7 +116,7 @@ func NewPool(name string, queues []*Queue) *Pool {
 	return pool
 }
 
-func (pool *Pool) GetRun(output chan<- *common.Run) {
+func (pool *Pool) GetRun(output chan<- *RunContext) {
 	for i := range pool.queues {
 		if _, ok := <-pool.queues[i].ready; ok {
 			pool.queues[i].GetRun(output)

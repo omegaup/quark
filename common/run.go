@@ -69,3 +69,8 @@ func NewRun(id int64, ctx *Context) (*Run, error) {
 	}
 	return run, nil
 }
+
+func (run *Run) UpdateID() uint64 {
+	run.ID = newRunID()
+	return run.ID
+}
