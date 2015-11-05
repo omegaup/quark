@@ -116,6 +116,7 @@ func processRun(ctx *common.Context, client *http.Client, requestURL string) err
 	if err != nil {
 		return err
 	}
+	runner.Grade(&run, input)
 	input.Release()
 	return nil
 }
