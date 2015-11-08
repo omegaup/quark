@@ -2,7 +2,9 @@ package common
 
 import (
 	"database/sql"
+	"io/ioutil"
 	"math/rand"
+	"path"
 	"sync/atomic"
 	"time"
 )
@@ -28,6 +30,7 @@ type Run struct {
 	Language  string
 	InputHash string
 	Problem   Problem
+	Source    string
 }
 
 func newRunID() uint64 {
@@ -67,6 +70,12 @@ func NewRun(id int64, ctx *Context) (*Run, error) {
 	if contestPoints.Valid {
 		run.Problem.Points = &contestPoints.Float64
 	}
+	contents, err := ioutil.ReadFile(path.Join(ctx.Config.Grader.RuntimePath,
+		"submissions", run.GUID[:2], run.GUID[2:]))
+	if err != nil {
+		return nil, err
+	}
+	run.Source = string(contents)
 	return run, nil
 }
 

@@ -20,10 +20,15 @@ type InteractiveSettings struct {
 	Interface string
 }
 
-type GroupSettings struct {
-	Weight float64
+type CaseSettings struct {
 	Name   string
-	Cases  []string
+	Weight float64
+}
+
+type GroupSettings struct {
+	Name   string
+	Weight float64
+	Cases  []CaseSettings
 }
 
 type ProblemSettings struct {

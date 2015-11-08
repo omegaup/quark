@@ -116,7 +116,11 @@ func processRun(ctx *common.Context, client *http.Client, requestURL string) err
 	if err != nil {
 		return err
 	}
-	runner.Grade(&run, input)
-	input.Release()
+	defer input.Release()
+	result, err := runner.Grade(ctx, &run, input)
+	ctx.Log.Error("Grading finished", "result", result)
+	if err != nil {
+		ctx.Log.Error("Error while grading", "err", err)
+	}
 	return nil
 }

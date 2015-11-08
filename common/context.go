@@ -26,8 +26,12 @@ type TLSConfig struct {
 }
 
 type RunnerConfig struct {
-	GraderURL   string
-	RuntimePath string
+	GraderURL           string
+	RuntimePath         string
+	CompileTimeLimit    int
+	CompileOutputLimit  int
+	JavaVmEstimatedSize int
+	PreserveFiles       bool
 }
 
 type DbConfig struct {
@@ -64,8 +68,12 @@ var defaultConfig = Config{
 		RuntimePath:   "/var/lib/omegaup/",
 	},
 	Runner: RunnerConfig{
-		RuntimePath: "/var/lib/omegaup/runner",
-		GraderURL:   "https://omegaup.com:11302",
+		RuntimePath:         "/var/lib/omegaup/runner",
+		GraderURL:           "https://omegaup.com:11302",
+		CompileTimeLimit:    30,
+		CompileOutputLimit:  10 * 1024 * 1024, // 10 MiB
+		JavaVmEstimatedSize: 14 * 1024 * 1024, // 14 MiB
+		PreserveFiles:       false,
 	},
 	TLS: TLSConfig{
 		CertFile: "/etc/omegaup/grader/certificate.pem",

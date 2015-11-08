@@ -21,13 +21,8 @@ import (
 	"sync"
 )
 
-type baseRunnerInput struct {
-	common.BaseInput
-	path string
-}
-
 type RunnerInput struct {
-	baseRunnerInput
+	common.BaseInput
 	requestURL string
 	client     *http.Client
 }
@@ -51,10 +46,11 @@ func NewRunnerCachedInputFactory(hash string, config *common.Config) common.Inpu
 }
 
 func (factory *RunnerCachedInputFactory) NewInput(mgr *common.InputManager) common.Input {
-	return &baseRunnerInput{
-		BaseInput: *common.NewBaseInput(factory.hash, mgr),
-		path: path.Join(factory.config.Runner.RuntimePath,
-			"input", factory.hash),
+	return &RunnerInput{
+		BaseInput: *common.NewBaseInput(
+			factory.hash,
+			mgr,
+			path.Join(factory.config.Runner.RuntimePath, "input", factory.hash)),
 	}
 }
 
@@ -104,20 +100,18 @@ func (factory *RunnerInputFactory) NewInput(mgr *common.InputManager) common.Inp
 		panic(err)
 	}
 	return &RunnerInput{
-		baseRunnerInput: baseRunnerInput{
-			BaseInput: *common.NewBaseInput(factory.run.InputHash, mgr),
-			path: path.Join(factory.config.Runner.RuntimePath,
-				"input", factory.run.InputHash),
-		},
+		BaseInput: *common.NewBaseInput(factory.run.InputHash, mgr,
+			path.Join(factory.config.Runner.RuntimePath,
+				"input", factory.run.InputHash)),
 		client:     factory.client,
 		requestURL: requestURL.String(),
 	}
 }
 
-func (input *baseRunnerInput) getStoredHashes() (map[string]string, error) {
+func (input *RunnerInput) getStoredHashes() (map[string]string, error) {
 	result := make(map[string]string)
-	dir := filepath.Dir(input.path)
-	hashPath := fmt.Sprintf("%s.sha1", input.path)
+	dir := filepath.Dir(input.Path())
+	hashPath := fmt.Sprintf("%s.sha1", input.Path())
 	hashFd, err := os.Open(hashPath)
 	if err != nil {
 		return result, err
@@ -134,7 +128,7 @@ func (input *baseRunnerInput) getStoredHashes() (map[string]string, error) {
 		}
 		expectedHash := res[1]
 		filePath := filepath.Join(dir, res[2])
-		if !strings.HasPrefix(filePath, input.path) {
+		if !strings.HasPrefix(filePath, input.Path()) {
 			return result, errors.New(fmt.Sprintf("path is outside expected directory: '%s",
 				filePath))
 		}
@@ -146,7 +140,7 @@ func (input *baseRunnerInput) getStoredHashes() (map[string]string, error) {
 	return result, nil
 }
 
-func (input *baseRunnerInput) Verify() error {
+func (input *RunnerInput) Verify() error {
 	hashes, err := input.getStoredHashes()
 	if err != nil {
 		return err
@@ -169,7 +163,7 @@ func (input *baseRunnerInput) Verify() error {
 		size += stat.Size()
 	}
 
-	settingsFd, err := os.Open(path.Join(input.path, "settings.json"))
+	settingsFd, err := os.Open(path.Join(input.Path(), "settings.json"))
 	if err != nil {
 		return err
 	}
@@ -183,12 +177,8 @@ func (input *baseRunnerInput) Verify() error {
 	return nil
 }
 
-func (input *baseRunnerInput) CreateArchive() error {
-	return errors.New("baseRunnerInput cannot create archives")
-}
-
 func (input *RunnerInput) CreateArchive() error {
-	tmpPath := fmt.Sprintf("%s.tmp", input.path)
+	tmpPath := fmt.Sprintf("%s.tmp", input.Path())
 	if err := os.MkdirAll(tmpPath, 0755); err != nil {
 		return err
 	}
@@ -210,7 +200,7 @@ func (input *RunnerInput) CreateArchive() error {
 
 	archive := tar.NewReader(gz)
 
-	sha1sumFile, err := os.Create(fmt.Sprintf("%s.sha1", input.path))
+	sha1sumFile, err := os.Create(fmt.Sprintf("%s.sha1", input.Path()))
 	if err != nil {
 		return err
 	}
@@ -264,7 +254,17 @@ func (input *RunnerInput) CreateArchive() error {
 			resp.Header.Get("Content-SHA1"), fmt.Sprintf("%0x", hasher.Sum(nil))))
 	}
 
-	if err := os.Rename(tmpPath, input.path); err != nil {
+	if err := os.Rename(tmpPath, input.Path()); err != nil {
+		return err
+	}
+
+	settingsFd, err := os.Open(path.Join(input.Path(), "settings.json"))
+	if err != nil {
+		return err
+	}
+	defer settingsFd.Close()
+	decoder := json.NewDecoder(settingsFd)
+	if err := decoder.Decode(input.Settings()); err != nil {
 		return err
 	}
 
@@ -273,7 +273,7 @@ func (input *RunnerInput) CreateArchive() error {
 }
 
 func (input *RunnerInput) DeleteArchive() error {
-	os.RemoveAll(fmt.Sprintf("%s.tmp", input.path))
-	os.Remove(fmt.Sprintf("%s.sha1", input.path))
-	return os.RemoveAll(input.path)
+	os.RemoveAll(fmt.Sprintf("%s.tmp", input.Path()))
+	os.Remove(fmt.Sprintf("%s.sha1", input.Path()))
+	return os.RemoveAll(input.Path())
 }

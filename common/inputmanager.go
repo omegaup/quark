@@ -44,6 +44,7 @@ type RefCounted interface {
 type Input interface {
 	Lockable
 	RefCounted
+	Path() string
 	Hash() string
 	Committed() bool
 	Size() int64
@@ -58,6 +59,7 @@ type BaseInput struct {
 	committed bool
 	refcount  int
 	size      int64
+	path      string
 	hash      string
 	mgr       *InputManager
 	settings  ProblemSettings
@@ -140,7 +142,7 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
 	if !input.Committed() {
 		// This operation can take a while.
 		if err := input.Verify(); err != nil {
-			mgr.ctx.Log.Error("Hash verification failed. Regenerating",
+			mgr.ctx.Log.Warn("Hash verification failed. Regenerating",
 				"path", input.Hash(), "err", err)
 			input.DeleteArchive()
 
@@ -151,7 +153,7 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
 			}
 			mgr.ctx.Log.Info("Generated input", "hash", input.Hash())
 		} else {
-			mgr.ctx.Log.Info("Reusing input", "hash", input.Hash())
+			mgr.ctx.Log.Debug("Reusing input", "hash", input.Hash())
 		}
 	}
 	input.Acquire()
@@ -184,10 +186,11 @@ func (mgr *InputManager) Size() int64 {
 	return mgr.totalSize
 }
 
-func NewBaseInput(hash string, mgr *InputManager) *BaseInput {
+func NewBaseInput(hash string, mgr *InputManager, path string) *BaseInput {
 	return &BaseInput{
 		hash: hash,
 		mgr:  mgr,
+		path: path,
 	}
 }
 
@@ -197,6 +200,10 @@ func (input *BaseInput) Committed() bool {
 
 func (input *BaseInput) Size() int64 {
 	return input.size
+}
+
+func (input *BaseInput) Path() string {
+	return input.path
 }
 
 func (input *BaseInput) Hash() string {
@@ -209,11 +216,11 @@ func (input *BaseInput) Commit(size int64) {
 }
 
 func (input *BaseInput) Verify() error {
-	return nil
+	return errors.New("Unimplemented")
 }
 
 func (input *BaseInput) CreateArchive() error {
-	return nil
+	return errors.New("Unimplemented")
 }
 
 func (input *BaseInput) DeleteArchive() error {

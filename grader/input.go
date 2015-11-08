@@ -16,7 +16,6 @@ import (
 
 type GraderInput struct {
 	common.BaseInput
-	path           string
 	repositoryPath string
 }
 
@@ -34,9 +33,9 @@ func NewGraderInputFactory(run *common.Run, config *common.Config) common.InputF
 
 func (factory *GraderInputFactory) NewInput(mgr *common.InputManager) common.Input {
 	return &GraderInput{
-		BaseInput: *common.NewBaseInput(factory.run.InputHash, mgr),
-		path: path.Join(factory.config.Grader.RuntimePath,
-			"cache", fmt.Sprintf("%s.tar.gz", factory.run.InputHash)),
+		BaseInput: *common.NewBaseInput(factory.run.InputHash, mgr,
+			path.Join(factory.config.Grader.RuntimePath,
+				"cache", fmt.Sprintf("%s.tar.gz", factory.run.InputHash))),
 		repositoryPath: path.Join(factory.config.Grader.RuntimePath,
 			"problems.git", factory.run.Problem.Name),
 	}
@@ -47,7 +46,7 @@ func (input *GraderInput) Transmit(w http.ResponseWriter) error {
 	if err != nil {
 		return err
 	}
-	fd, err := os.Open(input.path)
+	fd, err := os.Open(input.Path())
 	if err != nil {
 		return err
 	}
@@ -60,7 +59,7 @@ func (input *GraderInput) Transmit(w http.ResponseWriter) error {
 }
 
 func (input *GraderInput) getStoredHash() (string, error) {
-	hashFd, err := os.Open(fmt.Sprintf("%s.sha1", input.path))
+	hashFd, err := os.Open(fmt.Sprintf("%s.sha1", input.Path()))
 	if err != nil {
 		return "", err
 	}
@@ -77,11 +76,11 @@ func (input *GraderInput) getStoredHash() (string, error) {
 }
 
 func (input *GraderInput) Verify() error {
-	stat, err := os.Stat(input.path)
+	stat, err := os.Stat(input.Path())
 	if err != nil {
 		return err
 	}
-	hash, err := common.Sha1sum(input.path)
+	hash, err := common.Sha1sum(input.Path())
 	if err != nil {
 		return err
 	}
@@ -98,10 +97,10 @@ func (input *GraderInput) Verify() error {
 }
 
 func (input *GraderInput) CreateArchive() error {
-	if err := os.MkdirAll(path.Dir(input.path), 0755); err != nil {
+	if err := os.MkdirAll(path.Dir(input.Path()), 0755); err != nil {
 		return err
 	}
-	tmpPath := fmt.Sprintf("%s.tmp", input.path)
+	tmpPath := fmt.Sprintf("%s.tmp", input.Path())
 	defer os.Remove(tmpPath)
 	if err := input.createArchiveFromGit(tmpPath); err != nil {
 		return err
@@ -117,17 +116,17 @@ func (input *GraderInput) CreateArchive() error {
 		return err
 	}
 
-	hashFd, err := os.Create(fmt.Sprintf("%s.sha1", input.path))
+	hashFd, err := os.Create(fmt.Sprintf("%s.sha1", input.Path()))
 	if err != nil {
 		return err
 	}
 	defer hashFd.Close()
 
-	if _, err := fmt.Fprintf(hashFd, "%0x *%s\n", hash, path.Base(input.path)); err != nil {
+	if _, err := fmt.Fprintf(hashFd, "%0x *%s\n", hash, path.Base(input.Path())); err != nil {
 		return err
 	}
 
-	if err := os.Rename(tmpPath, input.path); err != nil {
+	if err := os.Rename(tmpPath, input.Path()); err != nil {
 		return err
 	}
 
@@ -136,9 +135,9 @@ func (input *GraderInput) CreateArchive() error {
 }
 
 func (input *GraderInput) DeleteArchive() error {
-	os.Remove(fmt.Sprintf("%s.tmp", input.path))
-	os.Remove(fmt.Sprintf("%s.sha1", input.path))
-	return os.Remove(input.path)
+	os.Remove(fmt.Sprintf("%s.tmp", input.Path()))
+	os.Remove(fmt.Sprintf("%s.sha1", input.Path()))
+	return os.Remove(input.Path())
 }
 
 func (input *GraderInput) createArchiveFromGit(archivePath string) error {
