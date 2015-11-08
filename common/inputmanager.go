@@ -50,6 +50,7 @@ type Input interface {
 	Verify() error
 	CreateArchive() error
 	DeleteArchive() error
+	Settings() *ProblemSettings
 }
 
 type BaseInput struct {
@@ -59,6 +60,7 @@ type BaseInput struct {
 	size      int64
 	hash      string
 	mgr       *InputManager
+	settings  ProblemSettings
 }
 
 type InputFactory interface {
@@ -216,6 +218,10 @@ func (input *BaseInput) CreateArchive() error {
 
 func (input *BaseInput) DeleteArchive() error {
 	return nil
+}
+
+func (input *BaseInput) Settings() *ProblemSettings {
+	return &input.settings
 }
 
 func (input *BaseInput) Acquire() {

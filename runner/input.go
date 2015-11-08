@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/omegaup/quark/common"
@@ -166,6 +167,16 @@ func (input *baseRunnerInput) Verify() error {
 			return err
 		}
 		size += stat.Size()
+	}
+
+	settingsFd, err := os.Open(path.Join(input.path, "settings.json"))
+	if err != nil {
+		return err
+	}
+	defer settingsFd.Close()
+	decoder := json.NewDecoder(settingsFd)
+	if err := decoder.Decode(input.Settings()); err != nil {
+		return err
 	}
 
 	input.Commit(size)
