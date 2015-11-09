@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"expvar"
 	"flag"
+	"fmt"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"io/ioutil"
@@ -69,11 +71,7 @@ func main() {
 		client = &http.Client{Transport: tr}
 	}
 
-	baseUrl, err := url.Parse(ctx.Config.Runner.GraderURL)
-	if err != nil {
-		panic(err)
-	}
-	requestUrl, err := baseUrl.Parse("run/request")
+	baseURL, err := url.Parse(ctx.Config.Runner.GraderURL)
 	if err != nil {
 		panic(err)
 	}
@@ -83,7 +81,7 @@ func main() {
 	var sleepTime int64 = 1
 
 	for {
-		if err := processRun(ctx, client, requestUrl.String()); err != nil {
+		if err := processRun(ctx, client, baseURL); err != nil {
 			ctx.Log.Error("error grading run", "err", err)
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 			if sleepTime < 64 {
@@ -95,8 +93,12 @@ func main() {
 	}
 }
 
-func processRun(ctx *common.Context, client *http.Client, requestURL string) error {
-	resp, err := client.Get(requestURL)
+func processRun(ctx *common.Context, client *http.Client, baseURL *url.URL) error {
+	requestURL, err := baseURL.Parse("run/request/")
+	if err != nil {
+		panic(err)
+	}
+	resp, err := client.Get(requestURL.String())
 	if err != nil {
 		return err
 	}
@@ -104,6 +106,11 @@ func processRun(ctx *common.Context, client *http.Client, requestURL string) err
 	decoder := json.NewDecoder(resp.Body)
 	var run common.Run
 	if err := decoder.Decode(&run); err != nil {
+		return err
+	}
+
+	uploadURL, err := baseURL.Parse(fmt.Sprintf("run/%d/results/", run.ID))
+	if err != nil {
 		return err
 	}
 
@@ -117,10 +124,19 @@ func processRun(ctx *common.Context, client *http.Client, requestURL string) err
 		return err
 	}
 	defer input.Release()
-	result, err := runner.Grade(ctx, &run, input)
-	ctx.Log.Error("Grading finished", "result", result)
+	result, err := runner.Grade(ctx, client, baseURL, &run, input)
 	if err != nil {
 		ctx.Log.Error("Error while grading", "err", err)
 	}
+	var resultBytes bytes.Buffer
+	encoder := json.NewEncoder(&resultBytes)
+	if err := encoder.Encode(result); err != nil {
+		return err
+	}
+	response, err := client.Post(uploadURL.String(), "text/json", &resultBytes)
+	if err != nil {
+		return err
+	}
+	response.Body.Close()
 	return nil
 }

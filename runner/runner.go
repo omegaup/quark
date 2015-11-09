@@ -1,9 +1,13 @@
 package runner
 
 import (
+	"archive/zip"
 	"fmt"
 	"github.com/omegaup/quark/common"
+	"io"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -35,8 +39,8 @@ type RunResult struct {
 	Groups       []GroupResult
 }
 
-func Grade(ctx *common.Context, run *common.Run,
-	input common.Input) (*RunResult, error) {
+func Grade(ctx *common.Context, client *http.Client, baseURL *url.URL,
+	run *common.Run, input common.Input) (*RunResult, error) {
 	runResult := &RunResult{
 		Verdict: "JE",
 	}
@@ -162,15 +166,76 @@ func Grade(ctx *common.Context, run *common.Run,
 	}
 
 	ctx.Log.Debug("Finished running", "results", runResult)
-	if err := uploadResults(ctx, runResult); err != nil {
+	filesURL, err := baseURL.Parse(fmt.Sprintf("run/%d/files/", run.ID))
+	if err != nil {
+		return runResult, err
+	}
+	if err := uploadFiles(ctx, client, filesURL.String(), runRoot, input); err != nil {
 		return runResult, err
 	}
 
 	return runResult, nil
 }
 
-func uploadResults(ctx *common.Context, results *RunResult) error {
+func uploadFiles(ctx *common.Context, client *http.Client, uploadURL string,
+	runRoot string, input common.Input) error {
+	files := []string{
+		"compile.out",
+		"compile.err",
+		"compile.meta",
+	}
+	for _, group := range input.Settings().Cases {
+		for _, caseData := range group.Cases {
+			files = append(files,
+				fmt.Sprintf("%s.out", caseData.Name),
+				fmt.Sprintf("%s.err", caseData.Name),
+				fmt.Sprintf("%s.meta", caseData.Name),
+			)
+		}
+	}
+
+	path, err := createZipFile(runRoot, files)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(path)
+	fd, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Post(uploadURL, "application/zip", fd)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+
 	return nil
+}
+
+func createZipFile(runRoot string, files []string) (string, error) {
+	zipFd, err := ioutil.TempFile(runRoot, ".results_zip")
+	if err != nil {
+		return "", err
+	}
+	zipPath := zipFd.Name()
+	defer zipFd.Close()
+	zip := zip.NewWriter(zipFd)
+	for _, file := range files {
+		f, err := os.Open(path.Join(runRoot, file))
+		if err != nil {
+			continue
+		}
+		defer f.Close()
+		zf, err := zip.Create(file)
+		if err != nil {
+			return zipPath, err
+		}
+		if _, err := io.Copy(zf, f); err != nil {
+			return zipPath, err
+		}
+	}
+	return zipPath, zip.Close()
 }
 
 func getCompileError(meta *RunMetadata, errorFile string) string {

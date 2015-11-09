@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
+	"github.com/omegaup/quark/runner"
 	"golang.org/x/net/http2"
 	"html"
 	"io/ioutil"
@@ -111,7 +112,9 @@ func main() {
 		ctx.Log.Info("enqueued run", "run", run)
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})
-	http.HandleFunc("/run/request", func(w http.ResponseWriter, r *http.Request) {
+
+	http.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
 		ctx := globalContext.Load().(*common.Context)
 		ctx.Log.Debug("requesting run",
 			"proto", r.Proto, "client", r.TLS.PeerCertificates[0].Subject.CommonName)
@@ -128,8 +131,34 @@ func main() {
 			runCtx.Input.Release()
 		}
 	})
+
+	runRe := regexp.MustCompile("/run/([0-9]+)/(results|files)/?")
+	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		ctx := globalContext.Load().(*common.Context)
+		res := runRe.FindStringSubmatch(r.URL.Path)
+		if res == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		runID := res[1]
+		uploadType := res[2]
+		if uploadType == "results" {
+			var result runner.RunResult
+			decoder := json.NewDecoder(r.Body)
+			if err := decoder.Decode(&result); err != nil {
+				ctx.Log.Error("Error obtaining result", "err", err)
+			} else {
+				ctx.Log.Error("results of run", "results", result)
+			}
+		} else {
+			ctx.Log.Info("handled", "id", runID, "type", uploadType)
+		}
+	})
+
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
 	http.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
 		ctx := globalContext.Load().(*common.Context)
 		res := inputRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
