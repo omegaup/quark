@@ -14,7 +14,7 @@ type CaseResult struct {
 	MaxScore float64
 	Score    float64
 	Verdict  string
-	Meta     RunMetadata
+	Meta     map[string]RunMetadata
 }
 
 type GroupResult struct {
@@ -27,6 +27,7 @@ type GroupResult struct {
 type RunResult struct {
 	Verdict      string
 	CompileError *string
+	CompileMeta  map[string]RunMetadata
 	Score        float64
 	Time         float64
 	WallTime     float64
@@ -61,9 +62,16 @@ func Grade(ctx *common.Context, run *common.Run,
 		path.Join(runRoot, "compile.out"), path.Join(runRoot, "compile.err"),
 		path.Join(runRoot, "compile.meta"), "Main", []string{})
 
-	if err != nil {
+	runResult.CompileMeta = map[string]RunMetadata{
+		"Main": *compileMeta,
+	}
+
+	if err != nil || compileMeta.Verdict != "OK" {
 		ctx.Log.Error("Compile error", "err", err, "compileMeta", compileMeta)
 		runResult.Verdict = "CE"
+		compileError := getCompileError(compileMeta,
+			path.Join(runRoot, "compile.err"))
+		runResult.CompileError = &compileError
 		return runResult, err
 	}
 
@@ -113,12 +121,17 @@ func Grade(ctx *common.Context, run *common.Run,
 				Name:     caseData.Name,
 				MaxScore: maxScore * caseData.Weight,
 				Verdict:  rawResults[caseData.Name].Verdict,
-				Meta:     *rawResults[caseData.Name],
+				Meta: map[string]RunMetadata{
+					"Main": *rawResults[caseData.Name],
+				},
 			}
 			if caseResults[j].Verdict == "OK" {
-				runScore := CalculateScore(ctx, input.Settings(), caseData,
+				runScore, err := CalculateScore(ctx, &input.Settings().Validator, &caseData,
 					path.Join(input.Path(), "out", fmt.Sprintf("%s.out", caseData.Name)),
 					path.Join(runRoot, fmt.Sprintf("%s.out", caseData.Name)))
+				if err != nil {
+					ctx.Log.Debug("error comparing values", "err", err)
+				}
 				caseResults[j].Score = maxScore * runScore * caseData.Weight
 				score += runScore * caseData.Weight
 				if runScore == 0 {
@@ -144,10 +157,33 @@ func Grade(ctx *common.Context, run *common.Run,
 
 	if runResult.Verdict == "PA" && runResult.Score == 0 {
 		runResult.Verdict = "WA"
+	} else if runResult.Verdict == "OK" {
+		runResult.Verdict = "AC"
 	}
 
 	ctx.Log.Debug("Finished running", "results", runResult)
+	if err := uploadResults(ctx, runResult); err != nil {
+		return runResult, err
+	}
+
 	return runResult, nil
+}
+
+func uploadResults(ctx *common.Context, results *RunResult) error {
+	return nil
+}
+
+func getCompileError(meta *RunMetadata, errorFile string) string {
+	fd, err := os.Open(errorFile)
+	if err != nil {
+		return err.Error()
+	}
+	defer fd.Close()
+	bytes, err := ioutil.ReadAll(fd)
+	if err != nil {
+		return err.Error()
+	}
+	return string(bytes)
 }
 
 func worseVerdict(a, b string) string {

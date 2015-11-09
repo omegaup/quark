@@ -1,8 +1,9 @@
 package common
 
 type ValidatorSettings struct {
-	Name string
-	Lang string
+	Name      string
+	Lang      string
+	Tolerance *float64
 }
 
 type LimitsSettings struct {

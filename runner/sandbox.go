@@ -289,19 +289,16 @@ func parseMetaFile(ctx *common.Context, input common.Input,
 			ctx.Log.Error("Received odd signal", "signal", *meta.Signal)
 			meta.Verdict = "RTE"
 		}
+	} else if meta.ExitStatus == 0 || lang == "c" {
+		meta.Verdict = "OK"
 	} else {
-		if meta.ExitStatus == 0 || lang == "c" {
-			meta.Verdict = "OK"
-		} else if meta.Verdict != "JE" {
-			meta.Verdict = "RTE"
-		}
+		meta.Verdict = "RTE"
 	}
 
 	if input != nil {
 		if lang == "java" {
 			meta.Memory -= ctx.Config.Runner.JavaVmEstimatedSize
-		} else if meta.Verdict != "JE" &&
-			meta.Memory > input.Settings().Limits.MemoryLimit {
+		} else if meta.Memory > input.Settings().Limits.MemoryLimit {
 			meta.Verdict = "MLE"
 			meta.Memory = input.Settings().Limits.MemoryLimit
 		}
