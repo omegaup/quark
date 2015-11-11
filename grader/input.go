@@ -52,7 +52,6 @@ func (input *GraderInput) Transmit(w http.ResponseWriter) error {
 	}
 	defer fd.Close()
 	w.Header().Add("Content-SHA1", hash)
-	fmt.Println(hash)
 	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, fd)
 	return err
