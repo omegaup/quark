@@ -18,13 +18,13 @@ var (
 )
 
 type RunMetadata struct {
-	Verdict    string
-	ExitStatus int
-	Time       float64
-	WallTime   float64
-	Memory     int
-	Signal     *string
-	Syscall    *string
+	Verdict    string  `json:"verdict"`
+	ExitStatus int     `json:"exit_status,omitempty"`
+	Time       float64 `json:"time"`
+	WallTime   float64 `json:"wall_time"`
+	Memory     int     `json:"memory"`
+	Signal     *string `json:"signal,omitempty"`
+	Syscall    *string `json:"syscall,omitempty"`
 }
 
 func Compile(ctx *common.Context, lang string, inputFiles []string, chdir,

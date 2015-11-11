@@ -19,18 +19,18 @@ func init() {
 }
 
 type Problem struct {
-	Name   string
-	Points *float64
+	Name   string   `json:"name"`
+	Points *float64 `json:"points,omitempty"`
 }
 
 type Run struct {
-	ID        uint64
-	GUID      string
-	Contest   *string
-	Language  string
-	InputHash string
-	Problem   Problem
-	Source    string
+	ID        uint64  `json:"id"`
+	GUID      string  `json:"guid"`
+	Contest   *string `json:"contest,omitempty"`
+	Language  string  `json:"language"`
+	InputHash string  `json:"input_hash"`
+	Problem   Problem `json:"problem"`
+	Source    string  `json:"source"`
 }
 
 func newRunID() uint64 {

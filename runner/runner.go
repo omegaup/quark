@@ -14,29 +14,29 @@ import (
 )
 
 type CaseResult struct {
-	Name     string
-	MaxScore float64
-	Score    float64
-	Verdict  string
-	Meta     map[string]RunMetadata
+	Verdict  string                 `json:"verdict"`
+	Name     string                 `json:"name"`
+	MaxScore float64                `json:"max_score"`
+	Score    float64                `json:"score"`
+	Meta     map[string]RunMetadata `json:"meta"`
 }
 
 type GroupResult struct {
-	Group    string
-	MaxScore float64
-	Score    float64
-	Cases    []CaseResult
+	Group    string       `json:"group"`
+	MaxScore float64      `json:"max_score"`
+	Score    float64      `json:"score"`
+	Cases    []CaseResult `json:"cases"`
 }
 
 type RunResult struct {
-	Verdict      string
-	CompileError *string
-	CompileMeta  map[string]RunMetadata
-	Score        float64
-	Time         float64
-	WallTime     float64
-	Memory       int
-	Groups       []GroupResult
+	Verdict      string                 `json:"verdict"`
+	CompileError *string                `json:"compile_error,omitempty"`
+	CompileMeta  map[string]RunMetadata `json:"compile_meta"`
+	Score        float64                `json:"score"`
+	Time         float64                `json:"time"`
+	WallTime     float64                `json:"wall_time"`
+	Memory       int                    `json:"memory"`
+	Groups       []GroupResult          `json:"groups"`
 }
 
 func Grade(ctx *common.Context, client *http.Client, baseURL *url.URL,
@@ -153,6 +153,7 @@ func Grade(ctx *common.Context, client *http.Client, baseURL *url.URL,
 			Group:    group.Name,
 			MaxScore: maxScore * group.Weight,
 			Score:    maxScore * score,
+			Cases:    caseResults,
 		}
 		runResult.Score += groupResults[i].Score
 	}
