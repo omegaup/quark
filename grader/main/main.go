@@ -14,6 +14,8 @@ import (
 	"html"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"sync/atomic"
@@ -75,7 +77,7 @@ func main() {
 
 	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
 
-	var runs = make(chan *grader.RunContext,
+	var runs = grader.NewQueue("default",
 		globalContext.Load().(*common.Context).Config.Grader.ChannelLength)
 	common.InitInputManager(globalContext.Load().(*common.Context))
 
@@ -107,7 +109,7 @@ func main() {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		runs <- runCtx
+		runs.Enqueue(runCtx, 1)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		ctx.Log.Info("enqueued run", "run", run)
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
@@ -118,11 +120,22 @@ func main() {
 		ctx := globalContext.Load().(*common.Context)
 		ctx.Log.Debug("requesting run",
 			"proto", r.Proto, "client", r.TLS.PeerCertificates[0].Subject.CommonName)
-		select {
-		case <-w.(http.CloseNotifier).CloseNotify():
+
+		timeout := make(chan bool)
+		runCtx, ok := runs.GetRun(w.(http.CloseNotifier).CloseNotify(), timeout)
+		if !ok {
 			ctx.Log.Debug("client gone",
 				"client", r.TLS.PeerCertificates[0].Subject.CommonName)
-		case runCtx := <-runs:
+		} else {
+			go func() {
+				if <-timeout {
+					ctx.Log.Error("run timed out. retrying", "context", runCtx)
+					if !runCtx.Requeue() {
+						ctx.Log.Error("run timed out too many times. giving up")
+					}
+				}
+				close(timeout)
+			}()
 			ctx.Log.Debug("served run", "run", runCtx.Run,
 				"client", r.TLS.PeerCertificates[0].Subject.CommonName)
 			w.Header().Set("Content-Type", "text/json; charset=utf-8")
@@ -134,22 +147,44 @@ func main() {
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/(results|files)/?")
 	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
 		ctx := globalContext.Load().(*common.Context)
+		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		runID := res[1]
+		runID, _ := strconv.ParseUint(res[1], 10, 64)
 		uploadType := res[2]
 		if uploadType == "results" {
+			runCtx := grader.GlobalInflightMonitor.Get(runID)
 			var result runner.RunResult
 			decoder := json.NewDecoder(r.Body)
 			if err := decoder.Decode(&result); err != nil {
 				ctx.Log.Error("Error obtaining result", "err", err)
 			} else {
-				ctx.Log.Error("results of run", "results", result)
+				defer grader.GlobalInflightMonitor.Remove(runID)
+				resultsPath := path.Join(ctx.Config.Grader.RuntimePath, "grade",
+					runCtx.Run.GUID[:2], runCtx.Run.GUID[2:], "details.json")
+				if err := os.MkdirAll(path.Dir(resultsPath), 0755); err != nil {
+					ctx.Log.Error("Unable to create dir", "err", err)
+					return
+				}
+				fd, err := os.Create(resultsPath)
+				if err != nil {
+					ctx.Log.Error("Unable to create results file", "err", err)
+					return
+				}
+				defer fd.Close()
+				prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
+				if err != nil {
+					ctx.Log.Error("Unable to marshal results file", "err", err)
+					return
+				}
+				if _, err := fd.Write(prettyPrinted); err != nil {
+					ctx.Log.Error("Unable to write results file", "err", err)
+					return
+				}
 			}
 		} else {
 			ctx.Log.Info("handled", "id", runID, "type", uploadType)

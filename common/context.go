@@ -14,10 +14,11 @@ var DefaultInputManager *InputManager
 
 // Configuration
 type GraderConfig struct {
-	CacheSize     int64
-	ChannelLength int
-	Port          uint16
-	RuntimePath   string
+	CacheSize       int64
+	ChannelLength   int
+	Port            uint16
+	RuntimePath     string
+	MaxGradeRetries int
 }
 
 type TLSConfig struct {
@@ -62,10 +63,11 @@ var defaultConfig = Config{
 		Level: "info",
 	},
 	Grader: GraderConfig{
-		CacheSize:     1024 * 1024 * 1024, // 1 GiB
-		ChannelLength: 1024,
-		Port:          11302,
-		RuntimePath:   "/var/lib/omegaup/",
+		CacheSize:       1024 * 1024 * 1024, // 1 GiB
+		ChannelLength:   1024,
+		Port:            11302,
+		RuntimePath:     "/var/lib/omegaup/",
+		MaxGradeRetries: 3,
 	},
 	Runner: RunnerConfig{
 		RuntimePath:         "/var/lib/omegaup/runner",

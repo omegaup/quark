@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -93,6 +94,35 @@ func main() {
 	}
 }
 
+// A reader that blocks until the data is available.
+// This is used so that the HTTP connection can be established quickly and then
+// block until the results are in. This sends a single byte upon connection
+// establishment and relies on the fact that all the data it sends is
+// JSON-encoded, so it always sends a '{'.
+type blockingReader struct {
+	hasRead    bool
+	reader     io.Reader
+	readerChan chan io.Reader
+}
+
+func (r *blockingReader) Read(p []byte) (int, error) {
+	if r.reader == nil {
+		if !r.hasRead {
+			r.hasRead = true
+			p[0] = '{'
+			return 1, nil
+		}
+		r.reader = <-r.readerChan
+		close(r.readerChan)
+		// Make sure the first byte was actually a brace. Otherwise raise an error.
+		brace := make([]byte, 1)
+		if n, err := r.reader.Read(brace); err != nil || n != 1 || brace[0] != '{' {
+			return 0, io.ErrUnexpectedEOF
+		}
+	}
+	return r.reader.Read(p)
+}
+
 func processRun(ctx *common.Context, client *http.Client, baseURL *url.URL) error {
 	requestURL, err := baseURL.Parse("run/request/")
 	if err != nil {
@@ -113,6 +143,19 @@ func processRun(ctx *common.Context, client *http.Client, baseURL *url.URL) erro
 	if err != nil {
 		return err
 	}
+	requestBody := &blockingReader{
+		readerChan: make(chan io.Reader),
+	}
+	finished := make(chan error)
+	go func() {
+		response, err := client.Post(uploadURL.String(), "text/json", requestBody)
+		if err != nil {
+			finished <- err
+		} else {
+			response.Body.Close()
+			finished <- nil
+		}
+	}()
 
 	// Make sure no other I/O is being made while we grade this run.
 	ioLock.Lock()
@@ -133,10 +176,6 @@ func processRun(ctx *common.Context, client *http.Client, baseURL *url.URL) erro
 	if err := encoder.Encode(result); err != nil {
 		return err
 	}
-	response, err := client.Post(uploadURL.String(), "text/json", &resultBytes)
-	if err != nil {
-		return err
-	}
-	response.Body.Close()
-	return nil
+	requestBody.readerChan <- &resultBytes
+	return <-finished
 }
