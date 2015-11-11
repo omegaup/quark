@@ -6,7 +6,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
-	"github.com/omegaup/quark/common"
+	"github.com/lhchavez/quark/common"
 	git "gopkg.in/libgit2/git2go.v22"
 	"io"
 	"net/http"

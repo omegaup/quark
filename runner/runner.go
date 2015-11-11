@@ -3,7 +3,7 @@ package runner
 import (
 	"archive/zip"
 	"fmt"
-	"github.com/omegaup/quark/common"
+	"github.com/lhchavez/quark/common"
 	"io"
 	"io/ioutil"
 	"net/http"

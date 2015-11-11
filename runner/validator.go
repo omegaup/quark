@@ -3,7 +3,7 @@ package runner
 import (
 	"bufio"
 	"errors"
-	"github.com/omegaup/quark/common"
+	"github.com/lhchavez/quark/common"
 	"io"
 	"math"
 	"os"

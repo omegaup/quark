@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/omegaup/quark/common"
+	"github.com/lhchavez/quark/common"
 	"io"
 	"io/ioutil"
 	"net/http"

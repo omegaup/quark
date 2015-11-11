@@ -1,7 +1,7 @@
 package grader
 
 import (
-	"github.com/omegaup/quark/common"
+	"github.com/lhchavez/quark/common"
 	"reflect"
 	"sync"
 	"time"

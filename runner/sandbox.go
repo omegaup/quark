@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/omegaup/quark/common"
+	"github.com/lhchavez/quark/common"
 	"os"
 	"os/exec"
 	"path"
