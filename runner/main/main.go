@@ -12,6 +12,7 @@ import (
 	"github.com/lhchavez/quark/runner"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"sync"
@@ -37,6 +38,7 @@ func loadContext() error {
 }
 
 func main() {
+	rand.Seed(time.Now().UTC().UnixNano())
 	flag.Parse()
 
 	if err := loadContext(); err != nil {
@@ -79,12 +81,13 @@ func main() {
 
 	ctx.Log.Info("omegaUp runner ready to serve")
 
-	var sleepTime int64 = 1
+	var sleepTime float32 = 1
 
 	for {
 		if err := processRun(ctx, client, baseURL); err != nil {
 			ctx.Log.Error("error grading run", "err", err)
-			time.Sleep(time.Duration(sleepTime) * time.Second)
+			// Randomized exponential backoff.
+			time.Sleep(time.Duration(rand.Float32()*sleepTime) * time.Second)
 			if sleepTime < 64 {
 				sleepTime *= 2
 			}
