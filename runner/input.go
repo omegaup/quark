@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 )
 
 type RunnerInput struct {
@@ -34,52 +32,26 @@ type RunnerInputFactory struct {
 }
 
 type RunnerCachedInputFactory struct {
-	config *common.Config
-	hash   string
+	cachePath string
 }
 
-func NewRunnerCachedInputFactory(hash string, config *common.Config) common.InputFactory {
+func NewRunnerCachedInputFactory(cachePath string) common.InputFactory {
 	return &RunnerCachedInputFactory{
-		config: config,
-		hash:   hash,
+		cachePath: cachePath,
 	}
 }
 
-func (factory *RunnerCachedInputFactory) NewInput(mgr *common.InputManager) common.Input {
+func (factory *RunnerCachedInputFactory) NewInput(hash string, mgr *common.InputManager) common.Input {
 	return &RunnerInput{
 		BaseInput: *common.NewBaseInput(
-			factory.hash,
+			hash,
 			mgr,
-			path.Join(factory.config.Runner.RuntimePath, "input", factory.hash)),
+			path.Join(factory.cachePath, hash)),
 	}
 }
 
-func PreloadInputs(ctx *common.Context, ioLock *sync.Mutex) error {
-	path := path.Join(ctx.Config.Runner.RuntimePath, "input")
-	contents, err := ioutil.ReadDir(path)
-	if err != nil {
-		return err
-	}
-	for _, info := range contents {
-		if !info.IsDir() {
-			continue
-		}
-		hash := info.Name()
-		factory := NewRunnerCachedInputFactory(hash, &ctx.Config)
-
-		// Make sure no other I/O is being made while we pre-fetch this input.
-		ioLock.Lock()
-		input, err := common.DefaultInputManager.Add(info.Name(), factory)
-		if err != nil {
-			ctx.Log.Error("Cached input corrupted", "hash", hash)
-		} else {
-			input.Release()
-		}
-		ioLock.Unlock()
-	}
-	ctx.Log.Info("Finished preloading cached inputs",
-		"cache_size", common.DefaultInputManager.Size())
-	return nil
+func RunnerCachedInputFilter(info os.FileInfo) (string, bool) {
+	return info.Name(), info.IsDir()
 }
 
 func NewRunnerInputFactory(run *common.Run, client *http.Client, config *common.Config) common.InputFactory {
@@ -90,7 +62,7 @@ func NewRunnerInputFactory(run *common.Run, client *http.Client, config *common.
 	}
 }
 
-func (factory *RunnerInputFactory) NewInput(mgr *common.InputManager) common.Input {
+func (factory *RunnerInputFactory) NewInput(hash string, mgr *common.InputManager) common.Input {
 	baseURL, err := url.Parse(factory.config.Runner.GraderURL)
 	if err != nil {
 		panic(err)

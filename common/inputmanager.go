@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/ioutil"
 	"os"
 	"sync"
 )
@@ -66,7 +67,7 @@ type BaseInput struct {
 }
 
 type InputFactory interface {
-	NewInput(mgr *InputManager) Input
+	NewInput(hash string, mgr *InputManager) Input
 }
 
 type HashReader struct {
@@ -102,7 +103,7 @@ func (mgr *InputManager) getEntryLocked(hash string, factory InputFactory) *cach
 		panic(errors.New(fmt.Sprintf("hash %s not found and factory is nil", hash)))
 	}
 
-	input := factory.NewInput(mgr)
+	input := factory.NewInput(hash, mgr)
 	entry := &cacheEntry{
 		input: input,
 	}
@@ -245,6 +246,33 @@ func (input *BaseInput) Release() {
 		// input manager where it can be deleted if we need more space.
 		input.mgr.Insert(input)
 	}
+}
+
+func PreloadInputs(ctx *Context, path string, factory InputFactory,
+	ioLock *sync.Mutex, filter func(os.FileInfo) (string, bool)) error {
+	contents, err := ioutil.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	for _, info := range contents {
+		hash, ok := filter(info)
+		if !ok {
+			continue
+		}
+
+		// Make sure no other I/O is being made while we pre-fetch this input.
+		ioLock.Lock()
+		input, err := DefaultInputManager.Add(hash, factory)
+		if err != nil {
+			ctx.Log.Error("Cached input corrupted", "hash", hash)
+		} else {
+			input.Release()
+		}
+		ioLock.Unlock()
+	}
+	ctx.Log.Info("Finished preloading cached inputs",
+		"cache_size", DefaultInputManager.Size())
+	return nil
 }
 
 func NewHashReader(r io.Reader, h hash.Hash) *HashReader {

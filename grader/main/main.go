@@ -18,6 +18,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+	"sync"
 	"sync/atomic"
 )
 
@@ -75,11 +76,15 @@ func main() {
 		panic(err)
 	}
 
-	expvar.Publish("config", &globalContext.Load().(*grader.Context).Config)
+	ctx := globalContext.Load().(*grader.Context)
+	expvar.Publish("config", &ctx.Config)
 
-	var runs = grader.NewQueue("default",
-		globalContext.Load().(*grader.Context).Config.Grader.ChannelLength)
-	common.InitInputManager(&globalContext.Load().(*grader.Context).Context)
+	var runs = grader.NewQueue("default", ctx.Config.Grader.ChannelLength)
+	common.InitInputManager(&ctx.Context)
+	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
+	go common.PreloadInputs(&ctx.Context, cachePath,
+		grader.NewGraderCachedInputFactory(cachePath), &sync.Mutex{},
+		grader.GraderCachedInputFilter)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q %q", html.EscapeString(r.URL.Path), r.TLS.PeerCertificates[0].Subject.CommonName)
@@ -208,7 +213,7 @@ func main() {
 		}
 	})
 
-	if err := startServer(globalContext.Load().(*grader.Context)); err != nil {
+	if err := startServer(ctx); err != nil {
 		panic(err)
 	}
 }

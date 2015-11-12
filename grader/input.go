@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 )
 
 type GraderInput struct {
@@ -31,11 +32,11 @@ func NewGraderInputFactory(run *common.Run, config *common.Config) common.InputF
 	}
 }
 
-func (factory *GraderInputFactory) NewInput(mgr *common.InputManager) common.Input {
+func (factory *GraderInputFactory) NewInput(hash string, mgr *common.InputManager) common.Input {
 	return &GraderInput{
-		BaseInput: *common.NewBaseInput(factory.run.InputHash, mgr,
+		BaseInput: *common.NewBaseInput(hash, mgr,
 			path.Join(factory.config.Grader.RuntimePath,
-				"cache", fmt.Sprintf("%s.tar.gz", factory.run.InputHash))),
+				"cache", fmt.Sprintf("%s.tar.gz", hash))),
 		repositoryPath: path.Join(factory.config.Grader.RuntimePath,
 			"problems.git", factory.run.Problem.Name),
 	}
@@ -222,4 +223,32 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 	})
 
 	return walkErr
+}
+
+type GraderCachedInputFactory struct {
+	inputPath string
+}
+
+func NewGraderCachedInputFactory(inputPath string) common.InputFactory {
+	return &GraderCachedInputFactory{
+		inputPath: inputPath,
+	}
+}
+
+func (factory *GraderCachedInputFactory) NewInput(hash string, mgr *common.InputManager) common.Input {
+	return &GraderInput{
+		BaseInput: *common.NewBaseInput(
+			hash,
+			mgr,
+			path.Join(factory.inputPath, fmt.Sprintf("%s.tar.gz", hash))),
+	}
+}
+
+func GraderCachedInputFilter(info os.FileInfo) (string, bool) {
+	filename := path.Base(info.Name())
+	extension := ".tar.gz"
+	if !strings.HasSuffix(filename, extension) {
+		return "", false
+	}
+	return strings.TrimSuffix(filename, extension), true
 }

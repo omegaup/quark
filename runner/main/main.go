@@ -15,6 +15,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"path"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,7 +49,10 @@ func main() {
 	ctx := globalContext.Load().(*common.Context)
 	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
 	common.InitInputManager(ctx)
-	go runner.PreloadInputs(ctx, &ioLock)
+	inputPath := path.Join(ctx.Config.Runner.RuntimePath, "input")
+	go common.PreloadInputs(ctx, inputPath,
+		runner.NewRunnerCachedInputFactory(inputPath), &ioLock,
+		runner.RunnerCachedInputFilter)
 	var client *http.Client
 	if *insecure {
 		client = http.DefaultClient
