@@ -31,7 +31,7 @@ var (
 )
 
 func loadContext() error {
-	ctx, err := common.NewContext(*configPath)
+	ctx, err := grader.NewContext(*configPath)
 	if err != nil {
 		return err
 	}
@@ -39,7 +39,7 @@ func loadContext() error {
 	return nil
 }
 
-func startServer(ctx *common.Context) error {
+func startServer(ctx *grader.Context) error {
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%d", ctx.Config.Grader.Port),
 	}
@@ -75,18 +75,18 @@ func main() {
 		panic(err)
 	}
 
-	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
+	expvar.Publish("config", &globalContext.Load().(*grader.Context).Config)
 
 	var runs = grader.NewQueue("default",
-		globalContext.Load().(*common.Context).Config.Grader.ChannelLength)
-	common.InitInputManager(globalContext.Load().(*common.Context))
+		globalContext.Load().(*grader.Context).Config.Grader.ChannelLength)
+	common.InitInputManager(&globalContext.Load().(*grader.Context).Context)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q %q", html.EscapeString(r.URL.Path), r.TLS.PeerCertificates[0].Subject.CommonName)
 	})
 	gradeRe := regexp.MustCompile("/run/grade/(\\d+)/?")
 	http.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := globalContext.Load().(*common.Context)
+		ctx := globalContext.Load().(*grader.Context)
 		res := gradeRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
@@ -97,13 +97,7 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		run, err := common.NewRun(id, ctx)
-		if err != nil {
-			ctx.Log.Error(err.Error(), "id", id)
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		runCtx, err := grader.NewRunContext(run, ctx)
+		runCtx, err := grader.NewRunContext(id, ctx)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -111,13 +105,13 @@ func main() {
 		}
 		runs.Enqueue(runCtx, 1)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
-		ctx.Log.Info("enqueued run", "run", run)
+		ctx.Log.Info("enqueued run", "run", runCtx.Run)
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})
 
 	http.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := globalContext.Load().(*common.Context)
+		ctx := globalContext.Load().(*grader.Context)
 		ctx.Log.Debug("requesting run",
 			"proto", r.Proto, "client", r.TLS.PeerCertificates[0].Subject.CommonName)
 
@@ -147,7 +141,7 @@ func main() {
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/(results|files)/?")
 	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := globalContext.Load().(*common.Context)
+		ctx := globalContext.Load().(*grader.Context)
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
@@ -194,7 +188,7 @@ func main() {
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
 	http.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := globalContext.Load().(*common.Context)
+		ctx := globalContext.Load().(*grader.Context)
 		res := inputRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
@@ -214,7 +208,7 @@ func main() {
 		}
 	})
 
-	if err := startServer(globalContext.Load().(*common.Context)); err != nil {
+	if err := startServer(globalContext.Load().(*grader.Context)); err != nil {
 		panic(err)
 	}
 }

@@ -1,7 +1,10 @@
 package grader
 
 import (
+	"database/sql"
 	"github.com/lhchavez/quark/common"
+	"io/ioutil"
+	"path"
 	"reflect"
 	"sync"
 	"time"
@@ -35,7 +38,53 @@ type Queue struct {
 	ready chan struct{}
 }
 
-func NewRunContext(run *common.Run, ctx *common.Context) (*RunContext, error) {
+func newRun(id int64, ctx *Context) (*common.Run, error) {
+	run := &common.Run{
+		ID: common.NewRunID(),
+	}
+	var contestName sql.NullString
+	var contestPoints sql.NullFloat64
+	err := ctx.DB.QueryRow(
+		`SELECT
+			s.guid, c.alias, s.language, p.alias, pv.hash, cp.points
+		FROM
+			Submissions s
+		INNER JOIN
+			Problems p ON p.problem_id = s.problem_id
+		INNER JOIN
+			Problem_Versions pv ON pv.version_id = p.current_version
+		LEFT JOIN
+			Contests c ON c.contest_id = s.contest_id
+		LEFT JOIN
+			Contest_Problems cp ON cp.problem_id = s.problem_id AND
+			cp.contest_id = s.contest_id
+		WHERE
+			s.submission_id = ?;`, id).Scan(
+		&run.GUID, &contestName, &run.Language, &run.Problem.Name,
+		&run.InputHash, &contestPoints)
+	if err != nil {
+		return nil, err
+	}
+	if contestName.Valid {
+		run.Contest = &contestName.String
+	}
+	if contestPoints.Valid {
+		run.Problem.Points = &contestPoints.Float64
+	}
+	contents, err := ioutil.ReadFile(path.Join(ctx.Config.Grader.RuntimePath,
+		"submissions", run.GUID[:2], run.GUID[2:]))
+	if err != nil {
+		return nil, err
+	}
+	run.Source = string(contents)
+	return run, nil
+}
+
+func NewRunContext(id int64, ctx *Context) (*RunContext, error) {
+	run, err := newRun(id, ctx)
+	if err != nil {
+		return nil, err
+	}
 	input, err := common.DefaultInputManager.Add(run.InputHash,
 		NewGraderInputFactory(run, &ctx.Config))
 	if err != nil {

@@ -2,11 +2,8 @@ package common
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/inconshreveable/log15"
-	_ "github.com/mattn/go-sqlite3"
 	"os"
 )
 
@@ -94,7 +91,6 @@ func (config *Config) String() string {
 // Context
 type Context struct {
 	Config  Config
-	DB      *sql.DB
 	Log     log15.Logger
 	Buffer  *bytes.Buffer
 	handler log15.Handler
@@ -138,22 +134,11 @@ func NewContext(configPath string) (*Context, error) {
 	context.handler = log15.LvlFilterHandler(level, context.handler)
 	context.Log.SetHandler(context.handler)
 
-	// Database
-	context.DB, err = sql.Open(context.Config.Db.Driver,
-		context.Config.Db.DataSourceName)
-	if err != nil {
-		return nil, err
-	}
-	if err := context.DB.Ping(); err != nil {
-		return nil, err
-	}
-
 	return &context, nil
 }
 
 // Close releases all resources owned by the context.
 func (context *Context) Close() {
-	context.DB.Close()
 }
 
 // DebugContext returns a new Context with an additional handler with a more
