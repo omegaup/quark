@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"crypto/sha1"
 	"errors"
-	"expvar"
 	"fmt"
 	"hash"
 	"io"
@@ -12,20 +11,6 @@ import (
 	"os"
 	"sync"
 )
-
-type InputManager struct {
-	sync.Mutex
-	mapping   map[string]*cacheEntry
-	evictList *list.List
-	ctx       *Context
-	totalSize int64
-	sizeLimit int64
-}
-
-type cacheEntry struct {
-	input       Input
-	listElement *list.Element
-}
 
 // Lockable is the interface that sync.Mutex implements.
 type Lockable interface {
@@ -42,6 +27,11 @@ type RefCounted interface {
 	Release()
 }
 
+// Input represents a problem's input set.
+//
+// Input is reference-counted, so it will keep the input in memory (and disk)
+// while there is at least one reference to it. Once the last reference is
+// released, it will be inserted into its associated InputManager.
 type Input interface {
 	Lockable
 	RefCounted
@@ -55,6 +45,8 @@ type Input interface {
 	Settings() *ProblemSettings
 }
 
+// BaseInput is an abstract struct that provides most of the functions required
+// to implement Input.
 type BaseInput struct {
 	sync.Mutex
 	committed bool
@@ -64,127 +56,6 @@ type BaseInput struct {
 	hash      string
 	mgr       *InputManager
 	settings  ProblemSettings
-}
-
-type InputFactory interface {
-	NewInput(hash string, mgr *InputManager) Input
-}
-
-type HashReader struct {
-	hasher hash.Hash
-	reader io.Reader
-}
-
-func InitInputManager(ctx *Context) {
-	DefaultInputManager = &InputManager{
-		mapping:   make(map[string]*cacheEntry),
-		evictList: list.New(),
-		ctx:       ctx,
-		sizeLimit: ctx.Config.Grader.CacheSize,
-	}
-	expvar.Publish("codemanager_size", expvar.Func(func() interface{} {
-		return DefaultInputManager.totalSize
-	}))
-}
-
-func (mgr *InputManager) getEntry(hash string, factory InputFactory) *cacheEntry {
-	mgr.Lock()
-	defer mgr.Unlock()
-
-	return mgr.getEntryLocked(hash, factory)
-}
-
-func (mgr *InputManager) getEntryLocked(hash string, factory InputFactory) *cacheEntry {
-	if ent, ok := mgr.mapping[hash]; ok {
-		return ent
-	}
-
-	if factory == nil {
-		panic(errors.New(fmt.Sprintf("hash %s not found and factory is nil", hash)))
-	}
-
-	input := factory.NewInput(hash, mgr)
-	entry := &cacheEntry{
-		input: input,
-	}
-	mgr.mapping[hash] = entry
-	return entry
-}
-
-func (mgr *InputManager) Get(hash string) (Input, error) {
-	mgr.Lock()
-	defer mgr.Unlock()
-
-	if ent, ok := mgr.mapping[hash]; ok {
-		ent.input.Lock()
-		defer ent.input.Unlock()
-
-		ent.input.Acquire()
-		return ent.input, nil
-	}
-	return nil, errors.New(fmt.Sprintf("hash %s not found", hash))
-}
-
-func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
-	entry := mgr.getEntry(hash, factory)
-	input := entry.input
-
-	input.Lock()
-	defer input.Unlock()
-
-	if entry.listElement != nil {
-		// This Input did not have any outstanding references and was in the
-		// evict list. Remove from it so it does not get accidentally evicted.
-		mgr.totalSize -= input.Size()
-		mgr.evictList.Remove(entry.listElement)
-		entry.listElement = nil
-	}
-
-	if !input.Committed() {
-		// This operation can take a while.
-		if err := input.Verify(); err != nil {
-			mgr.ctx.Log.Warn("Hash verification failed. Regenerating",
-				"path", input.Hash(), "err", err)
-			input.DeleteArchive()
-
-			if err := input.CreateArchive(); err != nil {
-				mgr.ctx.Log.Error("Error creating archive", "hash", input.Hash())
-				delete(mgr.mapping, hash)
-				return nil, err
-			}
-			mgr.ctx.Log.Info("Generated input", "hash", input.Hash())
-		} else {
-			mgr.ctx.Log.Debug("Reusing input", "hash", input.Hash())
-		}
-	}
-	input.Acquire()
-	return input, nil
-}
-
-func (mgr *InputManager) Insert(input Input) {
-	mgr.Lock()
-	defer mgr.Unlock()
-
-	mgr.totalSize += input.Size()
-	entry := mgr.getEntryLocked(input.Hash(), nil)
-	entry.listElement = mgr.evictList.PushFront(input)
-
-	// Evict elements as necessary to get below the allowed limit.
-	for mgr.evictList.Len() > 0 && mgr.totalSize > mgr.sizeLimit {
-		mgr.ctx.Log.Info("Evicting an input", "input", input, "size", input.Size())
-		element := mgr.evictList.Back()
-		input := element.Value.(Input)
-
-		mgr.totalSize -= input.Size()
-		mgr.evictList.Remove(element)
-
-		delete(mgr.mapping, input.Hash())
-		input.DeleteArchive()
-	}
-}
-
-func (mgr *InputManager) Size() int64 {
-	return mgr.totalSize
 }
 
 func NewBaseInput(hash string, mgr *InputManager, path string) *BaseInput {
@@ -248,33 +119,213 @@ func (input *BaseInput) Release() {
 	}
 }
 
-func PreloadInputs(ctx *Context, path string, factory InputFactory,
-	ioLock *sync.Mutex, filter func(os.FileInfo) (string, bool)) error {
+// InputManager handles a pool of recently-used input sets. The pool has a
+// fixed maximum size with a least-recently used eviction policy.
+type InputManager struct {
+	sync.Mutex
+	mapping   map[string]*inputEntry
+	evictList *list.List
+	ctx       *Context
+	totalSize int64
+	sizeLimit int64
+}
+
+// inputEntry represents an entry in the InputManager.
+type inputEntry struct {
+	input       Input
+	listElement *list.Element
+}
+
+// InputFactory creates Input objects for an InputManager based on a hash. The
+// hash is just an opaque identifier that just so happens to be the SHA1 hash
+// of the git tree representation of the Input.
+//
+// InputFactory is provided so that the Grader and the Runner can have
+// different implementations of how to create, read, and write an Input in
+// disk.
+type InputFactory interface {
+	NewInput(hash string, mgr *InputManager) Input
+}
+
+// CachedInputFactory is an InputFactory that also can validate Inputs that are
+// already in the filesystem.
+type CachedInputFactory interface {
+	InputFactory
+
+	// GetInputHash returns both the hash of the input for the specified
+	// os.FileInfo. It returns ok = false in case the os.FileInfo does not refer
+	// to an Input.
+	GetInputHash(info os.FileInfo) (hash string, ok bool)
+}
+
+// NewInputManager creates a new InputManager with the provided Context.
+func NewInputManager(ctx *Context) *InputManager {
+	return &InputManager{
+		mapping:   make(map[string]*inputEntry),
+		evictList: list.New(),
+		ctx:       ctx,
+		sizeLimit: ctx.Config.InputManager.CacheSize,
+	}
+}
+
+func (mgr *InputManager) getEntry(hash string, factory InputFactory) *inputEntry {
+	mgr.Lock()
+	defer mgr.Unlock()
+
+	return mgr.getEntryLocked(hash, factory)
+}
+
+func (mgr *InputManager) getEntryLocked(hash string, factory InputFactory) *inputEntry {
+	if ent, ok := mgr.mapping[hash]; ok {
+		return ent
+	}
+
+	if factory == nil {
+		panic(errors.New(fmt.Sprintf("hash %s not found and factory is nil", hash)))
+	}
+
+	input := factory.NewInput(hash, mgr)
+	entry := &inputEntry{
+		input: input,
+	}
+	mgr.mapping[hash] = entry
+	return entry
+}
+
+// Get returns the Input for a specified hash, if it is already present in the
+// pool. If it is present, it will increment its reference-count and transfer
+// the ownership of the reference to the caller. It is the caller's
+// responsibility to release the ownership of the Input.
+func (mgr *InputManager) Get(hash string) (Input, error) {
+	mgr.Lock()
+	defer mgr.Unlock()
+
+	if ent, ok := mgr.mapping[hash]; ok {
+		ent.input.Lock()
+		defer ent.input.Unlock()
+
+		ent.input.Acquire()
+		return ent.input, nil
+	}
+	return nil, errors.New(fmt.Sprintf("hash %s not found", hash))
+}
+
+// Add associates an opaque identifier (the hash) with an Input in the
+// InputManager.
+//
+// The InputFactory is responsible to create the Input if it has not yet been
+// created. The Input will be validated if it has not been committed to the
+// InputManager, but will still not be accounted into the size limit since
+// there is at least one live reference to it.
+func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
+	entry := mgr.getEntry(hash, factory)
+	input := entry.input
+
+	input.Lock()
+	defer input.Unlock()
+
+	if entry.listElement != nil {
+		// This Input did not have any outstanding references and was in the
+		// evict list. Remove from it so it does not get accidentally evicted.
+		mgr.totalSize -= input.Size()
+		mgr.evictList.Remove(entry.listElement)
+		entry.listElement = nil
+	}
+
+	if !input.Committed() {
+		// This operation can take a while.
+		if err := input.Verify(); err != nil {
+			mgr.ctx.Log.Warn("Hash verification failed. Regenerating",
+				"path", input.Hash(), "err", err)
+			input.DeleteArchive()
+
+			if err := input.CreateArchive(); err != nil {
+				mgr.ctx.Log.Error("Error creating archive", "hash", input.Hash())
+				delete(mgr.mapping, hash)
+				return nil, err
+			}
+			mgr.ctx.Log.Info("Generated input", "hash", input.Hash())
+		} else {
+			mgr.ctx.Log.Debug("Reusing input", "hash", input.Hash())
+		}
+	}
+	input.Acquire()
+	return input, nil
+}
+
+// Insert adds an already-created Input to the pool, possibly evicting old
+// entries to free enough space such that the total size of Inputs in the pool
+// is still within the limit. This should only be called when there are no
+// references to the Input.
+func (mgr *InputManager) Insert(input Input) {
+	mgr.Lock()
+	defer mgr.Unlock()
+
+	mgr.totalSize += input.Size()
+	entry := mgr.getEntryLocked(input.Hash(), nil)
+	entry.listElement = mgr.evictList.PushFront(input)
+
+	// Evict elements as necessary to get below the allowed limit.
+	for mgr.evictList.Len() > 0 && mgr.totalSize > mgr.sizeLimit {
+		mgr.ctx.Log.Info("Evicting an input", "input", input, "size", input.Size())
+		element := mgr.evictList.Back()
+		input := element.Value.(Input)
+
+		mgr.totalSize -= input.Size()
+		mgr.evictList.Remove(element)
+
+		delete(mgr.mapping, input.Hash())
+		input.DeleteArchive()
+	}
+}
+
+// Size returns the total size (in bytes) of cached Inputs in the InputManager.
+// This does not count any Inputs with live references.
+func (mgr *InputManager) Size() int64 {
+	return mgr.totalSize
+}
+
+// PreloadInputs reads all files in path, runs them through the specified
+// filter, and tries to add them into the InputManager. PreloadInputs acquires
+// the ioLock just before doing I/O in order to guarantee that the system will
+// not be doing expensive I/O operations in the middle of a
+// performance-sensitive operation (like running contestants' code).
+func (mgr *InputManager) PreloadInputs(path string,
+	factory CachedInputFactory, ioLock *sync.Mutex) error {
 	contents, err := ioutil.ReadDir(path)
 	if err != nil {
 		return err
 	}
 	for _, info := range contents {
-		hash, ok := filter(info)
+		hash, ok := factory.GetInputHash(info)
 		if !ok {
 			continue
 		}
 
 		// Make sure no other I/O is being made while we pre-fetch this input.
 		ioLock.Lock()
-		input, err := DefaultInputManager.Add(hash, factory)
+		input, err := mgr.Add(hash, factory)
 		if err != nil {
-			ctx.Log.Error("Cached input corrupted", "hash", hash)
+			mgr.ctx.Log.Error("Cached input corrupted", "hash", hash)
 		} else {
 			input.Release()
 		}
 		ioLock.Unlock()
 	}
-	ctx.Log.Info("Finished preloading cached inputs",
-		"cache_size", DefaultInputManager.Size())
+	mgr.ctx.Log.Info("Finished preloading cached inputs",
+		"cache_size", mgr.Size())
 	return nil
 }
 
+// HashReader is a Reader that provides a Sum function. After having completely
+// read the Reader, the Sum function will provide the hash of the complete
+// stream.
+type HashReader struct {
+	hasher hash.Hash
+	reader io.Reader
+}
+
+// NewHashReader returns a new HashReader for a given Reader and Hash.
 func NewHashReader(r io.Reader, h hash.Hash) *HashReader {
 	return &HashReader{
 		hasher: h,
@@ -282,16 +333,22 @@ func NewHashReader(r io.Reader, h hash.Hash) *HashReader {
 	}
 }
 
+// Read calls the underlying Reader's Read function and updates the Hash with
+// the read bytes.
 func (r *HashReader) Read(b []byte) (int, error) {
 	n, err := r.reader.Read(b)
 	r.hasher.Write(b[:n])
 	return n, err
 }
 
+// Sum returns the hash of the Reader. Typically invoked after Read reaches
+// EOF.
 func (r *HashReader) Sum(b []byte) []byte {
 	return r.hasher.Sum(b)
 }
 
+// Sha1sum is an utility function that obtains the SHA1 hash of a file (as
+// referenced to by the path parameter).
 func Sha1sum(path string) ([]byte, error) {
 	hash := sha1.New()
 	fd, err := os.Open(path)

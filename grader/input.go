@@ -229,7 +229,7 @@ type GraderCachedInputFactory struct {
 	inputPath string
 }
 
-func NewGraderCachedInputFactory(inputPath string) common.InputFactory {
+func NewGraderCachedInputFactory(inputPath string) common.CachedInputFactory {
 	return &GraderCachedInputFactory{
 		inputPath: inputPath,
 	}
@@ -244,7 +244,9 @@ func (factory *GraderCachedInputFactory) NewInput(hash string, mgr *common.Input
 	}
 }
 
-func GraderCachedInputFilter(info os.FileInfo) (string, bool) {
+func (factory *GraderCachedInputFactory) GetInputHash(
+	info os.FileInfo,
+) (string, bool) {
 	filename := path.Base(info.Name())
 	extension := ".tar.gz"
 	if !strings.HasSuffix(filename, extension) {

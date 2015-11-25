@@ -15,6 +15,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"sync"
 	"sync/atomic"
@@ -27,10 +28,17 @@ var (
 		"Grader configuration file")
 	globalContext atomic.Value
 	ioLock        sync.Mutex
+	inputManager  *common.InputManager
 )
 
 func loadContext() error {
-	ctx, err := common.NewContext(*configPath)
+	f, err := os.Open(*configPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	ctx, err := common.NewContext(f)
 	if err != nil {
 		return err
 	}
@@ -48,11 +56,13 @@ func main() {
 
 	ctx := globalContext.Load().(*common.Context)
 	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
-	common.InitInputManager(ctx)
+	inputManager = common.NewInputManager(ctx)
 	inputPath := path.Join(ctx.Config.Runner.RuntimePath, "input")
-	go common.PreloadInputs(ctx, inputPath,
-		runner.NewRunnerCachedInputFactory(inputPath), &ioLock,
-		runner.RunnerCachedInputFilter)
+	go inputManager.PreloadInputs(
+		inputPath,
+		runner.NewRunnerCachedInputFactory(inputPath),
+		&ioLock,
+	)
 	var client *http.Client
 	if *insecure {
 		client = http.DefaultClient
@@ -168,7 +178,7 @@ func processRun(ctx *common.Context, client *http.Client, baseURL *url.URL) erro
 	ioLock.Lock()
 	defer ioLock.Unlock()
 
-	input, err := common.DefaultInputManager.Add(run.InputHash,
+	input, err := inputManager.Add(run.InputHash,
 		runner.NewRunnerInputFactory(&run, client, &ctx.Config))
 	if err != nil {
 		return err

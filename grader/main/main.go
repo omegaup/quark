@@ -32,7 +32,13 @@ var (
 )
 
 func loadContext() error {
-	ctx, err := grader.NewContext(*configPath)
+	f, err := os.Open(*configPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	ctx, err := grader.NewContext(f)
 	if err != nil {
 		return err
 	}
@@ -80,11 +86,16 @@ func main() {
 	expvar.Publish("config", &ctx.Config)
 
 	var runs = grader.NewQueue("default", ctx.Config.Grader.ChannelLength)
-	common.InitInputManager(&ctx.Context)
+	inputManager := common.NewInputManager(&ctx.Context)
+	expvar.Publish("codemanager_size", expvar.Func(func() interface{} {
+		return inputManager.Size()
+	}))
 	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
-	go common.PreloadInputs(&ctx.Context, cachePath,
-		grader.NewGraderCachedInputFactory(cachePath), &sync.Mutex{},
-		grader.GraderCachedInputFilter)
+	go inputManager.PreloadInputs(
+		cachePath,
+		grader.NewGraderCachedInputFactory(cachePath),
+		&sync.Mutex{},
+	)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q %q", html.EscapeString(r.URL.Path), r.TLS.PeerCertificates[0].Subject.CommonName)
@@ -102,7 +113,7 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		runCtx, err := grader.NewRunContext(id, ctx)
+		runCtx, err := grader.NewRunContext(ctx, id, inputManager)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -200,7 +211,7 @@ func main() {
 			return
 		}
 		hash := res[1]
-		input, err := common.DefaultInputManager.Get(hash)
+		input, err := inputManager.Get(hash)
 		if err != nil {
 			ctx.Log.Error("Input not found", "hash", hash)
 			w.WriteHeader(http.StatusNotFound)

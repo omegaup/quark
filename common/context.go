@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/inconshreveable/log15"
-	"os"
+	"io"
 )
 
-var DefaultInputManager *InputManager
-
 // Configuration
+type InputManagerConfig struct {
+	CacheSize int64
+}
+
 type GraderConfig struct {
-	CacheSize       int64
 	ChannelLength   int
 	Port            uint16
 	RuntimePath     string
@@ -43,11 +44,12 @@ type LoggingConfig struct {
 }
 
 type Config struct {
-	Grader  GraderConfig
-	Db      DbConfig
-	Logging LoggingConfig
-	Runner  RunnerConfig
-	TLS     TLSConfig
+	InputManager InputManagerConfig
+	Grader       GraderConfig
+	Db           DbConfig
+	Logging      LoggingConfig
+	Runner       RunnerConfig
+	TLS          TLSConfig
 }
 
 var defaultConfig = Config{
@@ -55,12 +57,14 @@ var defaultConfig = Config{
 		Driver:         "sqlite3",
 		DataSourceName: "./omegaup.db",
 	},
+	InputManager: InputManagerConfig{
+		CacheSize: 1024 * 1024 * 1024, // 1 GiB
+	},
 	Logging: LoggingConfig{
 		File:  "/var/log/omegaup/service.log",
 		Level: "info",
 	},
 	Grader: GraderConfig{
-		CacheSize:       1024 * 1024 * 1024, // 1 GiB
 		ChannelLength:   1024,
 		Port:            11302,
 		RuntimePath:     "/var/lib/omegaup/",
@@ -96,20 +100,15 @@ type Context struct {
 	handler log15.Handler
 }
 
-// NewContext creates a new Context from the specified path. This also creates
-// a Logger.
-func NewContext(configPath string) (*Context, error) {
+// NewContext creates a new Context from the specified reader. This also
+// creates a Logger.
+func NewContext(reader io.Reader) (*Context, error) {
 	var context = Context{
 		Config: defaultConfig,
 	}
 
 	// Read basic config
-	f, err := os.Open(configPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	decoder := json.NewDecoder(f)
+	decoder := json.NewDecoder(reader)
 	if err := decoder.Decode(&context.Config); err != nil {
 		return nil, err
 	}
@@ -121,11 +120,14 @@ func NewContext(configPath string) (*Context, error) {
 	} else if context.Config.Logging.File == "stderr" {
 		context.handler = log15.StderrHandler
 	} else {
-		context.handler, err = log15.FileHandler(context.Config.Logging.File,
-			log15.LogfmtFormat())
+		handler, err := log15.FileHandler(
+			context.Config.Logging.File,
+			log15.LogfmtFormat(),
+		)
 		if err != nil {
 			return nil, err
 		}
+		context.handler = handler
 	}
 	level, err := log15.LvlFromString(context.Config.Logging.Level)
 	if err != nil {

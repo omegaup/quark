@@ -5,6 +5,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/lhchavez/quark/common"
 	_ "github.com/mattn/go-sqlite3"
+	"io"
 )
 
 type Context struct {
@@ -12,8 +13,8 @@ type Context struct {
 	DB *sql.DB
 }
 
-func NewContext(configPath string) (*Context, error) {
-	ctx, err := common.NewContext(configPath)
+func NewContext(reader io.Reader) (*Context, error) {
+	ctx, err := common.NewContext(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -22,8 +23,10 @@ func NewContext(configPath string) (*Context, error) {
 	}
 
 	// Database
-	context.DB, err = sql.Open(context.Config.Db.Driver,
-		context.Config.Db.DataSourceName)
+	context.DB, err = sql.Open(
+		context.Config.Db.Driver,
+		context.Config.Db.DataSourceName,
+	)
 	if err != nil {
 		return nil, err
 	}

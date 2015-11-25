@@ -35,7 +35,7 @@ type RunnerCachedInputFactory struct {
 	cachePath string
 }
 
-func NewRunnerCachedInputFactory(cachePath string) common.InputFactory {
+func NewRunnerCachedInputFactory(cachePath string) common.CachedInputFactory {
 	return &RunnerCachedInputFactory{
 		cachePath: cachePath,
 	}
@@ -50,7 +50,9 @@ func (factory *RunnerCachedInputFactory) NewInput(hash string, mgr *common.Input
 	}
 }
 
-func RunnerCachedInputFilter(info os.FileInfo) (string, bool) {
+func (factory *RunnerCachedInputFactory) GetInputHash(
+	info os.FileInfo,
+) (string, bool) {
 	return info.Name(), info.IsDir()
 }
 

@@ -38,7 +38,33 @@ type Queue struct {
 	ready chan struct{}
 }
 
-func newRun(id int64, ctx *Context) (*common.Run, error) {
+// NewRunContext creates a RunContext from its database id.
+func NewRunContext(
+	ctx *Context,
+	id int64,
+	inputManager *common.InputManager,
+) (*RunContext, error) {
+	run, err := newRun(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	input, err := inputManager.Add(
+		run.InputHash,
+		NewGraderInputFactory(run, &ctx.Config),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	runctx := &RunContext{
+		Run:   run,
+		Input: input,
+		tries: ctx.Config.Grader.MaxGradeRetries,
+	}
+	return runctx, nil
+}
+
+func newRun(ctx *Context, id int64) (*common.Run, error) {
 	run := &common.Run{
 		ID: common.NewRunID(),
 	}
@@ -78,25 +104,6 @@ func newRun(id int64, ctx *Context) (*common.Run, error) {
 	}
 	run.Source = string(contents)
 	return run, nil
-}
-
-func NewRunContext(id int64, ctx *Context) (*RunContext, error) {
-	run, err := newRun(id, ctx)
-	if err != nil {
-		return nil, err
-	}
-	input, err := common.DefaultInputManager.Add(run.InputHash,
-		NewGraderInputFactory(run, &ctx.Config))
-	if err != nil {
-		return nil, err
-	}
-
-	runctx := &RunContext{
-		Run:   run,
-		Input: input,
-		tries: ctx.Config.Grader.MaxGradeRetries,
-	}
-	return runctx, nil
 }
 
 func (run *RunContext) Requeue() bool {
