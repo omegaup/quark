@@ -12,6 +12,7 @@ import (
 	"github.com/lhchavez/quark/runner"
 	"golang.org/x/net/http2"
 	"html"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -128,11 +129,14 @@ func main() {
 	http.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		ctx := globalContext.Load().(*grader.Context)
+		// TODO(lhchavez): Choose a better runnerName for non-TLS connections.
+		runnerName := r.TLS.PeerCertificates[0].Subject.CommonName
 		ctx.Log.Debug("requesting run",
-			"proto", r.Proto, "client", r.TLS.PeerCertificates[0].Subject.CommonName)
+			"proto", r.Proto, "client", runnerName)
 
 		timeout := make(chan bool)
-		runCtx, ok := runs.GetRun(w.(http.CloseNotifier).CloseNotify(), timeout)
+		runCtx, ok := runs.GetRun(runnerName, w.(http.CloseNotifier).CloseNotify(),
+			timeout)
 		if !ok {
 			ctx.Log.Debug("client gone",
 				"client", r.TLS.PeerCertificates[0].Subject.CommonName)
@@ -165,15 +169,19 @@ func main() {
 			return
 		}
 		runID, _ := strconv.ParseUint(res[1], 10, 64)
+		runCtx, ok := grader.GlobalInflightMonitor.Get(runID)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		uploadType := res[2]
 		if uploadType == "results" {
-			runCtx := grader.GlobalInflightMonitor.Get(runID)
+			defer grader.GlobalInflightMonitor.Remove(runID)
 			var result runner.RunResult
 			decoder := json.NewDecoder(r.Body)
 			if err := decoder.Decode(&result); err != nil {
 				ctx.Log.Error("Error obtaining result", "err", err)
 			} else {
-				defer grader.GlobalInflightMonitor.Remove(runID)
 				resultsPath := path.Join(ctx.Config.Grader.RuntimePath, "grade",
 					runCtx.Run.GUID[:2], runCtx.Run.GUID[2:], "details.json")
 				if err := os.MkdirAll(path.Dir(resultsPath), 0755); err != nil {
@@ -197,7 +205,16 @@ func main() {
 				}
 			}
 		} else {
-			ctx.Log.Info("handled", "id", runID, "type", uploadType)
+			filesPath := path.Join(ctx.Config.Grader.RuntimePath, "grade",
+				runCtx.Run.GUID[:2], runCtx.Run.GUID[2:], "files.zip")
+			fd, err := os.Create(filesPath)
+			if err != nil {
+				ctx.Log.Error("Unable to create results file", "err", err)
+				return
+			}
+			if _, err := io.Copy(fd, r.Body); err != nil {
+				ctx.Log.Error("Unable to upload results", "err", err)
+			}
 		}
 	})
 

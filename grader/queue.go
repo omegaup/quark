@@ -2,6 +2,8 @@ package grader
 
 import (
 	"database/sql"
+	"encoding/json"
+	"expvar"
 	"github.com/lhchavez/quark/common"
 	"io/ioutil"
 	"path"
@@ -10,18 +12,36 @@ import (
 	"time"
 )
 
-var GlobalInflightMonitor = InflightMonitor{
-	mapping: make(map[uint64]*InflightRun),
+var (
+	GlobalInflightMonitor = InflightMonitor{
+		mapping: make(map[uint64]*InflightRun),
+	}
+	GlobalQueueMonitor = QueueMonitor{
+		mapping: make(map[string]*Queue),
+	}
+)
+
+func init() {
+	expvar.Publish("inflight_runs", &GlobalInflightMonitor)
+	expvar.Publish("queues", &GlobalQueueMonitor)
 }
 
 type InflightRun struct {
-	run   *RunContext
-	ready chan struct{}
+	run          *RunContext
+	runner       string
+	creationTime int64
+	connected    chan struct{}
+	ready        chan struct{}
 }
 
 type InflightMonitor struct {
 	sync.Mutex
 	mapping map[uint64]*InflightRun
+}
+
+type QueueMonitor struct {
+	sync.Mutex
+	mapping map[string]*Queue
 }
 
 type RunContext struct {
@@ -125,6 +145,9 @@ func NewQueue(name string, channelLength int) *Queue {
 	for r := range queue.runs {
 		queue.runs[r] = make(chan *RunContext, channelLength)
 	}
+	GlobalQueueMonitor.Lock()
+	defer GlobalQueueMonitor.Unlock()
+	GlobalQueueMonitor.mapping[name] = queue
 	return queue
 }
 
@@ -142,8 +165,8 @@ func (queue *Queue) TryGetRun() (*RunContext, bool) {
 }
 
 // GetRun
-func (queue *Queue) GetRun(closeNotifier <-chan bool,
-	timeout chan<- bool) (*RunContext, bool) {
+func (queue *Queue) GetRun(runner string,
+	closeNotifier <-chan bool, timeout chan<- bool) (*RunContext, bool) {
 	select {
 	case <-closeNotifier:
 		return nil, false
@@ -151,7 +174,7 @@ func (queue *Queue) GetRun(closeNotifier <-chan bool,
 	}
 
 	if run, ok := queue.TryGetRun(); ok {
-		GlobalInflightMonitor.Add(run, timeout)
+		GlobalInflightMonitor.Add(run, runner, timeout)
 		return run, true
 	}
 	panic("unreachable")
@@ -172,6 +195,9 @@ func (queue *Queue) Close(output chan<- *RunContext) {
 		output <- run
 	}
 	close(queue.runs[2])
+	GlobalQueueMonitor.Lock()
+	defer GlobalQueueMonitor.Unlock()
+	delete(GlobalQueueMonitor.mapping, queue.Name)
 }
 
 // Enqueue adds a run to the queue.
@@ -203,15 +229,15 @@ func NewPool(name string, queues []*Queue) *Pool {
 	return pool
 }
 
-func (pool *Pool) GetRun(closeNotifier <-chan bool,
-	timeout chan<- bool) (*RunContext, bool) {
+func (pool *Pool) GetRun(runner string,
+	closeNotifier <-chan bool, timeout chan<- bool) (*RunContext, bool) {
 	for i := range pool.queues {
 		if _, ok := <-pool.queues[i].ready; ok {
 			ctx, ok := pool.queues[i].TryGetRun()
 			if !ok {
 				panic("Unexpected !ok")
 			}
-			GlobalInflightMonitor.Add(ctx, timeout)
+			GlobalInflightMonitor.Add(ctx, runner, timeout)
 			return ctx, true
 		}
 	}
@@ -219,37 +245,119 @@ func (pool *Pool) GetRun(closeNotifier <-chan bool,
 	// Otherwise wait until one of them has something.
 	// TODO(lhchavez): Add the closeNotifier to the Select.
 	chosen, _, _ := reflect.Select(pool.cases)
-	return pool.queues[chosen].GetRun(closeNotifier, timeout)
+	return pool.queues[chosen].GetRun(runner, closeNotifier, timeout)
 }
 
-func (monitor *InflightMonitor) Add(run *RunContext, timeout chan<- bool) {
+func (monitor *InflightMonitor) Add(run *RunContext, runner string,
+	timeout chan<- bool) {
 	monitor.Lock()
 	defer monitor.Unlock()
 	inflight := &InflightRun{
-		run:   run,
-		ready: make(chan struct{}, 1),
+		run:          run,
+		runner:       runner,
+		creationTime: time.Now().Unix(),
+		connected:    make(chan struct{}, 1),
+		ready:        make(chan struct{}, 1),
 	}
 	monitor.mapping[run.Run.ID] = inflight
 	go func() {
 		select {
-		case <-inflight.ready:
-			timeout <- false
+		case <-inflight.connected:
+			select {
+			case <-inflight.ready:
+				timeout <- false
+			case <-time.After(time.Duration(10) * time.Minute):
+				timeout <- true
+			}
 		case <-time.After(time.Duration(2) * time.Second):
 			timeout <- true
 		}
 	}()
 }
 
-func (monitor *InflightMonitor) Get(id uint64) *RunContext {
+func (monitor *InflightMonitor) Get(id uint64) (*RunContext, bool) {
 	monitor.Lock()
 	defer monitor.Unlock()
-	inflight := monitor.mapping[id]
-	inflight.ready <- struct{}{}
-	return inflight.run
+	inflight, ok := monitor.mapping[id]
+	if ok {
+		// Try to signal that the runner has connected, unless it was already
+		// signalled before.
+		select {
+		case inflight.connected <- struct{}{}:
+		default:
+		}
+	}
+	return inflight.run, ok
 }
 
 func (monitor *InflightMonitor) Remove(id uint64) {
 	monitor.Lock()
 	defer monitor.Unlock()
+	inflight, ok := monitor.mapping[id]
+	if ok {
+		select {
+		// Try to signal that the run has been finished.
+		case inflight.ready <- struct{}{}:
+		default:
+		}
+	}
 	delete(monitor.mapping, id)
+}
+
+func (monitor *InflightMonitor) String() string {
+	monitor.Lock()
+	defer monitor.Unlock()
+
+	type runData struct {
+		ID           uint64
+		GUID         string
+		Queue        string
+		AttemptsLeft int
+		Runner       string
+		Time         int64
+		Elapsed      string
+	}
+
+	data := make([]*runData, len(monitor.mapping))
+	idx := 0
+	now := time.Now()
+	for id, inflight := range monitor.mapping {
+		data[idx] = &runData{
+			ID:           id,
+			GUID:         inflight.run.Run.GUID,
+			Queue:        inflight.run.queue.Name,
+			AttemptsLeft: inflight.run.tries,
+			Runner:       inflight.runner,
+			Time:         inflight.creationTime,
+			Elapsed:      now.Sub(time.Unix(inflight.creationTime, 0)).String(),
+		}
+		idx += 1
+	}
+
+	buf, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(buf)
+}
+
+func (monitor *QueueMonitor) String() string {
+	monitor.Lock()
+	defer monitor.Unlock()
+
+	type queueInfo [3]int
+	queues := make(map[string]queueInfo)
+	for name, queue := range monitor.mapping {
+		queues[name] = [3]int{
+			len(queue.runs[0]),
+			len(queue.runs[1]),
+			len(queue.runs[2]),
+		}
+	}
+
+	buf, err := json.MarshalIndent(queues, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(buf)
 }
