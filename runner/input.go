@@ -19,44 +19,19 @@ import (
 	"strings"
 )
 
-type RunnerInput struct {
-	common.BaseInput
-	requestURL string
-	client     *http.Client
-}
-
+// RunnerInputFactory is an InputFactory that can fetch the test case data from
+// the grader.
 type RunnerInputFactory struct {
 	run    *common.Run
 	client *http.Client
 	config *common.Config
 }
 
-type RunnerCachedInputFactory struct {
-	cachePath string
-}
-
-func NewRunnerCachedInputFactory(cachePath string) common.CachedInputFactory {
-	return &RunnerCachedInputFactory{
-		cachePath: cachePath,
-	}
-}
-
-func (factory *RunnerCachedInputFactory) NewInput(hash string, mgr *common.InputManager) common.Input {
-	return &RunnerInput{
-		BaseInput: *common.NewBaseInput(
-			hash,
-			mgr,
-			path.Join(factory.cachePath, hash)),
-	}
-}
-
-func (factory *RunnerCachedInputFactory) GetInputHash(
-	info os.FileInfo,
-) (string, bool) {
-	return info.Name(), info.IsDir()
-}
-
-func NewRunnerInputFactory(run *common.Run, client *http.Client, config *common.Config) common.InputFactory {
+func NewRunnerInputFactory(
+	run *common.Run,
+	client *http.Client,
+	config *common.Config,
+) common.InputFactory {
 	return &RunnerInputFactory{
 		run:    run,
 		client: client,
@@ -64,7 +39,10 @@ func NewRunnerInputFactory(run *common.Run, client *http.Client, config *common.
 	}
 }
 
-func (factory *RunnerInputFactory) NewInput(hash string, mgr *common.InputManager) common.Input {
+func (factory *RunnerInputFactory) NewInput(
+	hash string,
+	mgr *common.InputManager,
+) common.Input {
 	baseURL, err := url.Parse(factory.config.Runner.GraderURL)
 	if err != nil {
 		panic(err)
@@ -74,44 +52,25 @@ func (factory *RunnerInputFactory) NewInput(hash string, mgr *common.InputManage
 		panic(err)
 	}
 	return &RunnerInput{
-		BaseInput: *common.NewBaseInput(factory.run.InputHash, mgr,
-			path.Join(factory.config.Runner.RuntimePath,
-				"input", factory.run.InputHash)),
+		BaseInput: *common.NewBaseInput(
+			factory.run.InputHash,
+			mgr,
+			path.Join(
+				factory.config.Runner.RuntimePath,
+				"input",
+				factory.run.InputHash,
+			),
+		),
 		client:     factory.client,
 		requestURL: requestURL.String(),
 	}
 }
 
-func (input *RunnerInput) getStoredHashes() (map[string]string, error) {
-	result := make(map[string]string)
-	dir := filepath.Dir(input.Path())
-	hashPath := fmt.Sprintf("%s.sha1", input.Path())
-	hashFd, err := os.Open(hashPath)
-	if err != nil {
-		return result, err
-	}
-	defer hashFd.Close()
-	scanner := bufio.NewScanner(hashFd)
-	scanner.Split(bufio.ScanLines)
-	sha1sumRe := regexp.MustCompile("^([a-f0-9]{40}) [ *](.*)$")
-	for scanner.Scan() {
-		res := sha1sumRe.FindStringSubmatch(scanner.Text())
-		if res == nil {
-			return result, errors.New(fmt.Sprintf("sha1sum file format error '%s",
-				hashPath))
-		}
-		expectedHash := res[1]
-		filePath := filepath.Join(dir, res[2])
-		if !strings.HasPrefix(filePath, input.Path()) {
-			return result, errors.New(fmt.Sprintf("path is outside expected directory: '%s",
-				filePath))
-		}
-		result[filePath] = expectedHash
-	}
-	if scanner.Err() != nil {
-		return result, scanner.Err()
-	}
-	return result, nil
+// RunnerInput is an Input that can fetch the test case data from the grader.
+type RunnerInput struct {
+	common.BaseInput
+	requestURL string
+	client     *http.Client
 }
 
 func (input *RunnerInput) Verify() error {
@@ -194,30 +153,25 @@ func (input *RunnerInput) CreateArchive() error {
 		if hdr.FileInfo().IsDir() {
 			if err := os.MkdirAll(filePath, 0755); err != nil {
 				panic(err)
-				return err
 			}
 		} else {
 			if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
 				panic(err)
-				return err
 			}
 			fd, err := os.Create(filePath)
 			if err != nil {
 				panic(err)
-				return err
 			}
 			defer fd.Close()
 
 			innerHasher := common.NewHashReader(archive, sha1.New())
 			if _, err := io.Copy(fd, innerHasher); err != nil {
 				panic(err)
-				return err
 			}
 			_, err = fmt.Fprintf(sha1sumFile, "%0x *%s/%s\n", innerHasher.Sum(nil),
 				input.Hash(), hdr.Name)
 			if err != nil {
 				panic(err)
-				return err
 			}
 			size += hdr.Size
 		}
@@ -250,4 +204,65 @@ func (input *RunnerInput) DeleteArchive() error {
 	os.RemoveAll(fmt.Sprintf("%s.tmp", input.Path()))
 	os.Remove(fmt.Sprintf("%s.sha1", input.Path()))
 	return os.RemoveAll(input.Path())
+}
+
+func (input *RunnerInput) getStoredHashes() (map[string]string, error) {
+	result := make(map[string]string)
+	dir := filepath.Dir(input.Path())
+	hashPath := fmt.Sprintf("%s.sha1", input.Path())
+	hashFd, err := os.Open(hashPath)
+	if err != nil {
+		return result, err
+	}
+	defer hashFd.Close()
+	scanner := bufio.NewScanner(hashFd)
+	scanner.Split(bufio.ScanLines)
+	sha1sumRe := regexp.MustCompile("^([a-f0-9]{40}) [ *](.*)$")
+	for scanner.Scan() {
+		res := sha1sumRe.FindStringSubmatch(scanner.Text())
+		if res == nil {
+			return result, errors.New(fmt.Sprintf("sha1sum file format error '%s",
+				hashPath))
+		}
+		expectedHash := res[1]
+		filePath := filepath.Join(dir, res[2])
+		if !strings.HasPrefix(filePath, input.Path()) {
+			return result, errors.New(fmt.Sprintf("path is outside expected directory: '%s",
+				filePath))
+		}
+		result[filePath] = expectedHash
+	}
+	if scanner.Err() != nil {
+		return result, scanner.Err()
+	}
+	return result, nil
+}
+
+// RunnerCachedInputFactory restores Inputs from a directory in the filesystem.
+type RunnerCachedInputFactory struct {
+	cachePath string
+}
+
+func NewRunnerCachedInputFactory(cachePath string) common.CachedInputFactory {
+	return &RunnerCachedInputFactory{
+		cachePath: cachePath,
+	}
+}
+
+func (factory *RunnerCachedInputFactory) NewInput(
+	hash string,
+	mgr *common.InputManager,
+) common.Input {
+	return &RunnerInput{
+		BaseInput: *common.NewBaseInput(
+			hash,
+			mgr,
+			path.Join(factory.cachePath, hash)),
+	}
+}
+
+func (factory *RunnerCachedInputFactory) GetInputHash(
+	info os.FileInfo,
+) (hash string, ok bool) {
+	return info.Name(), info.IsDir()
 }

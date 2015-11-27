@@ -15,33 +15,16 @@ import (
 	"strings"
 )
 
+// GraderInput is an Input stored in a .tar.gz file that can be sent to a
+// runner.
 type GraderInput struct {
 	common.BaseInput
 	repositoryPath string
 }
 
-type GraderInputFactory struct {
-	run    *common.Run
-	config *common.Config
-}
-
-func NewGraderInputFactory(run *common.Run, config *common.Config) common.InputFactory {
-	return &GraderInputFactory{
-		run:    run,
-		config: config,
-	}
-}
-
-func (factory *GraderInputFactory) NewInput(hash string, mgr *common.InputManager) common.Input {
-	return &GraderInput{
-		BaseInput: *common.NewBaseInput(hash, mgr,
-			path.Join(factory.config.Grader.RuntimePath,
-				"cache", fmt.Sprintf("%s.tar.gz", hash))),
-		repositoryPath: path.Join(factory.config.Grader.RuntimePath,
-			"problems.git", factory.run.Problem.Name),
-	}
-}
-
+// Transmit sends a serialized version of the Input to the runner. It sends a
+// .tar.gz file with the Content-SHA1 header with the hexadecimal
+// representation of its SHA-1 hash.
 func (input *GraderInput) Transmit(w http.ResponseWriter) error {
 	hash, err := input.getStoredHash()
 	if err != nil {
@@ -52,6 +35,7 @@ func (input *GraderInput) Transmit(w http.ResponseWriter) error {
 		return err
 	}
 	defer fd.Close()
+	w.Header().Add("Content-Type", "application/x-gzip")
 	w.Header().Add("Content-SHA1", hash)
 	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, fd)
@@ -122,7 +106,12 @@ func (input *GraderInput) CreateArchive() error {
 	}
 	defer hashFd.Close()
 
-	if _, err := fmt.Fprintf(hashFd, "%0x *%s\n", hash, path.Base(input.Path())); err != nil {
+	if _, err := fmt.Fprintf(
+		hashFd,
+		"%0x *%s\n",
+		hash,
+		path.Base(input.Path()),
+	); err != nil {
 		return err
 	}
 
@@ -225,6 +214,47 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 	return walkErr
 }
 
+// GraderInputFactory is an InputFactory that can store specific versions of a
+// problem's git repository into a .tar.gz file that can be easily shipped to
+// runners.
+type GraderInputFactory struct {
+	run    *common.Run
+	config *common.Config
+}
+
+func NewGraderInputFactory(
+	run *common.Run,
+	config *common.Config,
+) common.InputFactory {
+	return &GraderInputFactory{
+		run:    run,
+		config: config,
+	}
+}
+
+func (factory *GraderInputFactory) NewInput(
+	hash string,
+	mgr *common.InputManager,
+) common.Input {
+	return &GraderInput{
+		BaseInput: *common.NewBaseInput(
+			hash,
+			mgr,
+			path.Join(
+				factory.config.Grader.RuntimePath,
+				"cache",
+				fmt.Sprintf("%s.tar.gz", hash),
+			),
+		),
+		repositoryPath: path.Join(
+			factory.config.Grader.RuntimePath,
+			"problems.git",
+			factory.run.Problem.Name,
+		),
+	}
+}
+
+// GraderCachedInputFactory is a grader-specific CachedInputFactory.
 type GraderCachedInputFactory struct {
 	inputPath string
 }
@@ -235,20 +265,24 @@ func NewGraderCachedInputFactory(inputPath string) common.CachedInputFactory {
 	}
 }
 
-func (factory *GraderCachedInputFactory) NewInput(hash string, mgr *common.InputManager) common.Input {
+func (factory *GraderCachedInputFactory) NewInput(
+	hash string,
+	mgr *common.InputManager,
+) common.Input {
 	return &GraderInput{
 		BaseInput: *common.NewBaseInput(
 			hash,
 			mgr,
-			path.Join(factory.inputPath, fmt.Sprintf("%s.tar.gz", hash))),
+			path.Join(factory.inputPath, fmt.Sprintf("%s.tar.gz", hash)),
+		),
 	}
 }
 
 func (factory *GraderCachedInputFactory) GetInputHash(
 	info os.FileInfo,
-) (string, bool) {
+) (hash string, ok bool) {
+	const extension = ".tar.gz"
 	filename := path.Base(info.Name())
-	extension := ".tar.gz"
 	if !strings.HasSuffix(filename, extension) {
 		return "", false
 	}

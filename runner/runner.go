@@ -39,8 +39,13 @@ type RunResult struct {
 	Groups       []GroupResult          `json:"groups"`
 }
 
-func Grade(ctx *common.Context, client *http.Client, baseURL *url.URL,
-	run *common.Run, input common.Input) (*RunResult, error) {
+func Grade(
+	ctx *common.Context,
+	client *http.Client,
+	baseURL *url.URL,
+	run *common.Run,
+	input common.Input,
+) (*RunResult, error) {
 	runResult := &RunResult{
 		Verdict: "JE",
 	}
@@ -62,9 +67,17 @@ func Grade(ctx *common.Context, client *http.Client, baseURL *url.URL,
 
 	ctx.Log.Info("Running", "run", run)
 
-	compileMeta, err := Compile(ctx, run.Language, []string{mainFile}, binPath,
-		path.Join(runRoot, "compile.out"), path.Join(runRoot, "compile.err"),
-		path.Join(runRoot, "compile.meta"), "Main", []string{})
+	compileMeta, err := Compile(
+		ctx,
+		run.Language,
+		[]string{mainFile},
+		binPath,
+		path.Join(runRoot, "compile.out"),
+		path.Join(runRoot, "compile.err"),
+		path.Join(runRoot, "compile.meta"),
+		"Main",
+		[]string{},
+	)
 
 	runResult.CompileMeta = map[string]RunMetadata{
 		"Main": *compileMeta,
@@ -91,13 +104,22 @@ func Grade(ctx *common.Context, client *http.Client, baseURL *url.URL,
 					Verdict: "TLE",
 				}
 			} else {
-				runMeta, err = Run(ctx, input,
-					run.Language, binPath,
+				runMeta, err = Run(
+					ctx,
+					input,
+					run.Language,
+					binPath,
 					path.Join(input.Path(), "in", fmt.Sprintf("%s.in", caseData.Name)),
 					path.Join(runRoot, fmt.Sprintf("%s.out", caseData.Name)),
 					path.Join(runRoot, fmt.Sprintf("%s.err", caseData.Name)),
 					path.Join(runRoot, fmt.Sprintf("%s.meta", caseData.Name)),
-					"Main", nil, nil, nil, []string{}, map[string]string{})
+					"Main",
+					nil,
+					nil,
+					nil,
+					[]string{},
+					map[string]string{},
+				)
 				if err != nil {
 					ctx.Log.Error("failed to run "+caseData.Name, "err", err)
 				}
@@ -130,9 +152,13 @@ func Grade(ctx *common.Context, client *http.Client, baseURL *url.URL,
 				},
 			}
 			if caseResults[j].Verdict == "OK" {
-				runScore, err := CalculateScore(ctx, &input.Settings().Validator, &caseData,
+				runScore, err := CalculateScore(
+					ctx,
+					&input.Settings().Validator,
+					&caseData,
 					path.Join(input.Path(), "out", fmt.Sprintf("%s.out", caseData.Name)),
-					path.Join(runRoot, fmt.Sprintf("%s.out", caseData.Name)))
+					path.Join(runRoot, fmt.Sprintf("%s.out", caseData.Name)),
+				)
 				if err != nil {
 					ctx.Log.Debug("error comparing values", "err", err)
 				}
@@ -171,15 +197,26 @@ func Grade(ctx *common.Context, client *http.Client, baseURL *url.URL,
 	if err != nil {
 		return runResult, err
 	}
-	if err := uploadFiles(ctx, client, filesURL.String(), runRoot, input); err != nil {
+	if err := uploadFiles(
+		ctx,
+		client,
+		filesURL.String(),
+		runRoot,
+		input,
+	); err != nil {
 		return runResult, err
 	}
 
 	return runResult, nil
 }
 
-func uploadFiles(ctx *common.Context, client *http.Client, uploadURL string,
-	runRoot string, input common.Input) error {
+func uploadFiles(
+	ctx *common.Context,
+	client *http.Client,
+	uploadURL string,
+	runRoot string,
+	input common.Input,
+) error {
 	files := []string{
 		"compile.out",
 		"compile.err",

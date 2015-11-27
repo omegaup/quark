@@ -104,7 +104,7 @@ func TestInputManager(t *testing.T) {
 		t.Errorf("InputManager.Add(\"0\") failed with %q", err)
 	}
 	if !input.Committed() {
-		t.Errorf("Input.Committed() == %q, want %q", input.Committed(), true)
+		t.Errorf("Input.Committed() == %t, want %t", input.Committed(), true)
 	}
 	if inputManager.Size() != 0 {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 0)

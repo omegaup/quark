@@ -26,8 +26,11 @@ import (
 var (
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
 	standalone = flag.Bool("standalone", false, "Standalone mode")
-	configPath = flag.String("config", "/etc/omegaup/grader/config.json",
-		"Grader configuration file")
+	configPath = flag.String(
+		"config",
+		"/etc/omegaup/grader/config.json",
+		"Grader configuration file",
+	)
 	globalContext atomic.Value
 	server        *http.Server
 )
@@ -45,6 +48,10 @@ func loadContext() error {
 	}
 	globalContext.Store(ctx)
 	return nil
+}
+
+func context() *grader.Context {
+	return globalContext.Load().(*grader.Context)
 }
 
 func startServer(ctx *grader.Context) error {
@@ -71,8 +78,10 @@ func startServer(ctx *grader.Context) error {
 		tlsConfig.BuildNameToCertificate()
 		server.TLSConfig = tlsConfig
 
-		return server.ListenAndServeTLS(ctx.Config.TLS.CertFile,
-			ctx.Config.TLS.KeyFile)
+		return server.ListenAndServeTLS(
+			ctx.Config.TLS.CertFile,
+			ctx.Config.TLS.KeyFile,
+		)
 	}
 }
 
@@ -83,7 +92,7 @@ func main() {
 		panic(err)
 	}
 
-	ctx := globalContext.Load().(*grader.Context)
+	ctx := context()
 	expvar.Publish("config", &ctx.Config)
 
 	var runs = grader.NewQueue("default", ctx.Config.Grader.ChannelLength)
@@ -99,11 +108,17 @@ func main() {
 	)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello, %q %q", html.EscapeString(r.URL.Path), r.TLS.PeerCertificates[0].Subject.CommonName)
+		fmt.Fprintf(
+			w,
+			"Hello, %q %q",
+			html.EscapeString(r.URL.Path),
+			r.TLS.PeerCertificates[0].Subject.CommonName,
+		)
 	})
+
 	gradeRe := regexp.MustCompile("/run/grade/(\\d+)/?")
 	http.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := globalContext.Load().(*grader.Context)
+		ctx := context()
 		res := gradeRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
@@ -128,18 +143,19 @@ func main() {
 
 	http.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := globalContext.Load().(*grader.Context)
+		ctx := context()
 		// TODO(lhchavez): Choose a better runnerName for non-TLS connections.
 		runnerName := r.TLS.PeerCertificates[0].Subject.CommonName
-		ctx.Log.Debug("requesting run",
-			"proto", r.Proto, "client", runnerName)
+		ctx.Log.Debug("requesting run", "proto", r.Proto, "client", runnerName)
 
 		timeout := make(chan bool)
-		runCtx, ok := runs.GetRun(runnerName, w.(http.CloseNotifier).CloseNotify(),
-			timeout)
+		runCtx, ok := runs.GetRun(
+			runnerName,
+			w.(http.CloseNotifier).CloseNotify(),
+			timeout,
+		)
 		if !ok {
-			ctx.Log.Debug("client gone",
-				"client", r.TLS.PeerCertificates[0].Subject.CommonName)
+			ctx.Log.Debug("client gone", "client", runnerName)
 		} else {
 			go func() {
 				if <-timeout {
@@ -150,8 +166,7 @@ func main() {
 				}
 				close(timeout)
 			}()
-			ctx.Log.Debug("served run", "run", runCtx.Run,
-				"client", r.TLS.PeerCertificates[0].Subject.CommonName)
+			ctx.Log.Debug("served run", "run", runCtx.Run, "client", runnerName)
 			w.Header().Set("Content-Type", "text/json; charset=utf-8")
 			encoder := json.NewEncoder(w)
 			encoder.Encode(runCtx.Run)
@@ -161,7 +176,7 @@ func main() {
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/(results|files)/?")
 	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := globalContext.Load().(*grader.Context)
+		ctx := context()
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
@@ -182,8 +197,13 @@ func main() {
 			if err := decoder.Decode(&result); err != nil {
 				ctx.Log.Error("Error obtaining result", "err", err)
 			} else {
-				resultsPath := path.Join(ctx.Config.Grader.RuntimePath, "grade",
-					runCtx.Run.GUID[:2], runCtx.Run.GUID[2:], "details.json")
+				resultsPath := path.Join(
+					ctx.Config.Grader.RuntimePath,
+					"grade",
+					runCtx.Run.GUID[:2],
+					runCtx.Run.GUID[2:],
+					"details.json",
+				)
 				if err := os.MkdirAll(path.Dir(resultsPath), 0755); err != nil {
 					ctx.Log.Error("Unable to create dir", "err", err)
 					return
@@ -221,7 +241,7 @@ func main() {
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
 	http.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := globalContext.Load().(*grader.Context)
+		ctx := context()
 		res := inputRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)

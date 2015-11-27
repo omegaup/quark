@@ -73,7 +73,10 @@ func main() {
 		}
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(cert)
-		keyPair, err := tls.LoadX509KeyPair(ctx.Config.TLS.CertFile, ctx.Config.TLS.KeyFile)
+		keyPair, err := tls.LoadX509KeyPair(
+			ctx.Config.TLS.CertFile,
+			ctx.Config.TLS.KeyFile,
+		)
 		if err != nil {
 			panic(err)
 		}
@@ -140,7 +143,11 @@ func (r *blockingReader) Read(p []byte) (int, error) {
 	return r.reader.Read(p)
 }
 
-func processRun(ctx *common.Context, client *http.Client, baseURL *url.URL) error {
+func processRun(
+	ctx *common.Context,
+	client *http.Client,
+	baseURL *url.URL,
+) error {
 	requestURL, err := baseURL.Parse("run/request/")
 	if err != nil {
 		panic(err)

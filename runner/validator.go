@@ -11,9 +11,12 @@ import (
 	"strings"
 )
 
-func CalculateScore(ctx *common.Context,
-	settings *common.ValidatorSettings, caseData *common.CaseSettings,
-	expectedOutput, contestantOutput string) (float64, error) {
+func CalculateScore(
+	ctx *common.Context,
+	settings *common.ValidatorSettings,
+	caseData *common.CaseSettings,
+	expectedOutput, contestantOutput string,
+) (float64, error) {
 	if settings.Name == "custom" {
 		return 0, errors.New("Not supported")
 	}

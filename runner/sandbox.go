@@ -17,6 +17,7 @@ var (
 	minijailPath string = "/var/lib/minijail"
 )
 
+// RunMetadata represents the results of an execution.
 type RunMetadata struct {
 	Verdict    string  `json:"verdict"`
 	ExitStatus int     `json:"exit_status,omitempty"`
@@ -27,9 +28,20 @@ type RunMetadata struct {
 	Syscall    *string `json:"syscall,omitempty"`
 }
 
-func Compile(ctx *common.Context, lang string, inputFiles []string, chdir,
-	outputFile, errorFile, metaFile, target string,
-	extraFlags []string) (*RunMetadata, error) {
+// SandboxSupported returns true if minijail is available in the system.
+func SandboxSupported() bool {
+	_, err := os.Stat(path.Join(minijailPath, "bin/minijail0"))
+	return err != nil
+}
+
+// Compile performs a compilation in the specified language.
+func Compile(
+	ctx *common.Context,
+	lang string,
+	inputFiles []string,
+	chdir, outputFile, errorFile, metaFile, target string,
+	extraFlags []string,
+) (*RunMetadata, error) {
 	commonParams := []string{
 		path.Join(minijailPath, "bin/minijail0"),
 		"-C", path.Join(minijailPath, "root-compilers"),
@@ -124,10 +136,16 @@ func Compile(ctx *common.Context, lang string, inputFiles []string, chdir,
 	return parseMetaFile(ctx, nil, lang, metaFile)
 }
 
-func Run(ctx *common.Context, input common.Input,
+// Run uses a previously compiled program and runs it against a single test
+// case in input.
+func Run(
+	ctx *common.Context,
+	input common.Input,
 	lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
 	originalInputFile, originalOutputFile, runMetaFile *string,
-	extraParams []string, extraMountPoints map[string]string) (*RunMetadata, error) {
+	extraParams []string,
+	extraMountPoints map[string]string,
+) (*RunMetadata, error) {
 	timeLimit := input.Settings().Limits.TimeLimit
 	if lang == "java" {
 		timeLimit += 1000

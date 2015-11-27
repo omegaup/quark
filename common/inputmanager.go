@@ -35,13 +35,27 @@ type RefCounted interface {
 type Input interface {
 	Lockable
 	RefCounted
+
 	Path() string
 	Hash() string
 	Committed() bool
 	Size() int64
+
+	// Verify ensures that the version of the Input stored in the filesystem
+	// exists and is consistent, and commits it so that it can be added to the
+	// InputManager. It is expected that Size() returns a valid size after
+	// Verify() returns successfully.
 	Verify() error
+
+	// CreateArchive stores the Input into the filesystem in a form that is
+	// easily consumed and can be verified for consistency after restarting.
 	CreateArchive() error
+
+	// DeleteArchive removes the filesystem version of the Input to free space.
 	DeleteArchive() error
+
+	// Settings returns the problem's settings for the Input. Problems can have
+	// different ProblemSettings on different Inputs.
 	Settings() *ProblemSettings
 }
 
@@ -175,7 +189,10 @@ func (mgr *InputManager) getEntry(hash string, factory InputFactory) *inputEntry
 	return mgr.getEntryLocked(hash, factory)
 }
 
-func (mgr *InputManager) getEntryLocked(hash string, factory InputFactory) *inputEntry {
+func (mgr *InputManager) getEntryLocked(
+	hash string,
+	factory InputFactory,
+) *inputEntry {
 	if ent, ok := mgr.mapping[hash]; ok {
 		return ent
 	}
@@ -290,8 +307,11 @@ func (mgr *InputManager) Size() int64 {
 // the ioLock just before doing I/O in order to guarantee that the system will
 // not be doing expensive I/O operations in the middle of a
 // performance-sensitive operation (like running contestants' code).
-func (mgr *InputManager) PreloadInputs(path string,
-	factory CachedInputFactory, ioLock *sync.Mutex) error {
+func (mgr *InputManager) PreloadInputs(
+	path string,
+	factory CachedInputFactory,
+	ioLock *sync.Mutex,
+) error {
 	contents, err := ioutil.ReadDir(path)
 	if err != nil {
 		return err
