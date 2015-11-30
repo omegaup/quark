@@ -15,51 +15,12 @@ import (
 	"strings"
 )
 
-// GraderInput is an Input stored in a .tar.gz file that can be sent to a
-// runner.
-type GraderInput struct {
+type graderBaseInput struct {
 	common.BaseInput
-	repositoryPath string
+	storedHash string
 }
 
-// Transmit sends a serialized version of the Input to the runner. It sends a
-// .tar.gz file with the Content-SHA1 header with the hexadecimal
-// representation of its SHA-1 hash.
-func (input *GraderInput) Transmit(w http.ResponseWriter) error {
-	hash, err := input.getStoredHash()
-	if err != nil {
-		return err
-	}
-	fd, err := os.Open(input.Path())
-	if err != nil {
-		return err
-	}
-	defer fd.Close()
-	w.Header().Add("Content-Type", "application/x-gzip")
-	w.Header().Add("Content-SHA1", hash)
-	w.WriteHeader(http.StatusOK)
-	_, err = io.Copy(w, fd)
-	return err
-}
-
-func (input *GraderInput) getStoredHash() (string, error) {
-	hashFd, err := os.Open(fmt.Sprintf("%s.sha1", input.Path()))
-	if err != nil {
-		return "", err
-	}
-	defer hashFd.Close()
-	scanner := bufio.NewScanner(hashFd)
-	scanner.Split(bufio.ScanWords)
-	if !scanner.Scan() {
-		if scanner.Err() != nil {
-			return "", scanner.Err()
-		}
-		return "", io.ErrUnexpectedEOF
-	}
-	return scanner.Text(), nil
-}
-
-func (input *GraderInput) Verify() error {
+func (input *graderBaseInput) Verify() error {
 	stat, err := os.Stat(input.Path())
 	if err != nil {
 		return err
@@ -76,8 +37,55 @@ func (input *GraderInput) Verify() error {
 		return errors.New("Hash verification failed")
 	}
 
+	input.storedHash = storedHash
 	input.Commit(stat.Size())
 	return nil
+}
+
+func (input *graderBaseInput) getStoredHash() (string, error) {
+	hashFd, err := os.Open(fmt.Sprintf("%s.sha1", input.Path()))
+	if err != nil {
+		return "", err
+	}
+	defer hashFd.Close()
+	scanner := bufio.NewScanner(hashFd)
+	scanner.Split(bufio.ScanWords)
+	if !scanner.Scan() {
+		if scanner.Err() != nil {
+			return "", scanner.Err()
+		}
+		return "", io.ErrUnexpectedEOF
+	}
+	return scanner.Text(), nil
+}
+
+func (input *graderBaseInput) DeleteArchive() error {
+	os.Remove(fmt.Sprintf("%s.tmp", input.Path()))
+	os.Remove(fmt.Sprintf("%s.sha1", input.Path()))
+	return os.Remove(input.Path())
+}
+
+// GraderInput is an Input stored in a .tar.gz file that can be sent to a
+// runner.
+type GraderInput struct {
+	graderBaseInput
+	repositoryPath string
+}
+
+// Transmit sends a serialized version of the Input to the runner. It sends a
+// .tar.gz file with the Content-SHA1 header with the hexadecimal
+// representation of its SHA-1 hash.
+func (input *GraderInput) Transmit(w http.ResponseWriter) error {
+	fd, err := os.Open(input.Path())
+	if err != nil {
+		return err
+	}
+	defer fd.Close()
+	w.Header().Add("Content-Type", "application/x-gzip")
+	w.Header().Add("Content-SHA1", input.storedHash)
+	w.WriteHeader(http.StatusOK)
+	_, err = io.Copy(w, fd)
+	return err
 }
 
 func (input *GraderInput) CreateArchive() error {
@@ -121,12 +129,6 @@ func (input *GraderInput) CreateArchive() error {
 
 	input.Commit(stat.Size())
 	return nil
-}
-
-func (input *GraderInput) DeleteArchive() error {
-	os.Remove(fmt.Sprintf("%s.tmp", input.Path()))
-	os.Remove(fmt.Sprintf("%s.sha1", input.Path()))
-	return os.Remove(input.Path())
 }
 
 func (input *GraderInput) createArchiveFromGit(archivePath string) error {
@@ -218,17 +220,17 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 // problem's git repository into a .tar.gz file that can be easily shipped to
 // runners.
 type GraderInputFactory struct {
-	run    *common.Run
-	config *common.Config
+	problemName string
+	config      *common.Config
 }
 
 func NewGraderInputFactory(
-	run *common.Run,
+	problemName string,
 	config *common.Config,
 ) common.InputFactory {
 	return &GraderInputFactory{
-		run:    run,
-		config: config,
+		problemName: problemName,
+		config:      config,
 	}
 }
 
@@ -237,19 +239,21 @@ func (factory *GraderInputFactory) NewInput(
 	mgr *common.InputManager,
 ) common.Input {
 	return &GraderInput{
-		BaseInput: *common.NewBaseInput(
-			hash,
-			mgr,
-			path.Join(
-				factory.config.Grader.RuntimePath,
-				"cache",
-				fmt.Sprintf("%s.tar.gz", hash),
+		graderBaseInput: graderBaseInput{
+			BaseInput: *common.NewBaseInput(
+				hash,
+				mgr,
+				path.Join(
+					factory.config.Grader.RuntimePath,
+					"cache",
+					fmt.Sprintf("%s.tar.gz", hash),
+				),
 			),
-		),
+		},
 		repositoryPath: path.Join(
 			factory.config.Grader.RuntimePath,
 			"problems.git",
-			factory.run.Problem.Name,
+			factory.problemName,
 		),
 	}
 }
@@ -269,7 +273,7 @@ func (factory *GraderCachedInputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
-	return &GraderInput{
+	return &graderBaseInput{
 		BaseInput: *common.NewBaseInput(
 			hash,
 			mgr,

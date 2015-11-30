@@ -85,6 +85,14 @@ func startServer(ctx *grader.Context) error {
 	}
 }
 
+func PeerName(r *http.Request) string {
+	if *insecure {
+		return r.RemoteAddr
+	} else {
+		return r.TLS.PeerCertificates[0].Subject.CommonName
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -95,7 +103,7 @@ func main() {
 	ctx := context()
 	expvar.Publish("config", &ctx.Config)
 
-	var runs = grader.NewQueue("default", ctx.Config.Grader.ChannelLength)
+	runs := grader.NewQueue("default", ctx.Config.Grader.ChannelLength)
 	inputManager := common.NewInputManager(&ctx.Context)
 	expvar.Publish("codemanager_size", expvar.Func(func() interface{} {
 		return inputManager.Size()
@@ -112,7 +120,7 @@ func main() {
 			w,
 			"Hello, %q %q",
 			html.EscapeString(r.URL.Path),
-			r.TLS.PeerCertificates[0].Subject.CommonName,
+			PeerName(r),
 		)
 	})
 
@@ -129,23 +137,21 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		runCtx, err := grader.NewRunContext(ctx, id, inputManager)
+		run, err := runs.AddRun(ctx, id, inputManager)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		runs.Enqueue(runCtx, 1)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
-		ctx.Log.Info("enqueued run", "run", runCtx.Run)
+		ctx.Log.Info("enqueued run", "run", run)
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})
 
 	http.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		ctx := context()
-		// TODO(lhchavez): Choose a better runnerName for non-TLS connections.
-		runnerName := r.TLS.PeerCertificates[0].Subject.CommonName
+		runnerName := PeerName(r)
 		ctx.Log.Debug("requesting run", "proto", r.Proto, "client", runnerName)
 
 		timeout := make(chan bool)

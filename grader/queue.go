@@ -7,14 +7,15 @@ import (
 	"github.com/lhchavez/quark/common"
 	"io/ioutil"
 	"path"
-	"reflect"
 	"sync"
 	"time"
 )
 
 var (
 	GlobalInflightMonitor = InflightMonitor{
-		mapping: make(map[uint64]*InflightRun),
+		mapping:        make(map[uint64]*InflightRun),
+		connectTimeout: time.Duration(2) * time.Second,
+		readyTimeout:   time.Duration(10) * time.Minute,
 	}
 	GlobalQueueMonitor = QueueMonitor{
 		mapping: make(map[string]*Queue),
@@ -33,11 +34,10 @@ type RunContext struct {
 	Input common.Input
 	tries int
 	queue *Queue
-	pool  *Pool
 }
 
-// NewRunContext creates a RunContext from its database id.
-func NewRunContext(
+// newRunContext creates a RunContext from its database id.
+func newRunContext(
 	ctx *Context,
 	id int64,
 	inputManager *common.InputManager,
@@ -48,7 +48,7 @@ func NewRunContext(
 	}
 	input, err := inputManager.Add(
 		run.InputHash,
-		NewGraderInputFactory(run, &ctx.Config),
+		NewGraderInputFactory(run.Problem.Name, &ctx.Config),
 	)
 	if err != nil {
 		return nil, err
@@ -72,18 +72,20 @@ func newRun(ctx *Context, id int64) (*common.Run, error) {
 		`SELECT
 			s.guid, c.alias, s.language, p.alias, pv.hash, cp.points
 		FROM
-			Submissions s
+			Runs r
+		INNER JOIN
+			Submissions s ON r.submission_id = s.submission_id
 		INNER JOIN
 			Problems p ON p.problem_id = s.problem_id
 		INNER JOIN
-			Problem_Versions pv ON pv.version_id = p.current_version
+			Problem_Versions pv ON pv.version_id = r.version_id
 		LEFT JOIN
 			Contests c ON c.contest_id = s.contest_id
 		LEFT JOIN
 			Contest_Problems cp ON cp.problem_id = s.problem_id AND
 			cp.contest_id = s.contest_id
 		WHERE
-			s.submission_id = ?;`, id).Scan(
+			r.run_id = ?;`, id).Scan(
 		&run.GUID, &contestName, &run.Language, &run.Problem.Name,
 		&run.InputHash, &contestPoints)
 	if err != nil {
@@ -118,7 +120,7 @@ func (run *RunContext) Requeue() bool {
 	run.Run.UpdateID()
 	// Since it was already ready to be executed, place it in the high-priority
 	// queue.
-	run.queue.Enqueue(run, 0)
+	run.queue.enqueue(run, 0)
 	return true
 }
 
@@ -143,19 +145,6 @@ func NewQueue(name string, channelLength int) *Queue {
 	return queue
 }
 
-// TryGetRun goes through the channels in order of priority, and if one of them
-// has something ready, it returns it.
-func (queue *Queue) TryGetRun() (*RunContext, bool) {
-	for i := range queue.runs {
-		select {
-		case run := <-queue.runs[i]:
-			return run, true
-		default:
-		}
-	}
-	return nil, false
-}
-
 // GetRun dequeues a RunContext from the queue and adds it to the global
 // InflightMonitor. This function will block if there are no RunContext objects
 // in the queue.
@@ -170,87 +159,39 @@ func (queue *Queue) GetRun(
 	case <-queue.ready:
 	}
 
-	if run, ok := queue.TryGetRun(); ok {
-		GlobalInflightMonitor.Add(run, runner, timeout)
-		return run, true
+	for i := range queue.runs {
+		select {
+		case run := <-queue.runs[i]:
+			GlobalInflightMonitor.Add(run, runner, timeout)
+			return run, true
+		default:
+		}
 	}
 	panic("unreachable")
 }
 
-// Close closes all of the Queue's run queues and drains them into output.
-func (queue *Queue) Close(output chan<- *RunContext) {
-	close(queue.ready)
-	for run := range queue.runs[0] {
-		output <- run
+func (queue *Queue) AddRun(
+	ctx *Context,
+	id int64,
+	inputManager *common.InputManager,
+) (*common.Run, error) {
+	run, err := newRunContext(ctx, id, inputManager)
+	if err != nil {
+		return nil, err
 	}
-	close(queue.runs[0])
-	for run := range queue.runs[1] {
-		output <- run
-	}
-	close(queue.runs[1])
-	for run := range queue.runs[2] {
-		output <- run
-	}
-	close(queue.runs[2])
-	GlobalQueueMonitor.Lock()
-	defer GlobalQueueMonitor.Unlock()
-	delete(GlobalQueueMonitor.mapping, queue.Name)
+	// Add new runs to the normal priority by default.
+	queue.enqueue(run, 1)
+	return run.Run, nil
 }
 
-// Enqueue adds a run to the queue.
-func (queue *Queue) Enqueue(run *RunContext, idx int) {
+// enqueue adds a run to the queue.
+func (queue *Queue) enqueue(run *RunContext, idx int) {
 	if run == nil {
 		panic("null RunContext")
 	}
 	run.queue = queue
 	queue.runs[idx] <- run
 	queue.ready <- struct{}{}
-}
-
-// Pool is a collection of Queue objects. This is used when several Queues are
-// to be consumed by a set of runners. For instance, there could be a Pool for
-// Raspberry Pi runners and another one for x86_64 runners.
-type Pool struct {
-	Name   string
-	queues []*Queue
-	cases  []reflect.SelectCase
-}
-
-// NewPool creates a Pool with the specified Queues assigned to it.
-func NewPool(name string, queues []*Queue) *Pool {
-	pool := &Pool{
-		Name:   name,
-		queues: queues,
-		cases:  make([]reflect.SelectCase, len(queues)),
-	}
-	for i := range pool.queues {
-		pool.cases[i].Dir = reflect.SelectRecv
-		pool.cases[i].Chan = reflect.ValueOf(pool.queues[i].ready)
-	}
-	return pool
-}
-
-// GetRun behaves exactly like Queue's GetRun.
-func (pool *Pool) GetRun(
-	runner string,
-	closeNotifier <-chan bool,
-	timeout chan<- bool,
-) (*RunContext, bool) {
-	for i := range pool.queues {
-		if _, ok := <-pool.queues[i].ready; ok {
-			ctx, ok := pool.queues[i].TryGetRun()
-			if !ok {
-				panic("Unexpected !ok")
-			}
-			GlobalInflightMonitor.Add(ctx, runner, timeout)
-			return ctx, true
-		}
-	}
-
-	// Otherwise wait until one of them has something.
-	// TODO(lhchavez): Add the closeNotifier to the Select.
-	chosen, _, _ := reflect.Select(pool.cases)
-	return pool.queues[chosen].GetRun(runner, closeNotifier, timeout)
 }
 
 // InflightRun is a wrapper around a RunContext when it is handed off a queue
@@ -267,7 +208,9 @@ type InflightRun struct {
 // a runner) and tracks their state in case the runner becomes unresponsive.
 type InflightMonitor struct {
 	sync.Mutex
-	mapping map[uint64]*InflightRun
+	mapping        map[uint64]*InflightRun
+	connectTimeout time.Duration
+	readyTimeout   time.Duration
 }
 
 // Add creates an InflightRun wrapper for the specified RunContext, adds it to
@@ -294,10 +237,10 @@ func (monitor *InflightMonitor) Add(
 			select {
 			case <-inflight.ready:
 				timeout <- false
-			case <-time.After(time.Duration(10) * time.Minute):
+			case <-time.After(monitor.readyTimeout):
 				timeout <- true
 			}
-		case <-time.After(time.Duration(2) * time.Second):
+		case <-time.After(monitor.connectTimeout):
 			timeout <- true
 		}
 	}()
