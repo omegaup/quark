@@ -22,18 +22,15 @@ import (
 // RunnerInputFactory is an InputFactory that can fetch the test case data from
 // the grader.
 type RunnerInputFactory struct {
-	run    *common.Run
 	client *http.Client
 	config *common.Config
 }
 
 func NewRunnerInputFactory(
-	run *common.Run,
 	client *http.Client,
 	config *common.Config,
 ) common.InputFactory {
 	return &RunnerInputFactory{
-		run:    run,
 		client: client,
 		config: config,
 	}
@@ -47,33 +44,32 @@ func (factory *RunnerInputFactory) NewInput(
 	if err != nil {
 		panic(err)
 	}
-	requestURL, err := baseURL.Parse("input/" + factory.run.InputHash)
+	requestURL, err := baseURL.Parse(fmt.Sprintf("input/%s/", hash))
 	if err != nil {
 		panic(err)
 	}
 	return &RunnerInput{
-		BaseInput: *common.NewBaseInput(
-			factory.run.InputHash,
-			mgr,
-			path.Join(
-				factory.config.Runner.RuntimePath,
-				"input",
-				factory.run.InputHash,
+		runnerBaseInput: runnerBaseInput{
+			BaseInput: *common.NewBaseInput(
+				hash,
+				mgr,
+				path.Join(
+					factory.config.Runner.RuntimePath,
+					"input",
+					hash,
+				),
 			),
-		),
+		},
 		client:     factory.client,
 		requestURL: requestURL.String(),
 	}
 }
 
-// RunnerInput is an Input that can fetch the test case data from the grader.
-type RunnerInput struct {
+type runnerBaseInput struct {
 	common.BaseInput
-	requestURL string
-	client     *http.Client
 }
 
-func (input *RunnerInput) Verify() error {
+func (input *runnerBaseInput) Verify() error {
 	hashes, err := input.getStoredHashes()
 	if err != nil {
 		return err
@@ -87,7 +83,12 @@ func (input *RunnerInput) Verify() error {
 		}
 		actualHashStr := fmt.Sprintf("%0x", actualHash)
 		if actualHashStr != expectedHashStr {
-			return errors.New(fmt.Sprintf("hash mismatch for '%s'", path))
+			return errors.New(fmt.Sprintf(
+				"hash mismatch for '%s' == %q, want %q",
+				path,
+				actualHashStr,
+				expectedHashStr,
+			))
 		}
 		stat, err := os.Stat(path)
 		if err != nil {
@@ -108,6 +109,51 @@ func (input *RunnerInput) Verify() error {
 
 	input.Commit(size)
 	return nil
+}
+
+func (input *runnerBaseInput) DeleteArchive() error {
+	os.RemoveAll(fmt.Sprintf("%s.tmp", input.Path()))
+	os.Remove(fmt.Sprintf("%s.sha1", input.Path()))
+	return os.RemoveAll(input.Path())
+}
+
+func (input *runnerBaseInput) getStoredHashes() (map[string]string, error) {
+	result := make(map[string]string)
+	dir := filepath.Dir(input.Path())
+	hashPath := fmt.Sprintf("%s.sha1", input.Path())
+	hashFd, err := os.Open(hashPath)
+	if err != nil {
+		return result, err
+	}
+	defer hashFd.Close()
+	scanner := bufio.NewScanner(hashFd)
+	scanner.Split(bufio.ScanLines)
+	sha1sumRe := regexp.MustCompile("^\\s*([a-f0-9]{40}) [ *](\\S+)\\s*$")
+	for scanner.Scan() {
+		res := sha1sumRe.FindStringSubmatch(scanner.Text())
+		if res == nil {
+			return result, errors.New(fmt.Sprintf("sha1sum file format error '%s",
+				hashPath))
+		}
+		expectedHash := res[1]
+		filePath := filepath.Join(dir, res[2])
+		if !strings.HasPrefix(filePath, input.Path()) {
+			return result, errors.New(fmt.Sprintf("path is outside expected directory: '%s",
+				filePath))
+		}
+		result[filePath] = expectedHash
+	}
+	if scanner.Err() != nil {
+		return result, scanner.Err()
+	}
+	return result, nil
+}
+
+// RunnerInput is an Input that can fetch the test case data from the grader.
+type RunnerInput struct {
+	runnerBaseInput
+	requestURL string
+	client     *http.Client
 }
 
 func (input *RunnerInput) CreateArchive() error {
@@ -168,8 +214,13 @@ func (input *RunnerInput) CreateArchive() error {
 			if _, err := io.Copy(fd, innerHasher); err != nil {
 				panic(err)
 			}
-			_, err = fmt.Fprintf(sha1sumFile, "%0x *%s/%s\n", innerHasher.Sum(nil),
-				input.Hash(), hdr.Name)
+			_, err = fmt.Fprintf(
+				sha1sumFile,
+				"%0x *%s/%s\n",
+				innerHasher.Sum(nil),
+				input.Hash(),
+				hdr.Name,
+			)
 			if err != nil {
 				panic(err)
 			}
@@ -178,8 +229,11 @@ func (input *RunnerInput) CreateArchive() error {
 	}
 
 	if resp.Header.Get("Content-SHA1") != fmt.Sprintf("%0x", hasher.Sum(nil)) {
-		return errors.New(fmt.Sprintf("hash mismatch: expected %s got %s",
-			resp.Header.Get("Content-SHA1"), fmt.Sprintf("%0x", hasher.Sum(nil))))
+		return errors.New(fmt.Sprintf(
+			"hash mismatch: expected %s got %s",
+			resp.Header.Get("Content-SHA1"),
+			fmt.Sprintf("%0x", hasher.Sum(nil)),
+		))
 	}
 
 	if err := os.Rename(tmpPath, input.Path()); err != nil {
@@ -200,44 +254,6 @@ func (input *RunnerInput) CreateArchive() error {
 	return nil
 }
 
-func (input *RunnerInput) DeleteArchive() error {
-	os.RemoveAll(fmt.Sprintf("%s.tmp", input.Path()))
-	os.Remove(fmt.Sprintf("%s.sha1", input.Path()))
-	return os.RemoveAll(input.Path())
-}
-
-func (input *RunnerInput) getStoredHashes() (map[string]string, error) {
-	result := make(map[string]string)
-	dir := filepath.Dir(input.Path())
-	hashPath := fmt.Sprintf("%s.sha1", input.Path())
-	hashFd, err := os.Open(hashPath)
-	if err != nil {
-		return result, err
-	}
-	defer hashFd.Close()
-	scanner := bufio.NewScanner(hashFd)
-	scanner.Split(bufio.ScanLines)
-	sha1sumRe := regexp.MustCompile("^([a-f0-9]{40}) [ *](.*)$")
-	for scanner.Scan() {
-		res := sha1sumRe.FindStringSubmatch(scanner.Text())
-		if res == nil {
-			return result, errors.New(fmt.Sprintf("sha1sum file format error '%s",
-				hashPath))
-		}
-		expectedHash := res[1]
-		filePath := filepath.Join(dir, res[2])
-		if !strings.HasPrefix(filePath, input.Path()) {
-			return result, errors.New(fmt.Sprintf("path is outside expected directory: '%s",
-				filePath))
-		}
-		result[filePath] = expectedHash
-	}
-	if scanner.Err() != nil {
-		return result, scanner.Err()
-	}
-	return result, nil
-}
-
 // RunnerCachedInputFactory restores Inputs from a directory in the filesystem.
 type RunnerCachedInputFactory struct {
 	cachePath string
@@ -253,11 +269,12 @@ func (factory *RunnerCachedInputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
-	return &RunnerInput{
+	return &runnerBaseInput{
 		BaseInput: *common.NewBaseInput(
 			hash,
 			mgr,
-			path.Join(factory.cachePath, hash)),
+			path.Join(factory.cachePath, hash),
+		),
 	}
 }
 

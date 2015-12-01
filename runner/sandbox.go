@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/lhchavez/quark/common"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -28,14 +29,39 @@ type RunMetadata struct {
 	Syscall    *string `json:"syscall,omitempty"`
 }
 
-// SandboxSupported returns true if minijail is available in the system.
-func SandboxSupported() bool {
-	_, err := os.Stat(path.Join(minijailPath, "bin/minijail0"))
-	return err != nil
+type Sandbox interface {
+	// Supported returns true if the sandbox is available in the system.
+	Supported() bool
+
+	// Compile performs a compilation in the specified language.
+	Compile(
+		ctx *common.Context,
+		lang string,
+		inputFiles []string,
+		chdir, outputFile, errorFile, metaFile, target string,
+		extraFlags []string,
+	) (*RunMetadata, error)
+
+	// Run uses a previously compiled program and runs it against a single test
+	// case in input.
+	Run(
+		ctx *common.Context,
+		input common.Input,
+		lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
+		originalInputFile, originalOutputFile, runMetaFile *string,
+		extraParams []string,
+		extraMountPoints map[string]string,
+	) (*RunMetadata, error)
 }
 
-// Compile performs a compilation in the specified language.
-func Compile(
+type MinijailSandbox struct{}
+
+func (*MinijailSandbox) Supported() bool {
+	_, err := os.Stat(path.Join(minijailPath, "bin/minijail0"))
+	return err == nil
+}
+
+func (*MinijailSandbox) Compile(
 	ctx *common.Context,
 	lang string,
 	inputFiles []string,
@@ -91,7 +117,7 @@ func Compile(
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/fpc"),
 			"--", "/usr/bin/ldwrapper", "/usr/bin/fpc", "-Tlinux", "-O2",
-			"-Mobjfpc", "-Sc", "-Sh", "-o", target,
+			"-Mobjfpc", "-Sc", "-Sh", fmt.Sprintf("-o%s", target),
 		}
 	case "py":
 		params = []string{
@@ -133,12 +159,15 @@ func Compile(
 	ctx.Log.Debug("invoking minijail", "params", finalParams)
 
 	_ = exec.Command("/usr/bin/sudo", finalParams...).Run()
-	return parseMetaFile(ctx, nil, lang, metaFile)
+	metaFd, err := os.Open(metaFile)
+	if err != nil {
+		return nil, err
+	}
+	defer metaFd.Close()
+	return parseMetaFile(ctx, nil, lang, metaFd)
 }
 
-// Run uses a previously compiled program and runs it against a single test
-// case in input.
-func Run(
+func (*MinijailSandbox) Run(
 	ctx *common.Context,
 	input common.Input,
 	lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
@@ -200,7 +229,7 @@ func Run(
 			"-S", path.Join(minijailPath, "scripts/java"),
 			"-b", path.Join(minijailPath, "root-openjdk,/usr/lib/jvm"),
 			"-b", "/sys/,/sys",
-			"--", "/usr/bin/java", fmt.Sprintf("-Xmx%s", memoryLimit), target,
+			"--", "/usr/bin/java", fmt.Sprintf("-Xmx%d", memoryLimit), target,
 		}
 	case "c", "cpp", "cpp11":
 		params = []string{
@@ -247,21 +276,25 @@ func Run(
 	ctx.Log.Debug("invoking minijail", "params", finalParams)
 
 	_ = exec.Command("/usr/bin/sudo", finalParams...).Run()
-	return parseMetaFile(ctx, input, lang, metaFile)
+	metaFd, err := os.Open(metaFile)
+	if err != nil {
+		return nil, err
+	}
+	defer metaFd.Close()
+	return parseMetaFile(ctx, input.Settings(), lang, metaFd)
 }
 
-func parseMetaFile(ctx *common.Context, input common.Input,
-	lang, metaFile string) (*RunMetadata, error) {
+func parseMetaFile(
+	ctx *common.Context,
+	settings *common.ProblemSettings,
+	lang string,
+	metaFile io.Reader,
+) (*RunMetadata, error) {
 	meta := &RunMetadata{
 		Verdict:    "JE",
 		ExitStatus: -1,
 	}
-	metaFd, err := os.Open(metaFile)
-	if err != nil {
-		return meta, err
-	}
-	defer metaFd.Close()
-	scanner := bufio.NewScanner(metaFd)
+	scanner := bufio.NewScanner(metaFile)
 	for scanner.Scan() {
 		tokens := strings.SplitN(scanner.Text(), ":", 2)
 		switch tokens[0] {
@@ -283,7 +316,7 @@ func parseMetaFile(ctx *common.Context, input common.Input,
 		case "syscall":
 			meta.Syscall = &tokens[1]
 		case "syscall_number":
-			stringSyscall := fmt.Sprintf("SYSCALLL %s", tokens[1])
+			stringSyscall := fmt.Sprintf("SYSCALL %s", tokens[1])
 			meta.Syscall = &stringSyscall
 		default:
 			ctx.Log.Warn("Unknown field in .meta file", "tokens", tokens)
@@ -313,13 +346,12 @@ func parseMetaFile(ctx *common.Context, input common.Input,
 		meta.Verdict = "RTE"
 	}
 
-	if input != nil {
-		if lang == "java" {
-			meta.Memory -= ctx.Config.Runner.JavaVmEstimatedSize
-		} else if meta.Memory > input.Settings().Limits.MemoryLimit {
-			meta.Verdict = "MLE"
-			meta.Memory = input.Settings().Limits.MemoryLimit
-		}
+	if lang == "java" {
+		meta.Memory -= ctx.Config.Runner.JavaVmEstimatedSize
+	}
+	if settings != nil && meta.Memory > settings.Limits.MemoryLimit {
+		meta.Verdict = "MLE"
+		meta.Memory = settings.Limits.MemoryLimit
 	}
 
 	return meta, nil

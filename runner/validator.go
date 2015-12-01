@@ -3,29 +3,23 @@ package runner
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 )
 
 func CalculateScore(
-	ctx *common.Context,
 	settings *common.ValidatorSettings,
-	caseData *common.CaseSettings,
-	expectedOutput, contestantOutput string,
+	contestantOutput, expectedOutput io.Reader,
 ) (float64, error) {
 	if settings.Name == "custom" {
+		// TODO(lhchavez): Support custom validators.
 		return 0, errors.New("Not supported")
 	}
-	contestantFd, err := os.Open(contestantOutput)
-	if err != nil {
-		return 0, err
-	}
-	defer contestantFd.Close()
-	contestantScanner := bufio.NewScanner(contestantFd)
+	contestantScanner := bufio.NewScanner(contestantOutput)
 	contestantScanner.Split(bufio.ScanWords)
 	if settings.Name == "literal" {
 		if !contestantScanner.Scan() {
@@ -35,12 +29,7 @@ func CalculateScore(
 		return math.Max(0, math.Min(1, value)), err
 	}
 
-	expectedFd, err := os.Open(expectedOutput)
-	if err != nil {
-		return 0, err
-	}
-	defer expectedFd.Close()
-	expectedScanner := bufio.NewScanner(expectedFd)
+	expectedScanner := bufio.NewScanner(expectedOutput)
 	expectedScanner.Split(bufio.ScanWords)
 
 	correct := true
@@ -59,8 +48,13 @@ func CalculateScore(
 		case "token-caseless":
 			correct = tokenCaseless(expectedScanner.Text(), contestantScanner.Text())
 		case "token-numeric":
-			correct = tokenNumeric(expectedScanner.Text(), contestantScanner.Text(),
-				*settings.Tolerance)
+			correct = tokenNumeric(
+				expectedScanner.Text(),
+				contestantScanner.Text(),
+				*settings.Tolerance,
+			)
+		default:
+			return 0, errors.New(fmt.Sprintf("Unknown validator: %q", settings.Name))
 		}
 	}
 	if !correct {
@@ -80,11 +74,8 @@ func tokenCaseless(a, b string) bool {
 func tokenNumeric(a, b string, tolerance float64) bool {
 	af, erra := strconv.ParseFloat(a, 64)
 	bf, errb := strconv.ParseFloat(b, 64)
-	if erra != errb {
-		return false
+	if erra == nil && errb == nil {
+		return math.Abs(af-bf) <= af*tolerance
 	}
-	if erra != nil && errb != nil {
-		return true
-	}
-	return math.Abs(af-bf) <= af*tolerance
+	return erra != nil && errb != nil
 }

@@ -257,7 +257,11 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
 			input.DeleteArchive()
 
 			if err := input.CreateArchive(); err != nil {
-				mgr.ctx.Log.Error("Error creating archive", "hash", input.Hash())
+				mgr.ctx.Log.Error(
+					"Error creating archive",
+					"hash", input.Hash(),
+					"err", err,
+				)
 				delete(mgr.mapping, hash)
 				return nil, err
 			}

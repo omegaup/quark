@@ -29,6 +29,7 @@ var (
 	globalContext atomic.Value
 	ioLock        sync.Mutex
 	inputManager  *common.InputManager
+	minijail      runner.MinijailSandbox
 )
 
 func loadContext() error {
@@ -185,13 +186,15 @@ func processRun(
 	ioLock.Lock()
 	defer ioLock.Unlock()
 
-	input, err := inputManager.Add(run.InputHash,
-		runner.NewRunnerInputFactory(&run, client, &ctx.Config))
+	input, err := inputManager.Add(
+		run.InputHash,
+		runner.NewRunnerInputFactory(client, &ctx.Config),
+	)
 	if err != nil {
 		return err
 	}
 	defer input.Release()
-	result, err := runner.Grade(ctx, client, baseURL, &run, input)
+	result, err := runner.Grade(ctx, client, baseURL, &run, input, &minijail)
 	if err != nil {
 		ctx.Log.Error("Error while grading", "err", err)
 	}

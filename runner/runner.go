@@ -2,6 +2,7 @@ package runner
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io"
@@ -45,12 +46,19 @@ func Grade(
 	baseURL *url.URL,
 	run *common.Run,
 	input common.Input,
+	sandbox Sandbox,
 ) (*RunResult, error) {
 	runResult := &RunResult{
 		Verdict: "JE",
 	}
-	runRoot := path.Join(ctx.Config.Runner.RuntimePath, "grade",
-		strconv.FormatUint(run.ID, 10))
+	if !sandbox.Supported() {
+		return runResult, errors.New("Sandbox not supported")
+	}
+	runRoot := path.Join(
+		ctx.Config.Runner.RuntimePath,
+		"grade",
+		strconv.FormatUint(run.ID, 10),
+	)
 	binPath := path.Join(runRoot, "bin")
 	if err := os.MkdirAll(binPath, 0755); err != nil {
 		return runResult, err
@@ -67,7 +75,7 @@ func Grade(
 
 	ctx.Log.Info("Running", "run", run)
 
-	compileMeta, err := Compile(
+	compileMeta, err := sandbox.Compile(
 		ctx,
 		run.Language,
 		[]string{mainFile},
@@ -79,15 +87,16 @@ func Grade(
 		[]string{},
 	)
 
-	runResult.CompileMeta = map[string]RunMetadata{
-		"Main": *compileMeta,
+	if compileMeta != nil {
+		runResult.CompileMeta = map[string]RunMetadata{
+			"Main": *compileMeta,
+		}
 	}
 
 	if err != nil || compileMeta.Verdict != "OK" {
 		ctx.Log.Error("Compile error", "err", err, "compileMeta", compileMeta)
 		runResult.Verdict = "CE"
-		compileError := getCompileError(compileMeta,
-			path.Join(runRoot, "compile.err"))
+		compileError := getCompileError(path.Join(runRoot, "compile.err"))
 		runResult.CompileError = &compileError
 		return runResult, err
 	}
@@ -104,7 +113,7 @@ func Grade(
 					Verdict: "TLE",
 				}
 			} else {
-				runMeta, err = Run(
+				runMeta, err = sandbox.Run(
 					ctx,
 					input,
 					run.Language,
@@ -152,12 +161,28 @@ func Grade(
 				},
 			}
 			if caseResults[j].Verdict == "OK" {
+				contestantPath := path.Join(
+					runRoot, fmt.Sprintf("%s.out", caseData.Name),
+				)
+				contestantFd, err := os.Open(contestantPath)
+				if err != nil {
+					ctx.Log.Warn("Error opening file", "path", contestantPath, "err", err)
+					continue
+				}
+				defer contestantFd.Close()
+				expectedPath := path.Join(
+					input.Path(), "out", fmt.Sprintf("%s.out", caseData.Name),
+				)
+				expectedFd, err := os.Open(expectedPath)
+				if err != nil {
+					ctx.Log.Warn("Error opening file", "path", expectedPath, "err", err)
+					continue
+				}
+				defer expectedFd.Close()
 				runScore, err := CalculateScore(
-					ctx,
 					&input.Settings().Validator,
-					&caseData,
-					path.Join(input.Path(), "out", fmt.Sprintf("%s.out", caseData.Name)),
-					path.Join(runRoot, fmt.Sprintf("%s.out", caseData.Name)),
+					contestantFd,
+					expectedFd,
 				)
 				if err != nil {
 					ctx.Log.Debug("error comparing values", "err", err)
@@ -276,7 +301,7 @@ func createZipFile(runRoot string, files []string) (string, error) {
 	return zipPath, zip.Close()
 }
 
-func getCompileError(meta *RunMetadata, errorFile string) string {
+func getCompileError(errorFile string) string {
 	fd, err := os.Open(errorFile)
 	if err != nil {
 		return err.Error()
