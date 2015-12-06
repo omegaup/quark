@@ -103,10 +103,19 @@ func main() {
 	ctx := context()
 	expvar.Publish("config", &ctx.Config)
 
-	runs := grader.NewQueue("default", ctx.Config.Grader.ChannelLength)
+	runs, err := ctx.QueueManager.Get("default")
+	if err != nil {
+		panic(err)
+	}
 	inputManager := common.NewInputManager(&ctx.Context)
 	expvar.Publish("codemanager_size", expvar.Func(func() interface{} {
-		return inputManager.Size()
+		return inputManager
+	}))
+	expvar.Publish("queues", expvar.Func(func() interface{} {
+		return context().QueueManager
+	}))
+	expvar.Publish("inflight_runs", expvar.Func(func() interface{} {
+		return context().InflightMonitor
 	}))
 	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
 	go inputManager.PreloadInputs(
@@ -157,6 +166,7 @@ func main() {
 		timeout := make(chan bool)
 		runCtx, ok := runs.GetRun(
 			runnerName,
+			ctx.InflightMonitor,
 			w.(http.CloseNotifier).CloseNotify(),
 			timeout,
 		)
@@ -190,14 +200,14 @@ func main() {
 			return
 		}
 		runID, _ := strconv.ParseUint(res[1], 10, 64)
-		runCtx, ok := grader.GlobalInflightMonitor.Get(runID)
+		runCtx, ok := ctx.InflightMonitor.Get(runID)
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		uploadType := res[2]
 		if uploadType == "results" {
-			defer grader.GlobalInflightMonitor.Remove(runID)
+			defer ctx.InflightMonitor.Remove(runID)
 			var result runner.RunResult
 			decoder := json.NewDecoder(r.Body)
 			if err := decoder.Decode(&result); err != nil {

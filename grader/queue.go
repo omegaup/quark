@@ -3,29 +3,14 @@ package grader
 import (
 	"database/sql"
 	"encoding/json"
-	"expvar"
+	"errors"
+	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io/ioutil"
 	"path"
 	"sync"
 	"time"
 )
-
-var (
-	GlobalInflightMonitor = InflightMonitor{
-		mapping:        make(map[uint64]*InflightRun),
-		connectTimeout: time.Duration(2) * time.Second,
-		readyTimeout:   time.Duration(10) * time.Minute,
-	}
-	GlobalQueueMonitor = QueueMonitor{
-		mapping: make(map[string]*Queue),
-	}
-)
-
-func init() {
-	expvar.Publish("inflight_runs", &GlobalInflightMonitor)
-	expvar.Publish("queues", &GlobalQueueMonitor)
-}
 
 // RunContext is a wrapper around a Run. This is used when a Run is sitting on
 // a Queue on the grader.
@@ -131,25 +116,12 @@ type Queue struct {
 	ready chan struct{}
 }
 
-func NewQueue(name string, channelLength int) *Queue {
-	queue := &Queue{
-		Name:  name,
-		ready: make(chan struct{}, channelLength),
-	}
-	for r := range queue.runs {
-		queue.runs[r] = make(chan *RunContext, channelLength)
-	}
-	GlobalQueueMonitor.Lock()
-	defer GlobalQueueMonitor.Unlock()
-	GlobalQueueMonitor.mapping[name] = queue
-	return queue
-}
-
 // GetRun dequeues a RunContext from the queue and adds it to the global
 // InflightMonitor. This function will block if there are no RunContext objects
 // in the queue.
 func (queue *Queue) GetRun(
 	runner string,
+	monitor *InflightMonitor,
 	closeNotifier <-chan bool,
 	timeout chan<- bool,
 ) (*RunContext, bool) {
@@ -162,7 +134,7 @@ func (queue *Queue) GetRun(
 	for i := range queue.runs {
 		select {
 		case run := <-queue.runs[i]:
-			GlobalInflightMonitor.Add(run, runner, timeout)
+			monitor.Add(run, runner, timeout)
 			return run, true
 		default:
 		}
@@ -211,6 +183,14 @@ type InflightMonitor struct {
 	mapping        map[uint64]*InflightRun
 	connectTimeout time.Duration
 	readyTimeout   time.Duration
+}
+
+func NewInflightMonitor() *InflightMonitor {
+	return &InflightMonitor{
+		mapping:        make(map[uint64]*InflightRun),
+		connectTimeout: time.Duration(2) * time.Second,
+		readyTimeout:   time.Duration(10) * time.Minute,
+	}
 }
 
 // Add creates an InflightRun wrapper for the specified RunContext, adds it to
@@ -315,19 +295,54 @@ func (monitor *InflightMonitor) String() string {
 	return string(buf)
 }
 
-// QueueMonitor is an expvar-friendly monitor for Queues.
-type QueueMonitor struct {
+// QueueManager is an expvar-friendly manager for Queues.
+type QueueManager struct {
 	sync.Mutex
-	mapping map[string]*Queue
+	mapping       map[string]*Queue
+	channelLength int
 }
 
-func (monitor *QueueMonitor) String() string {
-	monitor.Lock()
-	defer monitor.Unlock()
+func NewQueueManager(channelLength int) *QueueManager {
+	manager := &QueueManager{
+		mapping:       make(map[string]*Queue),
+		channelLength: channelLength,
+	}
+	manager.Add("default")
+	return manager
+}
+
+func (manager *QueueManager) Add(name string) *Queue {
+	queue := &Queue{
+		Name:  name,
+		ready: make(chan struct{}, manager.channelLength),
+	}
+	for r := range queue.runs {
+		queue.runs[r] = make(chan *RunContext, manager.channelLength)
+	}
+	manager.Lock()
+	defer manager.Unlock()
+	manager.mapping[name] = queue
+	return queue
+}
+
+func (manager *QueueManager) Get(name string) (*Queue, error) {
+	manager.Lock()
+	defer manager.Unlock()
+
+	queue, ok := manager.mapping[name]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("cannot find queue %q", name))
+	}
+	return queue, nil
+}
+
+func (manager *QueueManager) String() string {
+	manager.Lock()
+	defer manager.Unlock()
 
 	type queueInfo [3]int
 	queues := make(map[string]queueInfo)
-	for name, queue := range monitor.mapping {
+	for name, queue := range manager.mapping {
 		queues[name] = [3]int{
 			len(queue.runs[0]),
 			len(queue.runs[1]),

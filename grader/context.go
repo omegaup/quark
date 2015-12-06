@@ -10,7 +10,9 @@ import (
 
 type Context struct {
 	common.Context
-	DB *sql.DB
+	DB              *sql.DB
+	QueueManager    *QueueManager
+	InflightMonitor *InflightMonitor
 }
 
 func NewContext(reader io.Reader) (*Context, error) {
@@ -19,7 +21,9 @@ func NewContext(reader io.Reader) (*Context, error) {
 		return nil, err
 	}
 	var context = &Context{
-		Context: *ctx,
+		Context:         *ctx,
+		QueueManager:    NewQueueManager(ctx.Config.Grader.ChannelLength),
+		InflightMonitor: NewInflightMonitor(),
 	}
 
 	// Database
