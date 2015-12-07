@@ -88,6 +88,11 @@ func (factory *testCachedInputFactory) GetInputHash(
 		strings.HasSuffix(info.Name(), ".prob")
 }
 
+func TestInputManagerSerializability(t *testing.T) {
+	inputManager := newTestInputManager(1024)
+	inputManager.String()
+}
+
 func TestInputManager(t *testing.T) {
 	inputManager := newTestInputManager(1024)
 

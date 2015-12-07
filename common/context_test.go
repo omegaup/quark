@@ -13,6 +13,7 @@ func TestDebugContext(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	defer ctx.Close()
 	dbg := ctx.DebugContext()
 	// This should not be added to the Buffer.
 	ctx.Log.Error("Critical error")
@@ -26,4 +27,15 @@ func TestDebugContext(t *testing.T) {
 	if strings.Index(str, "Debug statement") == -1 {
 		t.Errorf("\"Debug statement\" not present in Buffer: %q", str)
 	}
+}
+
+func TestConfigSerializability(t *testing.T) {
+	ctx, err := NewContext(bytes.NewBufferString(
+		"{\"Logging\": {\"File\": \"stderr\"}}",
+	))
+	if err != nil {
+		panic(err)
+	}
+	defer ctx.Close()
+	ctx.Config.String()
 }

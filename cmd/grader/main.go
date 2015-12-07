@@ -7,7 +7,6 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
 	"golang.org/x/net/http2"
@@ -107,9 +106,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	inputManager := common.NewInputManager(&ctx.Context)
 	expvar.Publish("codemanager_size", expvar.Func(func() interface{} {
-		return inputManager
+		return context().InputManager
 	}))
 	expvar.Publish("queues", expvar.Func(func() interface{} {
 		return context().QueueManager
@@ -118,7 +116,7 @@ func main() {
 		return context().InflightMonitor
 	}))
 	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
-	go inputManager.PreloadInputs(
+	go ctx.InputManager.PreloadInputs(
 		cachePath,
 		grader.NewGraderCachedInputFactory(cachePath),
 		&sync.Mutex{},
@@ -146,7 +144,7 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		run, err := runs.AddRun(ctx, id, inputManager)
+		run, err := runs.AddRun(ctx, id, ctx.InputManager)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -264,7 +262,7 @@ func main() {
 			return
 		}
 		hash := res[1]
-		input, err := inputManager.Get(hash)
+		input, err := ctx.InputManager.Get(hash)
 		if err != nil {
 			ctx.Log.Error("Input not found", "hash", hash)
 			w.WriteHeader(http.StatusNotFound)

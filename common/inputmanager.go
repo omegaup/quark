@@ -3,6 +3,7 @@ package common
 import (
 	"container/list"
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -339,6 +340,25 @@ func (mgr *InputManager) PreloadInputs(
 	mgr.ctx.Log.Info("Finished preloading cached inputs",
 		"cache_size", mgr.Size())
 	return nil
+}
+
+func (mgr *InputManager) String() string {
+	mgr.Lock()
+	defer mgr.Unlock()
+
+	status := struct {
+		Size  int64
+		Count int
+	}{
+		Size:  mgr.Size(),
+		Count: len(mgr.mapping),
+	}
+
+	buf, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(buf)
 }
 
 // HashReader is a Reader that provides a Sum function. After having completely

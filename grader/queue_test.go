@@ -1,7 +1,6 @@
 package grader
 
 import (
-	"github.com/lhchavez/quark/common"
 	"os"
 	"testing"
 )
@@ -13,6 +12,7 @@ func TestMonitorSerializability(t *testing.T) {
 	}
 	defer ctx.Close()
 	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	ctx.InputManager.String()
 	ctx.InflightMonitor.String()
 	ctx.QueueManager.String()
 }
@@ -25,13 +25,12 @@ func TestQueue(t *testing.T) {
 	defer ctx.Close()
 	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
 
-	inputManager := common.NewInputManager(&ctx.Context)
 	queue, err := ctx.QueueManager.Get("default")
 	if err != nil {
 		t.Fatalf("default queue not found")
 	}
 
-	if _, err := queue.AddRun(ctx, 1, inputManager); err != nil {
+	if _, err := queue.AddRun(ctx, 1, ctx.InputManager); err != nil {
 		t.Fatalf("AddRun failed with %q", err)
 	}
 	if len(queue.runs[1]) != 1 {

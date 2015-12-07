@@ -2,7 +2,6 @@ package grader
 
 import (
 	"encoding/base64"
-	"github.com/lhchavez/quark/common"
 	"io/ioutil"
 	"net/http/httptest"
 	"os"
@@ -21,8 +20,6 @@ func TestPreloadInputs(t *testing.T) {
 	}
 	defer ctx.Close()
 	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
-
-	inputManager := common.NewInputManager(&ctx.Context)
 
 	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
 	files := []struct {
@@ -78,7 +75,7 @@ func TestPreloadInputs(t *testing.T) {
 			t.Fatalf("Failed to write file: %q", err)
 		}
 	}
-	inputManager.PreloadInputs(
+	ctx.InputManager.PreloadInputs(
 		cachePath,
 		NewGraderCachedInputFactory(cachePath),
 		&sync.Mutex{},
@@ -93,7 +90,7 @@ func TestPreloadInputs(t *testing.T) {
 		{"4bba61b5499a7a511eb515594f3293a8741516ad", true},
 	}
 	for _, het := range hashentries {
-		input, err := inputManager.Get(het.hash)
+		input, err := ctx.InputManager.Get(het.hash)
 		if input != nil {
 			defer input.Release()
 		}
@@ -117,8 +114,7 @@ func TestTransmitInput(t *testing.T) {
 	defer ctx.Close()
 	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
 
-	inputManager := common.NewInputManager(&ctx.Context)
-	input, err := inputManager.Add(
+	input, err := ctx.InputManager.Add(
 		"4bba61b5499a7a511eb515594f3293a8741516ad",
 		NewGraderInputFactory("test", &ctx.Config),
 	)
