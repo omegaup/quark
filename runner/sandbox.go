@@ -197,9 +197,9 @@ func (*MinijailSandbox) Run(
 
 	extraMinijailFlags := make([]string, 2*len(extraMountPoints))
 	i := 0
-	for path, target := range extraMountPoints {
+	for path, mountTarget := range extraMountPoints {
 		extraMinijailFlags[i] = "-b"
-		extraMinijailFlags[i+1] = fmt.Sprintf("%s,%s", path, target)
+		extraMinijailFlags[i+1] = fmt.Sprintf("%s,%s", path, mountTarget)
 		i += 2
 	}
 

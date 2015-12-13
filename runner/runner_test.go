@@ -109,10 +109,14 @@ func newRunnerContext() (*common.Context, error) {
 	if err != nil {
 		return nil, err
 	}
+	loggingConfig := "\"Logging\": {\"File\": \"stderr\"}"
+	if testing.Verbose() {
+		loggingConfig = "\"Logging\": {\"File\": \"stderr\", \"Level\": \"debug\"}"
+	}
 	ctx, err := common.NewContext(bytes.NewBufferString(
 		fmt.Sprintf(
 			"{"+
-				"\"Logging\": {\"File\": \"stderr\"}, "+
+				loggingConfig+", "+
 				"\"InputManager\": {\"CacheSize\": 1024}, "+
 				"\"Runner\": {\"RuntimePath\": %q}"+
 				"}",

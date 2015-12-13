@@ -3,6 +3,7 @@ package common
 // ValidatorSettings represents the options used to validate outputs.
 type ValidatorSettings struct {
 	Name      string
+	Lang      *string
 	Tolerance *float64
 }
 

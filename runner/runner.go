@@ -40,6 +40,11 @@ type RunResult struct {
 	Groups       []GroupResult          `json:"groups"`
 }
 
+type binary struct {
+	name     string
+	language string
+}
+
 func Grade(
 	ctx *common.Context,
 	client *http.Client,
@@ -59,65 +64,111 @@ func Grade(
 		"grade",
 		strconv.FormatUint(run.ID, 10),
 	)
-	binPath := path.Join(runRoot, "bin")
-	if err := os.MkdirAll(binPath, 0755); err != nil {
-		return runResult, err
-	}
 	if !ctx.Config.Runner.PreserveFiles {
 		defer os.RemoveAll(runRoot)
 	}
 
-	mainFile := path.Join(binPath, "Main."+run.Language)
-	err := ioutil.WriteFile(mainFile, []byte(run.Source), 0644)
+	ctx.Log.Info("Running", "run", run)
+
+	binaries := []binary{
+		{"Main", run.Language},
+	}
+
+	generatedFiles := make([]string, 0)
+
+	// Setup all source files.
+	mainBinPath := path.Join(runRoot, "Main", "bin")
+	if err := os.MkdirAll(mainBinPath, 0755); err != nil {
+		return runResult, err
+	}
+	mainSourceFile := path.Join(mainBinPath, fmt.Sprintf("Main.%s", run.Language))
+	err := ioutil.WriteFile(mainSourceFile, []byte(run.Source), 0644)
 	if err != nil {
 		return runResult, err
 	}
 
-	ctx.Log.Info("Running", "run", run)
+	validatorBinPath := path.Join(runRoot, "validator", "bin")
+	if input.Settings().Validator.Name == "custom" {
+		if err := os.MkdirAll(validatorBinPath, 0755); err != nil {
+			return runResult, err
+		}
+		validatorLang := *input.Settings().Validator.Lang
+		validatorFileName := fmt.Sprintf("validator.%s", validatorLang)
+		validatorSourceFile := path.Join(validatorBinPath, validatorFileName)
+		err := os.Link(path.Join(input.Path(), validatorFileName), validatorSourceFile)
+		if err != nil {
+			return runResult, err
+		}
+		binaries = append(binaries, binary{"validator", validatorLang})
+	}
 
-	compileMeta, err := sandbox.Compile(
-		ctx,
-		run.Language,
-		[]string{mainFile},
-		binPath,
-		path.Join(runRoot, "compile.out"),
-		path.Join(runRoot, "compile.err"),
-		path.Join(runRoot, "compile.meta"),
-		"Main",
-		[]string{},
-	)
+	runResult.CompileMeta = make(map[string]RunMetadata)
 
-	if compileMeta != nil {
-		runResult.CompileMeta = map[string]RunMetadata{
-			"Main": *compileMeta,
+	for _, b := range binaries {
+		binRoot := path.Join(runRoot, b.name)
+		binPath := path.Join(binRoot, "bin")
+		sourceFile := path.Join(binPath, fmt.Sprintf("%s.%s", b.name, b.language))
+
+		compileMeta, err := sandbox.Compile(
+			ctx,
+			b.language,
+			[]string{sourceFile},
+			binPath,
+			path.Join(binRoot, "compile.out"),
+			path.Join(binRoot, "compile.err"),
+			path.Join(binRoot, "compile.meta"),
+			b.name,
+			[]string{},
+		)
+		generatedFiles = append(
+			generatedFiles,
+			path.Join(b.name, "compile.out"),
+			path.Join(b.name, "compile.err"),
+			path.Join(b.name, "compile.meta"),
+		)
+
+		if compileMeta != nil {
+			runResult.CompileMeta[b.name] = *compileMeta
+		}
+
+		if err != nil || compileMeta.Verdict != "OK" {
+			ctx.Log.Error("Compile error", "err", err, "compileMeta", compileMeta)
+			runResult.Verdict = "CE"
+			compileErrorFile := "compile.err"
+			if b.language == "pas" {
+				// Lazarus writes the output of the compile error in compile.out.
+				compileErrorFile = "compile.out"
+			} else {
+				compileErrorFile = "compile.err"
+			}
+			compileError := getCompileError(path.Join(binRoot, compileErrorFile))
+			runResult.CompileError = &compileError
+			return runResult, err
 		}
 	}
 
-	if err != nil || compileMeta.Verdict != "OK" {
-		ctx.Log.Error("Compile error", "err", err, "compileMeta", compileMeta)
-		runResult.Verdict = "CE"
-		compileError := getCompileError(path.Join(runRoot, "compile.err"))
-		runResult.CompileError = &compileError
-		return runResult, err
+	groupResults := make([]GroupResult, len(input.Settings().Cases))
+	maxScore := 1.0
+	if run.Problem.Points != nil {
+		maxScore = *run.Problem.Points
 	}
-
-	rawResults := make(map[string]*RunMetadata)
 	runResult.Verdict = "OK"
 	wallTimeLimit := (float64)(input.Settings().Limits.OverallWallTimeLimit / 1000.0)
-	// TODO(lhchavez): Provide a stable ordering of cases.
-	for _, group := range input.Settings().Cases {
-		for _, caseData := range group.Cases {
+	for i, group := range input.Settings().Cases {
+		caseResults := make([]CaseResult, len(group.Cases))
+		for j, caseData := range group.Cases {
 			var runMeta *RunMetadata
 			if runResult.WallTime > wallTimeLimit {
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
 				}
+				// TODO(lhchavez): Inject generated files to the filesystem.
 			} else {
 				runMeta, err = sandbox.Run(
 					ctx,
 					input,
 					run.Language,
-					binPath,
+					mainBinPath,
 					path.Join(input.Path(), "in", fmt.Sprintf("%s.in", caseData.Name)),
 					path.Join(runRoot, fmt.Sprintf("%s.out", caseData.Name)),
 					path.Join(runRoot, fmt.Sprintf("%s.err", caseData.Name)),
@@ -133,37 +184,92 @@ func Grade(
 					ctx.Log.Error("failed to run "+caseData.Name, "err", err)
 				}
 			}
-			rawResults[caseData.Name] = runMeta
+			generatedFiles = append(
+				generatedFiles,
+				fmt.Sprintf("%s.out", caseData.Name),
+				fmt.Sprintf("%s.err", caseData.Name),
+				fmt.Sprintf("%s.meta", caseData.Name),
+			)
 			runResult.Verdict = worseVerdict(runResult.Verdict, runMeta.Verdict)
 			runResult.Time += runMeta.Time
 			runResult.WallTime += runMeta.WallTime
 			runResult.Memory = max(runResult.Memory, runMeta.Memory)
+
+			caseResults[j] = CaseResult{
+				Name:     caseData.Name,
+				MaxScore: maxScore * caseData.Weight,
+				Verdict:  runMeta.Verdict,
+				Meta: map[string]RunMetadata{
+					"Main": *runMeta,
+				},
+			}
+		}
+		groupResults[i] = GroupResult{
+			Group:    group.Name,
+			MaxScore: maxScore * group.Weight,
+			Score:    0,
+			Cases:    caseResults,
 		}
 	}
 
 	// Validate outputs.
-	maxScore := 1.0
-	if run.Problem.Points != nil {
-		maxScore = *run.Problem.Points
-	}
-	groupResults := make([]GroupResult, len(input.Settings().Cases))
 	for i, group := range input.Settings().Cases {
-		caseResults := make([]CaseResult, len(group.Cases))
 		correct := true
 		score := 0.0
 		for j, caseData := range group.Cases {
-			caseResults[j] = CaseResult{
-				Name:     caseData.Name,
-				MaxScore: maxScore * caseData.Weight,
-				Verdict:  rawResults[caseData.Name].Verdict,
-				Meta: map[string]RunMetadata{
-					"Main": *rawResults[caseData.Name],
-				},
-			}
-			if caseResults[j].Verdict == "OK" {
+			caseResults := groupResults[i].Cases[j]
+			if caseResults.Verdict == "OK" {
 				contestantPath := path.Join(
 					runRoot, fmt.Sprintf("%s.out", caseData.Name),
 				)
+				if input.Settings().Validator.Name == "custom" {
+					originalInputFile := path.Join(
+						input.Path(),
+						"in",
+						fmt.Sprintf("%s.in", caseData.Name),
+					)
+					originalOutputFile := path.Join(
+						input.Path(),
+						"out",
+						fmt.Sprintf("%s.out", caseData.Name),
+					)
+					runMetaFile := path.Join(runRoot, fmt.Sprintf("%s.meta", caseData.Name))
+					validateMeta, err := sandbox.Run(
+						ctx,
+						input,
+						*input.Settings().Validator.Lang,
+						validatorBinPath,
+						contestantPath,
+						path.Join(runRoot, "validator", fmt.Sprintf("%s.out", caseData.Name)),
+						path.Join(runRoot, "validator", fmt.Sprintf("%s.err", caseData.Name)),
+						path.Join(runRoot, "validator", fmt.Sprintf("%s.meta", caseData.Name)),
+						"validator",
+						&originalInputFile,
+						&originalOutputFile,
+						&runMetaFile,
+						[]string{},
+						map[string]string{},
+					)
+					if err != nil {
+						ctx.Log.Error("failed to validate "+caseData.Name, "err", err)
+					}
+					generatedFiles = append(
+						generatedFiles,
+						fmt.Sprintf("validator/%s.out", caseData.Name),
+						fmt.Sprintf("validator/%s.err", caseData.Name),
+						fmt.Sprintf("validator/%s.meta", caseData.Name),
+					)
+					if validateMeta.Verdict != "OK" {
+						// If the validator did not exit cleanly, assume an empty output.
+						contestantPath = "/dev/null"
+					} else {
+						contestantPath = path.Join(
+							runRoot,
+							"validator",
+							fmt.Sprintf("%s.out", caseData.Name),
+						)
+					}
+				}
 				contestantFd, err := os.Open(contestantPath)
 				if err != nil {
 					ctx.Log.Warn("Error opening file", "path", contestantPath, "err", err)
@@ -187,7 +293,7 @@ func Grade(
 				if err != nil {
 					ctx.Log.Debug("error comparing values", "err", err)
 				}
-				caseResults[j].Score = maxScore * runScore * caseData.Weight
+				caseResults.Score = maxScore * runScore * caseData.Weight
 				score += runScore * caseData.Weight
 				if runScore == 0 {
 					correct = false
@@ -197,16 +303,10 @@ func Grade(
 				}
 			}
 		}
-		if !correct {
-			score = 0
+		if correct {
+			groupResults[i].Score = maxScore * score
+			runResult.Score += groupResults[i].Score
 		}
-		groupResults[i] = GroupResult{
-			Group:    group.Name,
-			MaxScore: maxScore * group.Weight,
-			Score:    maxScore * score,
-			Cases:    caseResults,
-		}
-		runResult.Score += groupResults[i].Score
 	}
 
 	runResult.Groups = groupResults
@@ -228,7 +328,9 @@ func Grade(
 		filesURL.String(),
 		runRoot,
 		input,
+		generatedFiles,
 	); err != nil {
+		ctx.Log.Debug("uploadFiles failed", "err", err)
 		return runResult, err
 	}
 
@@ -241,27 +343,15 @@ func uploadFiles(
 	uploadURL string,
 	runRoot string,
 	input common.Input,
+	files []string,
 ) error {
-	files := []string{
-		"compile.out",
-		"compile.err",
-		"compile.meta",
-	}
-	for _, group := range input.Settings().Cases {
-		for _, caseData := range group.Cases {
-			files = append(files,
-				fmt.Sprintf("%s.out", caseData.Name),
-				fmt.Sprintf("%s.err", caseData.Name),
-				fmt.Sprintf("%s.meta", caseData.Name),
-			)
-		}
-	}
-
 	path, err := createZipFile(runRoot, files)
+	if path != "" {
+		defer os.Remove(path)
+	}
 	if err != nil {
 		return err
 	}
-	defer os.Remove(path)
 	fd, err := os.Open(path)
 	if err != nil {
 		return err

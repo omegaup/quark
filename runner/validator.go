@@ -15,13 +15,9 @@ func CalculateScore(
 	settings *common.ValidatorSettings,
 	contestantOutput, expectedOutput io.Reader,
 ) (float64, error) {
-	if settings.Name == "custom" {
-		// TODO(lhchavez): Support custom validators.
-		return 0, errors.New("Not supported")
-	}
 	contestantScanner := bufio.NewScanner(contestantOutput)
 	contestantScanner.Split(bufio.ScanWords)
-	if settings.Name == "literal" {
+	if settings.Name == "literal" || settings.Name == "custom" {
 		if !contestantScanner.Scan() {
 			return 0, io.ErrUnexpectedEOF
 		}
