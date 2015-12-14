@@ -62,7 +62,7 @@ func Grade(
 	runRoot := path.Join(
 		ctx.Config.Runner.RuntimePath,
 		"grade",
-		strconv.FormatUint(run.ID, 10),
+		strconv.FormatUint(run.AttemptID, 10),
 	)
 	if !ctx.Config.Runner.PreserveFiles {
 		defer os.RemoveAll(runRoot)
@@ -148,10 +148,7 @@ func Grade(
 	}
 
 	groupResults := make([]GroupResult, len(input.Settings().Cases))
-	maxScore := 1.0
-	if run.Problem.Points != nil {
-		maxScore = *run.Problem.Points
-	}
+	maxScore := run.MaxScore
 	runResult.Verdict = "OK"
 	wallTimeLimit := (float64)(input.Settings().Limits.OverallWallTimeLimit / 1000.0)
 	for i, group := range input.Settings().Cases {
@@ -318,7 +315,7 @@ func Grade(
 	}
 
 	ctx.Log.Debug("Finished running", "results", runResult)
-	filesURL, err := baseURL.Parse(fmt.Sprintf("run/%d/files/", run.ID))
+	filesURL, err := baseURL.Parse(fmt.Sprintf("run/%d/files/", run.AttemptID))
 	if err != nil {
 		return runResult, err
 	}

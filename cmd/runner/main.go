@@ -164,7 +164,7 @@ func processRun(
 		return err
 	}
 
-	uploadURL, err := baseURL.Parse(fmt.Sprintf("run/%d/results/", run.ID))
+	uploadURL, err := baseURL.Parse(fmt.Sprintf("run/%d/results/", run.AttemptID))
 	if err != nil {
 		return err
 	}

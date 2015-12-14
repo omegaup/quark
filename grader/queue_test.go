@@ -61,10 +61,10 @@ func TestQueue(t *testing.T) {
 	if len(queue.runs[0]) != 0 {
 		t.Fatalf("len(queue.runs[0]) == %d, want %d", len(queue.runs[0]), 0)
 	}
-	if _, ok := ctx.InflightMonitor.Get(runCtx.Run.ID); !ok {
-		t.Fatalf("Run %d not found in the inflight run monitor", runCtx.Run.ID)
+	if _, ok := ctx.InflightMonitor.Get(runCtx.Run.AttemptID); !ok {
+		t.Fatalf("Run %d not found in the inflight run monitor", runCtx.Run.AttemptID)
 	}
-	ctx.InflightMonitor.Remove(runCtx.Run.ID)
+	ctx.InflightMonitor.Remove(runCtx.Run.AttemptID)
 	if <-timeout != false {
 		t.Fatalf("expected run completion, but did not happen")
 	}

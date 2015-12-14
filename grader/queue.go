@@ -15,10 +15,14 @@ import (
 // RunContext is a wrapper around a Run. This is used when a Run is sitting on
 // a Queue on the grader.
 type RunContext struct {
-	Run   *common.Run
-	Input common.Input
-	tries int
-	queue *Queue
+	ID          int64
+	GUID        string
+	Contest     *string
+	ProblemName string
+	Run         *common.Run
+	Input       common.Input
+	tries       int
+	queue       *Queue
 }
 
 // newRunContext creates a RunContext from its database id.
@@ -32,24 +36,24 @@ func newRunContext(
 		return nil, err
 	}
 	input, err := inputManager.Add(
-		run.InputHash,
-		NewGraderInputFactory(run.Problem.Name, &ctx.Config),
+		run.Run.InputHash,
+		NewGraderInputFactory(run.ProblemName, &ctx.Config),
 	)
 	if err != nil {
 		return nil, err
 	}
+	run.Input = input
 
-	runctx := &RunContext{
-		Run:   run,
-		Input: input,
-		tries: ctx.Config.Grader.MaxGradeRetries,
-	}
-	return runctx, nil
+	return run, nil
 }
 
-func newRun(ctx *Context, id int64) (*common.Run, error) {
-	run := &common.Run{
-		ID: common.NewRunID(),
+func newRun(ctx *Context, id int64) (*RunContext, error) {
+	runCtx := &RunContext{
+		Run: &common.Run{
+			AttemptID: common.NewAttemptID(),
+			MaxScore:  1.0,
+		},
+		tries: ctx.Config.Grader.MaxGradeRetries,
 	}
 	var contestName sql.NullString
 	var contestPoints sql.NullFloat64
@@ -71,27 +75,30 @@ func newRun(ctx *Context, id int64) (*common.Run, error) {
 			cp.contest_id = s.contest_id
 		WHERE
 			r.run_id = ?;`, id).Scan(
-		&run.GUID, &contestName, &run.Language, &run.Problem.Name,
-		&run.InputHash, &contestPoints)
+		&runCtx.GUID, &contestName, &runCtx.Run.Language, &runCtx.ProblemName,
+		&runCtx.Run.InputHash, &contestPoints)
 	if err != nil {
 		return nil, err
 	}
 	if contestName.Valid {
-		run.Contest = &contestName.String
+		runCtx.Contest = &contestName.String
 	}
 	if contestPoints.Valid {
-		run.Problem.Points = &contestPoints.Float64
+		runCtx.Run.MaxScore = contestPoints.Float64
 	}
 	contents, err := ioutil.ReadFile(
 		path.Join(
-			ctx.Config.Grader.RuntimePath, "submissions", run.GUID[:2], run.GUID[2:],
+			ctx.Config.Grader.RuntimePath,
+			"submissions",
+			runCtx.GUID[:2],
+			runCtx.GUID[2:],
 		),
 	)
 	if err != nil {
 		return nil, err
 	}
-	run.Source = string(contents)
-	return run, nil
+	runCtx.Run.Source = string(contents)
+	return runCtx, nil
 }
 
 // Requeue adds a RunContext back to the Queue from where it came from, if it
@@ -102,7 +109,7 @@ func (run *RunContext) Requeue() bool {
 	if run.tries <= 0 {
 		return false
 	}
-	run.Run.UpdateID()
+	run.Run.UpdateAttemptID()
 	// Since it was already ready to be executed, place it in the high-priority
 	// queue.
 	run.queue.enqueue(run, 0)
@@ -210,7 +217,7 @@ func (monitor *InflightMonitor) Add(
 		connected:    make(chan struct{}, 1),
 		ready:        make(chan struct{}, 1),
 	}
-	monitor.mapping[run.Run.ID] = inflight
+	monitor.mapping[run.Run.AttemptID] = inflight
 	go func() {
 		select {
 		case <-inflight.connected:
@@ -263,7 +270,8 @@ func (monitor *InflightMonitor) String() string {
 	defer monitor.Unlock()
 
 	type runData struct {
-		ID           uint64
+		AttemptID    uint64
+		ID           int64
 		GUID         string
 		Queue        string
 		AttemptsLeft int
@@ -275,10 +283,11 @@ func (monitor *InflightMonitor) String() string {
 	data := make([]*runData, len(monitor.mapping))
 	idx := 0
 	now := time.Now()
-	for id, inflight := range monitor.mapping {
+	for attemptId, inflight := range monitor.mapping {
 		data[idx] = &runData{
-			ID:           id,
-			GUID:         inflight.run.Run.GUID,
+			AttemptID:    attemptId,
+			ID:           inflight.run.ID,
+			GUID:         inflight.run.GUID,
 			Queue:        inflight.run.queue.Name,
 			AttemptsLeft: inflight.run.tries,
 			Runner:       inflight.runner,

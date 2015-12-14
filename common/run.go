@@ -7,40 +7,32 @@ import (
 )
 
 var (
-	runID uint64
+	attemptID uint64
 )
 
 func init() {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	runID = uint64(r.Int63())
-}
-
-// An omegaUp problem.
-type Problem struct {
-	Name   string   `json:"name"`
-	Points *float64 `json:"points,omitempty"`
+	attemptID = uint64(r.Int63())
 }
 
 // An omegaUp run.
 type Run struct {
-	ID        uint64  `json:"id"`
-	GUID      string  `json:"guid"`
-	Contest   *string `json:"contest,omitempty"`
+	AttemptID uint64  `json:"attempt_id"`
+	Source    string  `json:"source"`
 	Language  string  `json:"language"`
 	InputHash string  `json:"input_hash"`
-	Problem   Problem `json:"problem"`
-	Source    string  `json:"source"`
+	MaxScore  float64 `json:"max_score"`
 }
 
-// NewRunID allocates a locally-unique ID. A counter is initialized to a random
-// 63-bit integer on startup and then atomically incremented eacn time a new ID
-// is needed.
-func NewRunID() uint64 {
-	return atomic.AddUint64(&runID, 1)
+// NewAttemptID allocates a locally-unique AttemptID. A counter is initialized
+// to a random 63-bit integer on startup and then atomically incremented eacn
+// time a new ID is needed.
+func NewAttemptID() uint64 {
+	return atomic.AddUint64(&attemptID, 1)
 }
 
-// UpdateID assigns a new ID to a run.
-func (run *Run) UpdateID() uint64 {
-	run.ID = NewRunID()
-	return run.ID
+// UpdateID assigns a new AttemptID to a run.
+func (run *Run) UpdateAttemptID() uint64 {
+	run.AttemptID = NewAttemptID()
+	return run.AttemptID
 }

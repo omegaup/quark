@@ -204,6 +204,16 @@ func main() {
 			return
 		}
 		uploadType := res[2]
+		gradeDir := path.Join(
+			ctx.Config.Grader.RuntimePath,
+			"grade",
+			fmt.Sprintf("%02d", runCtx.ID%10),
+			fmt.Sprintf("%d", runCtx.ID),
+		)
+		if err := os.MkdirAll(gradeDir, 0755); err != nil {
+			ctx.Log.Error("Unable to create grade dir", "err", err)
+			return
+		}
 		if uploadType == "results" {
 			defer ctx.InflightMonitor.Remove(runID)
 			var result runner.RunResult
@@ -211,17 +221,7 @@ func main() {
 			if err := decoder.Decode(&result); err != nil {
 				ctx.Log.Error("Error obtaining result", "err", err)
 			} else {
-				resultsPath := path.Join(
-					ctx.Config.Grader.RuntimePath,
-					"grade",
-					runCtx.Run.GUID[:2],
-					runCtx.Run.GUID[2:],
-					"details.json",
-				)
-				if err := os.MkdirAll(path.Dir(resultsPath), 0755); err != nil {
-					ctx.Log.Error("Unable to create dir", "err", err)
-					return
-				}
+				resultsPath := path.Join(gradeDir, "details.json")
 				fd, err := os.Create(resultsPath)
 				if err != nil {
 					ctx.Log.Error("Unable to create results file", "err", err)
@@ -239,8 +239,7 @@ func main() {
 				}
 			}
 		} else {
-			filesPath := path.Join(ctx.Config.Grader.RuntimePath, "grade",
-				runCtx.Run.GUID[:2], runCtx.Run.GUID[2:], "files.zip")
+			filesPath := path.Join(gradeDir, "files.zip")
 			fd, err := os.Create(filesPath)
 			if err != nil {
 				ctx.Log.Error("Unable to create results file", "err", err)
