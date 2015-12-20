@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io/ioutil"
@@ -10,18 +11,21 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"sync"
+	"strings"
 	"testing"
 )
 
+type expectedResult struct {
+	output, runError string
+	meta             *RunMetadata
+}
+
 type runnerTestCase struct {
-	language, source                            string
-	expectedVerdict                             string
-	expectedScore                               float64
-	expectedCompileOutput, expectedCompileError string
-	expectedCompileMeta                         *RunMetadata
-	expectedRunOutput, expectedRunError         string
-	expectedRunMeta                             *RunMetadata
+	language, source       string
+	expectedVerdict        string
+	expectedScore          float64
+	expectedCompileResults expectedResult
+	expectedResults        map[string]expectedResult
 }
 
 type sandboxWrapper interface {
@@ -59,7 +63,9 @@ func (sandbox *fakeSandbox) Compile(
 		return nil, err
 	}
 	defer ef.Close()
-	if _, err := ef.WriteString(sandbox.testCase.expectedCompileError); err != nil {
+	if _, err := ef.WriteString(
+		sandbox.testCase.expectedCompileResults.runError,
+	); err != nil {
 		return nil, err
 	}
 	of, err := os.Create(outputFile)
@@ -67,10 +73,12 @@ func (sandbox *fakeSandbox) Compile(
 		return nil, err
 	}
 	defer of.Close()
-	if _, err := of.WriteString(sandbox.testCase.expectedCompileOutput); err != nil {
+	if _, err := of.WriteString(
+		sandbox.testCase.expectedCompileResults.output,
+	); err != nil {
 		return nil, err
 	}
-	return sandbox.testCase.expectedCompileMeta, nil
+	return sandbox.testCase.expectedCompileResults.meta, nil
 }
 
 func (sandbox *fakeSandbox) Run(
@@ -81,12 +89,17 @@ func (sandbox *fakeSandbox) Run(
 	extraParams []string,
 	extraMountPoints map[string]string,
 ) (*RunMetadata, error) {
+	caseName := strings.TrimSuffix(path.Base(outputFile), path.Ext(outputFile))
+	results, ok := sandbox.testCase.expectedResults[caseName]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("case %q not found", caseName))
+	}
 	ef, err := os.Create(errorFile)
 	if err != nil {
 		return nil, err
 	}
 	defer ef.Close()
-	if _, err := ef.WriteString(sandbox.testCase.expectedRunError); err != nil {
+	if _, err := ef.WriteString(results.runError); err != nil {
 		return nil, err
 	}
 	of, err := os.Create(outputFile)
@@ -94,10 +107,10 @@ func (sandbox *fakeSandbox) Run(
 		return nil, err
 	}
 	defer of.Close()
-	if _, err := of.WriteString(sandbox.testCase.expectedRunOutput); err != nil {
+	if _, err := of.WriteString(results.output); err != nil {
 		return nil, err
 	}
-	return sandbox.testCase.expectedRunMeta, nil
+	return results.meta, nil
 }
 
 func (wrapper *fakeSandboxWrapper) sandbox(testCase *runnerTestCase) Sandbox {
@@ -118,8 +131,10 @@ func newRunnerContext() (*common.Context, error) {
 			"{"+
 				loggingConfig+", "+
 				"\"InputManager\": {\"CacheSize\": 1024}, "+
-				"\"Runner\": {\"RuntimePath\": %q}"+
+				"\"Runner\": {\"RuntimePath\": %q},"+
+				"\"Grader\": {\"RuntimePath\": %q}"+
 				"}",
+			dirname,
 			dirname,
 		),
 	))
@@ -159,70 +174,24 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	ctx.Config.Runner.GraderURL = ts.URL
 
 	inputManager := common.NewInputManager(ctx)
-	inputPath := path.Join(ctx.Config.Runner.RuntimePath, "input")
-	// Setting up files.
-	dirs := []string{
-		"4bba61b5499a7a511eb515594f3293a8741516ad/in",
-		"4bba61b5499a7a511eb515594f3293a8741516ad/out",
-	}
-	for _, d := range dirs {
-		if err := os.MkdirAll(path.Join(inputPath, d), 0755); err != nil {
-			t.Fatalf("Failed to create %q: %q", d, err)
-		}
-	}
-	files := []struct {
-		filename, contents string
-	}{
-		{
-			"4bba61b5499a7a511eb515594f3293a8741516ad/in/0.in",
-			"1 2",
+	AplusB, err := common.NewLiteralInputFactory(
+		&common.LiteralInput{
+			Cases: map[string]common.LiteralCaseSettings{
+				"0": {Input: "1 2", ExpectedOutput: "3"},
+				"1": {Input: "2 3", ExpectedOutput: "5"},
+			},
+			Validator: &common.LiteralValidatorSettings{
+				Name: "token-numeric",
+			},
 		},
-		{
-			"4bba61b5499a7a511eb515594f3293a8741516ad/out/0.out",
-			"3",
-		},
-		{
-			"4bba61b5499a7a511eb515594f3293a8741516ad/settings.json",
-			`{
-  "Cases": [
-		{"Cases": [{"Name": "0", "Weight": 1.0}], "Name": "0", "Weight": 1.0}
-  ], 
-  "Limits": {
-    "ExtraWallTime": 0, 
-    "MemoryLimit": 67108864, 
-    "OutputLimit": 16384, 
-    "OverallWallTimeLimit": 60000, 
-    "StackLimit": 10485760, 
-    "TimeLimit": 3000, 
-    "ValidatorTimeLimit": 3000
-  }, 
-  "Slow": false, 
-	"Validator": {"Name": "token-numeric", "Tolerance": 0.001}
-}`,
-		},
-		{
-			"4bba61b5499a7a511eb515594f3293a8741516ad.sha1",
-			`0780d1c3688b0fa44453888849948a264553ed85 *4bba61b5499a7a511eb515594f3293a8741516ad/settings.json
-			3c28d037e32cd30eefd8183a83153083cced6cb7 *4bba61b5499a7a511eb515594f3293a8741516ad/in/0.in
-			77de68daecd823babbb58edb1c8e14d7106e83bb *4bba61b5499a7a511eb515594f3293a8741516ad/out/0.out`,
-		},
-	}
-	for _, ft := range files {
-		if err := ioutil.WriteFile(
-			path.Join(inputPath, ft.filename),
-			[]byte(ft.contents),
-			0644,
-		); err != nil {
-			t.Fatalf("Failed to write file: %q", err)
-		}
-	}
-	inputManager.PreloadInputs(
-		inputPath,
-		NewRunnerCachedInputFactory(inputPath),
-		&sync.Mutex{},
+		&ctx.Config,
 	)
+	if err != nil {
+		t.Fatalf("Failed to create Input: %q", err)
+	}
+	inputManager.Add(AplusB.Hash(), AplusB)
 
-	input, err := inputManager.Get("4bba61b5499a7a511eb515594f3293a8741516ad")
+	input, err := inputManager.Get(AplusB.Hash())
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}
@@ -234,90 +203,95 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	runtests := []runnerTestCase{
 		{
 			"py",
-			"print 3",
+			"print sum(map(int, raw_input().strip().split()))",
 			"AC",
 			1.0,
-			"",
-			"",
-			&RunMetadata{Verdict: "OK"},
-			"3",
-			"",
-			&RunMetadata{Verdict: "OK"},
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"py",
+			"print 3",
+			"PA",
+			0.5,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 		{
 			"py",
 			"print 2",
 			"WA",
 			0.0,
-			"",
-			"",
-			&RunMetadata{Verdict: "OK"},
-			"2",
-			"",
-			&RunMetadata{Verdict: "OK"},
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"2", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"2", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 		{
 			"py",
 			"if",
 			"CE",
 			0.0,
-			"",
-			`  File "test.py", line 1
+			expectedResult{
+				"",
+				`  File "test.py", line 1
 	    if
 		     ^
 				 SyntaxError: invalid syntax`,
-			&RunMetadata{ExitStatus: 1, Verdict: "RTE"},
-			"",
-			"",
-			nil,
+				&RunMetadata{ExitStatus: 1, Verdict: "RTE"},
+			},
+			map[string]expectedResult{},
 		},
 		{
 			"c",
 			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
-			"AC",
-			1.0,
-			"",
-			"",
-			&RunMetadata{Verdict: "OK"},
-			"3",
-			"",
-			&RunMetadata{Verdict: "OK"},
+			"PA",
+			0.5,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 		{
 			"cpp",
 			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
-			"AC",
-			1.0,
-			"",
-			"",
-			&RunMetadata{Verdict: "OK"},
-			"3",
-			"",
-			&RunMetadata{Verdict: "OK"},
+			"PA",
+			0.5,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 		{
 			"rb",
 			"puts 3",
-			"AC",
-			1.0,
-			"",
-			"",
-			&RunMetadata{Verdict: "OK"},
-			"3",
-			"",
-			&RunMetadata{Verdict: "OK"},
+			"PA",
+			0.5,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 		{
 			"hs",
 			"main = putStrLn \"3\"",
-			"AC",
-			1.0,
-			"",
-			"",
-			&RunMetadata{Verdict: "OK"},
-			"3",
-			"",
-			&RunMetadata{Verdict: "OK"},
+			"PA",
+			0.5,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 		{
 			"pas",
@@ -325,14 +299,13 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			begin
 				writeln ('3');
 			end.`,
-			"AC",
-			1.0,
-			"",
-			"",
-			&RunMetadata{Verdict: "OK"},
-			"3",
-			"",
-			&RunMetadata{Verdict: "OK"},
+			"PA",
+			0.5,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 		{
 			"java",
@@ -341,14 +314,13 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 					System.out.println('3');
 				}
 			}`,
-			"AC",
-			1.0,
-			"",
-			"",
-			&RunMetadata{Verdict: "OK"},
-			"3",
-			"",
-			&RunMetadata{Verdict: "OK"},
+			"PA",
+			0.5,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 	}
 	for idx, rte := range runtests {

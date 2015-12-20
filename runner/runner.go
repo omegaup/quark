@@ -159,7 +159,6 @@ func Grade(
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
 				}
-				// TODO(lhchavez): Inject generated files to the filesystem.
 			} else {
 				runMeta, err = sandbox.Run(
 					ctx,
@@ -180,13 +179,13 @@ func Grade(
 				if err != nil {
 					ctx.Log.Error("failed to run "+caseData.Name, "err", err)
 				}
+				generatedFiles = append(
+					generatedFiles,
+					fmt.Sprintf("%s.out", caseData.Name),
+					fmt.Sprintf("%s.err", caseData.Name),
+					fmt.Sprintf("%s.meta", caseData.Name),
+				)
 			}
-			generatedFiles = append(
-				generatedFiles,
-				fmt.Sprintf("%s.out", caseData.Name),
-				fmt.Sprintf("%s.err", caseData.Name),
-				fmt.Sprintf("%s.meta", caseData.Name),
-			)
 			runResult.Verdict = worseVerdict(runResult.Verdict, runMeta.Verdict)
 			runResult.Time += runMeta.Time
 			runResult.WallTime += runMeta.WallTime

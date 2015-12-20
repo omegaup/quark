@@ -2,9 +2,9 @@ package common
 
 // ValidatorSettings represents the options used to validate outputs.
 type ValidatorSettings struct {
-	Lang      *string
-	Name      string
-	Tolerance *float64
+	Lang      *string  `json:"Lang,omitempty"`
+	Name      string   `json:"Name"`
+	Tolerance *float64 `json:"Tolerance,omitempty"`
 }
 
 // LimitsSettings represents runtime limits for the Input.
@@ -53,9 +53,9 @@ func (g ByGroupName) Less(i, j int) bool { return g[i].Name < g[j].Name }
 // ProblemSettings represents the settings of a problem for a particular Input
 // set.
 type ProblemSettings struct {
-	Cases       []GroupSettings
-	Interactive *InteractiveSettings
-	Limits      LimitsSettings
-	Slow        bool
-	Validator   ValidatorSettings
+	Cases       []GroupSettings      `json:"Cases"`
+	Interactive *InteractiveSettings `json:"Interactive,omitempty"`
+	Limits      LimitsSettings       `json:"Limits"`
+	Slow        bool                 `json:"Slow"`
+	Validator   ValidatorSettings    `json:"Validator"`
 }
