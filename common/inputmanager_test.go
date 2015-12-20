@@ -50,7 +50,7 @@ type testInputFactory struct {
 
 func (factory *testInputFactory) NewInput(hash string, mgr *InputManager) Input {
 	return &testInput{
-		BaseInput: *NewBaseInput(hash, mgr, "/"),
+		BaseInput: *NewBaseInput(hash, mgr),
 		size:      factory.size,
 		valid:     true,
 	}
@@ -58,7 +58,7 @@ func (factory *testInputFactory) NewInput(hash string, mgr *InputManager) Input 
 
 func (factory *testInputFactory) Validate(hash string, mgr *InputManager) Input {
 	return &testInput{
-		BaseInput: *NewBaseInput(hash, mgr, "/"),
+		BaseInput: *NewBaseInput(hash, mgr),
 		size:      factory.size,
 	}
 }
@@ -76,7 +76,7 @@ func (factory *testCachedInputFactory) NewInput(
 		panic(err)
 	}
 	return &testInput{
-		BaseInput: *NewBaseInput(hash, mgr, path.Join(factory.path, hash)),
+		BaseInput: *NewBaseInput(hash, mgr),
 		valid:     string(contents) == "1",
 	}
 }

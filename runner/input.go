@@ -53,11 +53,11 @@ func (factory *RunnerInputFactory) NewInput(
 			BaseInput: *common.NewBaseInput(
 				hash,
 				mgr,
-				path.Join(
-					factory.config.Runner.RuntimePath,
-					"input",
-					hash,
-				),
+			),
+			path: path.Join(
+				factory.config.Runner.RuntimePath,
+				"input",
+				hash,
 			),
 		},
 		client:     factory.client,
@@ -67,6 +67,11 @@ func (factory *RunnerInputFactory) NewInput(
 
 type runnerBaseInput struct {
 	common.BaseInput
+	path string
+}
+
+func (input *runnerBaseInput) Path() string {
+	return input.path
 }
 
 func (input *runnerBaseInput) Verify() error {
@@ -97,7 +102,7 @@ func (input *runnerBaseInput) Verify() error {
 		size += stat.Size()
 	}
 
-	settingsFd, err := os.Open(path.Join(input.Path(), "settings.json"))
+	settingsFd, err := os.Open(path.Join(input.path, "settings.json"))
 	if err != nil {
 		return err
 	}
@@ -111,16 +116,16 @@ func (input *runnerBaseInput) Verify() error {
 	return nil
 }
 
-func (input *runnerBaseInput) DeleteArchive() error {
-	os.RemoveAll(fmt.Sprintf("%s.tmp", input.Path()))
-	os.Remove(fmt.Sprintf("%s.sha1", input.Path()))
-	return os.RemoveAll(input.Path())
+func (input *runnerBaseInput) Delete() error {
+	os.RemoveAll(fmt.Sprintf("%s.tmp", input.path))
+	os.Remove(fmt.Sprintf("%s.sha1", input.path))
+	return os.RemoveAll(input.path)
 }
 
 func (input *runnerBaseInput) getStoredHashes() (map[string]string, error) {
 	result := make(map[string]string)
-	dir := filepath.Dir(input.Path())
-	hashPath := fmt.Sprintf("%s.sha1", input.Path())
+	dir := filepath.Dir(input.path)
+	hashPath := fmt.Sprintf("%s.sha1", input.path)
 	hashFd, err := os.Open(hashPath)
 	if err != nil {
 		return result, err
@@ -137,7 +142,7 @@ func (input *runnerBaseInput) getStoredHashes() (map[string]string, error) {
 		}
 		expectedHash := res[1]
 		filePath := filepath.Join(dir, res[2])
-		if !strings.HasPrefix(filePath, input.Path()) {
+		if !strings.HasPrefix(filePath, input.path) {
 			return result, errors.New(fmt.Sprintf("path is outside expected directory: '%s",
 				filePath))
 		}
@@ -156,8 +161,8 @@ type RunnerInput struct {
 	client     *http.Client
 }
 
-func (input *RunnerInput) CreateArchive() error {
-	tmpPath := fmt.Sprintf("%s.tmp", input.Path())
+func (input *RunnerInput) Persist() error {
+	tmpPath := fmt.Sprintf("%s.tmp", input.path)
 	if err := os.MkdirAll(tmpPath, 0755); err != nil {
 		return err
 	}
@@ -179,7 +184,7 @@ func (input *RunnerInput) CreateArchive() error {
 
 	archive := tar.NewReader(gz)
 
-	sha1sumFile, err := os.Create(fmt.Sprintf("%s.sha1", input.Path()))
+	sha1sumFile, err := os.Create(fmt.Sprintf("%s.sha1", input.path))
 	if err != nil {
 		return err
 	}
@@ -236,11 +241,11 @@ func (input *RunnerInput) CreateArchive() error {
 		))
 	}
 
-	if err := os.Rename(tmpPath, input.Path()); err != nil {
+	if err := os.Rename(tmpPath, input.path); err != nil {
 		return err
 	}
 
-	settingsFd, err := os.Open(path.Join(input.Path(), "settings.json"))
+	settingsFd, err := os.Open(path.Join(input.path, "settings.json"))
 	if err != nil {
 		return err
 	}
@@ -273,8 +278,8 @@ func (factory *RunnerCachedInputFactory) NewInput(
 		BaseInput: *common.NewBaseInput(
 			hash,
 			mgr,
-			path.Join(factory.cachePath, hash),
 		),
+		path: path.Join(factory.cachePath, hash),
 	}
 }
 

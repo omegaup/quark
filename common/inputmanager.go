@@ -9,6 +9,7 @@ import (
 	"hash"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"sync"
 )
@@ -37,9 +38,19 @@ type Input interface {
 	Lockable
 	RefCounted
 
+	// Path returns the path to the uncompressed representation of the Input
+	// on-disk.
 	Path() string
+
+	// Hash is the identifier of the Input. It is typically the Git hash of the
+	// tree that it represents.
 	Hash() string
+
+	// Commited returns true if the input has been verified and is committed into
+	// its InputManager.
 	Committed() bool
+
+	// Size returns the number of bytes of the Input's on-disk representation.
 	Size() int64
 
 	// Verify ensures that the version of the Input stored in the filesystem
@@ -48,16 +59,21 @@ type Input interface {
 	// Verify() returns successfully.
 	Verify() error
 
-	// CreateArchive stores the Input into the filesystem in a form that is
+	// Persist stores the Input into the filesystem in a form that is
 	// easily consumed and can be verified for consistency after restarting.
-	CreateArchive() error
+	Persist() error
 
-	// DeleteArchive removes the filesystem version of the Input to free space.
-	DeleteArchive() error
+	// Delete removes the filesystem version of the Input to free space.
+	Delete() error
 
 	// Settings returns the problem's settings for the Input. Problems can have
 	// different ProblemSettings on different Inputs.
 	Settings() *ProblemSettings
+
+	// Transmit sends a serialized version of the Input over HTTP. It should be a
+	// .tar.gz file with the Content-SHA1 header set to the hexadecimal
+	// representation of the SHA-1 hash of the file.
+	Transmit(http.ResponseWriter) error
 }
 
 // BaseInput is an abstract struct that provides most of the functions required
@@ -67,18 +83,20 @@ type BaseInput struct {
 	committed bool
 	refcount  int
 	size      int64
-	path      string
 	hash      string
 	mgr       *InputManager
 	settings  ProblemSettings
 }
 
-func NewBaseInput(hash string, mgr *InputManager, path string) *BaseInput {
+func NewBaseInput(hash string, mgr *InputManager) *BaseInput {
 	return &BaseInput{
 		hash: hash,
 		mgr:  mgr,
-		path: path,
 	}
+}
+
+func (input *BaseInput) Path() string {
+	return "/dev/null"
 }
 
 func (input *BaseInput) Committed() bool {
@@ -87,10 +105,6 @@ func (input *BaseInput) Committed() bool {
 
 func (input *BaseInput) Size() int64 {
 	return input.size
-}
-
-func (input *BaseInput) Path() string {
-	return input.path
 }
 
 func (input *BaseInput) Hash() string {
@@ -106,11 +120,11 @@ func (input *BaseInput) Verify() error {
 	return errors.New("Unimplemented")
 }
 
-func (input *BaseInput) CreateArchive() error {
+func (input *BaseInput) Persist() error {
 	return errors.New("Unimplemented")
 }
 
-func (input *BaseInput) DeleteArchive() error {
+func (input *BaseInput) Delete() error {
 	return nil
 }
 
@@ -132,6 +146,10 @@ func (input *BaseInput) Release() {
 		// input manager where it can be deleted if we need more space.
 		input.mgr.Insert(input)
 	}
+}
+
+func (input *BaseInput) Transmit(w http.ResponseWriter) error {
+	return errors.New("Unimplemented")
 }
 
 // InputManager handles a pool of recently-used input sets. The pool has a
@@ -203,6 +221,9 @@ func (mgr *InputManager) getEntryLocked(
 	}
 
 	input := factory.NewInput(hash, mgr)
+	if input == nil {
+		panic(errors.New(fmt.Sprintf("input nil for hash %s", hash)))
+	}
 	entry := &inputEntry{
 		input: input,
 	}
@@ -255,9 +276,9 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
 		if err := input.Verify(); err != nil {
 			mgr.ctx.Log.Warn("Hash verification failed. Regenerating",
 				"path", input.Hash(), "err", err)
-			input.DeleteArchive()
+			input.Delete()
 
-			if err := input.CreateArchive(); err != nil {
+			if err := input.Persist(); err != nil {
 				mgr.ctx.Log.Error(
 					"Error creating archive",
 					"hash", input.Hash(),
@@ -297,7 +318,7 @@ func (mgr *InputManager) Insert(input Input) {
 		mgr.evictList.Remove(element)
 
 		delete(mgr.mapping, input.Hash())
-		input.DeleteArchive()
+		input.Delete()
 	}
 }
 

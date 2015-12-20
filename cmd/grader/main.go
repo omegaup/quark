@@ -268,7 +268,7 @@ func main() {
 			return
 		}
 		defer input.Release()
-		if err := input.(*grader.GraderInput).Transmit(w); err != nil {
+		if err := input.Transmit(w); err != nil {
 			ctx.Log.Error("Error transmitting input", "hash", hash, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
