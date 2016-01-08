@@ -24,8 +24,8 @@ import (
 
 var (
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
-	configPath = flag.String("config", "/etc/omegaup/grader/config.json",
-		"Grader configuration file")
+	configPath = flag.String("config", "/etc/omegaup/runner/config.json",
+		"Runner configuration file")
 	globalContext atomic.Value
 	ioLock        sync.Mutex
 	inputManager  *common.InputManager

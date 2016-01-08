@@ -53,6 +53,7 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 			AttemptID: common.NewAttemptID(),
 			MaxScore:  1.0,
 		},
+		ID:    id,
 		tries: ctx.Config.Grader.MaxGradeRetries,
 	}
 	var contestName sql.NullString

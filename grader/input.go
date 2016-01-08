@@ -66,17 +66,10 @@ func (input *graderBaseInput) Delete() error {
 	return os.Remove(input.archivePath)
 }
 
-// GraderInput is an Input stored in a .tar.gz file that can be sent to a
-// runner.
-type GraderInput struct {
-	graderBaseInput
-	repositoryPath string
-}
-
 // Transmit sends a serialized version of the Input to the runner. It sends a
 // .tar.gz file with the Content-SHA1 header with the hexadecimal
 // representation of its SHA-1 hash.
-func (input *GraderInput) Transmit(w http.ResponseWriter) error {
+func (input *graderBaseInput) Transmit(w http.ResponseWriter) error {
 	fd, err := os.Open(input.archivePath)
 	if err != nil {
 		return err
@@ -87,6 +80,13 @@ func (input *GraderInput) Transmit(w http.ResponseWriter) error {
 	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, fd)
 	return err
+}
+
+// GraderInput is an Input generated from a git repository that is then stored
+// in a .tar.gz file that can be sent to a runner.
+type GraderInput struct {
+	graderBaseInput
+	repositoryPath string
 }
 
 func (input *GraderInput) Persist() error {
