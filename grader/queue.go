@@ -117,6 +117,16 @@ func (run *RunContext) Requeue() bool {
 	return true
 }
 
+func (run *RunContext) String() string {
+	return fmt.Sprintf(
+		"RunContext{ID:%d GUID:%s ProblemName:%s, %s}",
+		run.ID,
+		run.GUID,
+		run.ProblemName,
+		run.Run,
+	)
+}
+
 // Queue represents a RunContext queue with three discrete priorities.
 type Queue struct {
 	Name  string
@@ -266,7 +276,7 @@ func (monitor *InflightMonitor) Remove(id uint64) {
 	delete(monitor.mapping, id)
 }
 
-func (monitor *InflightMonitor) String() string {
+func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
 	monitor.Lock()
 	defer monitor.Unlock()
 
@@ -298,11 +308,7 @@ func (monitor *InflightMonitor) String() string {
 		idx += 1
 	}
 
-	buf, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(buf)
+	return json.MarshalIndent(data, "", "  ")
 }
 
 // QueueManager is an expvar-friendly manager for Queues.
@@ -346,7 +352,7 @@ func (manager *QueueManager) Get(name string) (*Queue, error) {
 	return queue, nil
 }
 
-func (manager *QueueManager) String() string {
+func (manager *QueueManager) MarshalJSON() ([]byte, error) {
 	manager.Lock()
 	defer manager.Unlock()
 
@@ -360,9 +366,5 @@ func (manager *QueueManager) String() string {
 		}
 	}
 
-	buf, err := json.MarshalIndent(queues, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(buf)
+	return json.MarshalIndent(queues, "", "  ")
 }

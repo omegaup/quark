@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"math/rand"
 	"sync/atomic"
 	"time"
@@ -35,4 +36,13 @@ func NewAttemptID() uint64 {
 func (run *Run) UpdateAttemptID() uint64 {
 	run.AttemptID = NewAttemptID()
 	return run.AttemptID
+}
+
+func (run *Run) String() string {
+	return fmt.Sprintf(
+		"Run{AttemptID:%d Language:%s InputHash:%s}",
+		run.AttemptID,
+		run.Language,
+		run.InputHash,
+	)
 }

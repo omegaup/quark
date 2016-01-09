@@ -363,7 +363,7 @@ func (mgr *InputManager) PreloadInputs(
 	return nil
 }
 
-func (mgr *InputManager) String() string {
+func (mgr *InputManager) MarshalJSON() ([]byte, error) {
 	mgr.Lock()
 	defer mgr.Unlock()
 
@@ -375,11 +375,7 @@ func (mgr *InputManager) String() string {
 		Count: len(mgr.mapping),
 	}
 
-	buf, err := json.MarshalIndent(status, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(buf)
+	return json.MarshalIndent(status, "", "  ")
 }
 
 // HashReader is a Reader that provides a Sum function. After having completely

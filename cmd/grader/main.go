@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"expvar"
 	"flag"
@@ -106,7 +107,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	expvar.Publish("codemanager_size", expvar.Func(func() interface{} {
+	expvar.Publish("codemanager", expvar.Func(func() interface{} {
 		return context().InputManager
 	}))
 	expvar.Publish("queues", expvar.Func(func() interface{} {
@@ -147,7 +148,11 @@ func main() {
 		run, err := runs.AddRun(ctx, id, ctx.InputManager)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
-			w.WriteHeader(http.StatusInternalServerError)
+			if err == sql.ErrNoRows {
+				w.WriteHeader(http.StatusNotFound)
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
@@ -180,7 +185,7 @@ func main() {
 				}
 				close(timeout)
 			}()
-			ctx.Log.Debug("served run", "run", runCtx.Run, "client", runnerName)
+			ctx.Log.Debug("served run", "run", runCtx, "client", runnerName)
 			w.Header().Set("Content-Type", "text/json; charset=utf-8")
 			encoder := json.NewEncoder(w)
 			encoder.Encode(runCtx.Run)
@@ -207,7 +212,7 @@ func main() {
 		gradeDir := path.Join(
 			ctx.Config.Grader.RuntimePath,
 			"grade",
-			fmt.Sprintf("%02d", runCtx.ID%10),
+			fmt.Sprintf("%02d", runCtx.ID%100),
 			fmt.Sprintf("%d", runCtx.ID),
 		)
 		if err := os.MkdirAll(gradeDir, 0755); err != nil {
