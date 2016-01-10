@@ -288,7 +288,7 @@ func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
 		AttemptsLeft int
 		Runner       string
 		Time         int64
-		Elapsed      string
+		Elapsed      int64
 	}
 
 	data := make([]*runData, len(monitor.mapping))
@@ -303,7 +303,7 @@ func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
 			AttemptsLeft: inflight.run.tries,
 			Runner:       inflight.runner,
 			Time:         inflight.creationTime,
-			Elapsed:      now.Sub(time.Unix(inflight.creationTime, 0)).String(),
+			Elapsed:      now.Sub(time.Unix(inflight.creationTime, 0)).Nanoseconds(),
 		}
 		idx += 1
 	}

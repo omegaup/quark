@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"sync"
 )
 
@@ -334,11 +335,11 @@ func (mgr *InputManager) Size() int64 {
 // not be doing expensive I/O operations in the middle of a
 // performance-sensitive operation (like running contestants' code).
 func (mgr *InputManager) PreloadInputs(
-	path string,
+	dirname string,
 	factory CachedInputFactory,
 	ioLock *sync.Mutex,
 ) error {
-	contents, err := ioutil.ReadDir(path)
+	contents, err := ioutil.ReadDir(dirname)
 	if err != nil {
 		return err
 	}
@@ -352,6 +353,7 @@ func (mgr *InputManager) PreloadInputs(
 		ioLock.Lock()
 		input, err := mgr.Add(hash, factory)
 		if err != nil {
+			os.RemoveAll(path.Join(dirname, info.Name()))
 			mgr.ctx.Log.Error("Cached input corrupted", "hash", hash)
 		} else {
 			input.Release()
@@ -409,10 +411,10 @@ func (r *HashReader) Sum(b []byte) []byte {
 }
 
 // Sha1sum is an utility function that obtains the SHA1 hash of a file (as
-// referenced to by the path parameter).
-func Sha1sum(path string) ([]byte, error) {
+// referenced to by the filename parameter).
+func Sha1sum(filename string) ([]byte, error) {
 	hash := sha1.New()
-	fd, err := os.Open(path)
+	fd, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}

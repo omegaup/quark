@@ -242,7 +242,7 @@ func main() {
 					ctx.Log.Error("Unable to write results file", "err", err)
 					return
 				}
-				ctx.Log.Info("Results ready for run", "ctx", runCtx)
+				ctx.Log.Info("Results ready for run", "ctx", runCtx, "verdict", result.Verdict)
 			}
 		} else {
 			filesPath := path.Join(gradeDir, "files.zip")
