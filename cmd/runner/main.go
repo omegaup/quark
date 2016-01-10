@@ -193,7 +193,7 @@ func processRun(
 	if err != nil {
 		return err
 	}
-	defer input.Release()
+	defer input.Release(input)
 	result, err := runner.Grade(ctx, client, baseURL, &run, input, &minijail)
 	if err != nil {
 		ctx.Log.Error("Error while grading", "err", err)

@@ -27,7 +27,12 @@ type Lockable interface {
 // release all resources.
 type RefCounted interface {
 	Acquire()
-	Release()
+
+	// Unfortunately, Go always invokes the methods of an embedded type with the
+	// embedded type as the receiver (rather than the outer type), effectively
+	// upcasting the pointer and losing the actual type. In order to avoid that,
+	// we need to pass the Input again as a parameter.
+	Release(Input)
 }
 
 // Input represents a problem's input set.
@@ -137,7 +142,7 @@ func (input *BaseInput) Acquire() {
 	input.refcount++
 }
 
-func (input *BaseInput) Release() {
+func (input *BaseInput) Release(outerInput Input) {
 	input.Lock()
 	defer input.Unlock()
 
@@ -145,7 +150,7 @@ func (input *BaseInput) Release() {
 	if input.refcount == 0 {
 		// There are no outstanding references to this input. Return it to the
 		// input manager where it can be deleted if we need more space.
-		input.mgr.Insert(input)
+		input.mgr.Insert(outerInput)
 	}
 }
 
@@ -311,15 +316,19 @@ func (mgr *InputManager) Insert(input Input) {
 
 	// Evict elements as necessary to get below the allowed limit.
 	for mgr.evictList.Len() > 0 && mgr.totalSize > mgr.sizeLimit {
-		mgr.ctx.Log.Info("Evicting an input", "input", input, "size", input.Size())
 		element := mgr.evictList.Back()
-		input := element.Value.(Input)
+		evictedInput := element.Value.(Input)
 
-		mgr.totalSize -= input.Size()
+		mgr.totalSize -= evictedInput.Size()
 		mgr.evictList.Remove(element)
 
-		delete(mgr.mapping, input.Hash())
-		input.Delete()
+		delete(mgr.mapping, evictedInput.Hash())
+		mgr.ctx.Log.Info(
+			"Evicting an input",
+			"input", evictedInput,
+			"size", evictedInput.Size(),
+			"err", evictedInput.Delete(),
+		)
 	}
 }
 
@@ -356,7 +365,7 @@ func (mgr *InputManager) PreloadInputs(
 			os.RemoveAll(path.Join(dirname, info.Name()))
 			mgr.ctx.Log.Error("Cached input corrupted", "hash", hash)
 		} else {
-			input.Release()
+			input.Release(input)
 		}
 		ioLock.Unlock()
 	}

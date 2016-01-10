@@ -12,9 +12,9 @@ func TestMonitorSerializability(t *testing.T) {
 	}
 	defer ctx.Close()
 	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
-	ctx.InputManager.String()
-	ctx.InflightMonitor.String()
-	ctx.QueueManager.String()
+	ctx.InputManager.MarshalJSON()
+	ctx.InflightMonitor.MarshalJSON()
+	ctx.QueueManager.MarshalJSON()
 }
 
 func TestQueue(t *testing.T) {

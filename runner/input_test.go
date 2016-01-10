@@ -154,7 +154,7 @@ func TestPreloadInputs(t *testing.T) {
 	for _, het := range hashentries {
 		input, err := inputManager.Get(het.hash)
 		if input != nil {
-			defer input.Release()
+			defer input.Release(input)
 		}
 		if het.valid {
 			if err != nil {
@@ -251,7 +251,7 @@ func TestInputFactory(t *testing.T) {
 	for _, het := range hashentries {
 		input, err := inputManager.Add(het.hash, factory)
 		if input != nil {
-			defer input.Release()
+			defer input.Release(input)
 		}
 		if het.valid {
 			if err != nil {

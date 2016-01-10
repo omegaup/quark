@@ -92,7 +92,7 @@ func TestPreloadInputs(t *testing.T) {
 	for _, het := range hashentries {
 		input, err := ctx.InputManager.Get(het.hash)
 		if input != nil {
-			defer input.Release()
+			defer input.Release(input)
 		}
 		if het.valid {
 			if err != nil {
@@ -121,7 +121,7 @@ func TestTransmitInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get the input: %q", err)
 	}
-	defer input.Release()
+	defer input.Release(input)
 	if err := input.Verify(); err != nil {
 		t.Fatalf("Failed to verify the input: %q", err)
 	}

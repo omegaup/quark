@@ -189,7 +189,7 @@ func main() {
 			w.Header().Set("Content-Type", "text/json; charset=utf-8")
 			encoder := json.NewEncoder(w)
 			encoder.Encode(runCtx.Run)
-			runCtx.Input.Release()
+			runCtx.Input.Release(runCtx.Input)
 		}
 	})
 
@@ -274,7 +274,7 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		defer input.Release()
+		defer input.Release(input)
 		if err := input.Transmit(w); err != nil {
 			ctx.Log.Error("Error transmitting input", "hash", hash, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)

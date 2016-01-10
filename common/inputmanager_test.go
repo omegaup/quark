@@ -90,7 +90,7 @@ func (factory *testCachedInputFactory) GetInputHash(
 
 func TestInputManagerSerializability(t *testing.T) {
 	inputManager := newTestInputManager(1024)
-	inputManager.String()
+	inputManager.MarshalJSON()
 }
 
 func TestInputManager(t *testing.T) {
@@ -114,7 +114,7 @@ func TestInputManager(t *testing.T) {
 	if inputManager.Size() != 0 {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 0)
 	}
-	input.Release()
+	input.Release(input)
 	if inputManager.Size() != 1024 {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 1024)
 	}
@@ -122,7 +122,7 @@ func TestInputManager(t *testing.T) {
 	if err != nil {
 		t.Errorf("InputManager.Get(\"0\") == %q, want nil", err)
 	}
-	input.Release()
+	input.Release(input)
 
 	// Add a new input (hash = 1)
 	if _, err := inputManager.Get("1"); err == nil {
@@ -132,7 +132,7 @@ func TestInputManager(t *testing.T) {
 	if err != nil {
 		t.Errorf("InputManager.Add(\"1\") failed with %q", err)
 	}
-	input.Release()
+	input.Release(input)
 
 	// This should evict the old input and make it not accessible anymore.
 	if inputManager.Size() != 1024 {
