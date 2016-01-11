@@ -34,6 +34,7 @@ type RunResult struct {
 	CompileError *string                `json:"compile_error,omitempty"`
 	CompileMeta  map[string]RunMetadata `json:"compile_meta"`
 	Score        float64                `json:"score"`
+	MaxScore     float64                `json:"max_score"`
 	Time         float64                `json:"time"`
 	WallTime     float64                `json:"wall_time"`
 	Memory       int                    `json:"memory"`
@@ -148,7 +149,7 @@ func Grade(
 	}
 
 	groupResults := make([]GroupResult, len(input.Settings().Cases))
-	maxScore := run.MaxScore
+	runResult.MaxScore = run.MaxScore
 	runResult.Verdict = "OK"
 	wallTimeLimit := (float64)(input.Settings().Limits.OverallWallTimeLimit / 1000.0)
 	for i, group := range input.Settings().Cases {
@@ -193,7 +194,7 @@ func Grade(
 
 			caseResults[j] = CaseResult{
 				Name:     caseData.Name,
-				MaxScore: maxScore * caseData.Weight,
+				MaxScore: runResult.MaxScore * caseData.Weight,
 				Verdict:  runMeta.Verdict,
 				Meta: map[string]RunMetadata{
 					"Main": *runMeta,
@@ -202,7 +203,7 @@ func Grade(
 		}
 		groupResults[i] = GroupResult{
 			Group:    group.Name,
-			MaxScore: maxScore * group.Weight,
+			MaxScore: runResult.MaxScore * group.Weight,
 			Score:    0,
 			Cases:    caseResults,
 		}
@@ -289,7 +290,7 @@ func Grade(
 				if err != nil {
 					ctx.Log.Debug("error comparing values", "err", err)
 				}
-				caseResults.Score = maxScore * runScore * caseData.Weight
+				caseResults.Score = runResult.MaxScore * runScore * caseData.Weight
 				score += runScore * caseData.Weight
 				if runScore == 0 {
 					correct = false
@@ -300,7 +301,7 @@ func Grade(
 			}
 		}
 		if correct {
-			groupResults[i].Score = maxScore * score
+			groupResults[i].Score = runResult.MaxScore * score
 			runResult.Score += groupResults[i].Score
 		}
 	}
@@ -311,6 +312,7 @@ func Grade(
 		runResult.Verdict = "WA"
 	} else if runResult.Verdict == "OK" {
 		runResult.Verdict = "AC"
+		runResult.Score = 1
 	}
 
 	ctx.Log.Debug("Finished running", "results", runResult)
