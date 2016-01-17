@@ -130,6 +130,7 @@ func newRunnerContext() (*common.Context, error) {
 		fmt.Sprintf(
 			"{"+
 				loggingConfig+", "+
+				"\"Tracing\": {\"Enabled\": false}, "+
 				"\"InputManager\": {\"CacheSize\": 1024}, "+
 				"\"Runner\": {\"RuntimePath\": %q},"+
 				"\"Grader\": {\"RuntimePath\": %q}"+

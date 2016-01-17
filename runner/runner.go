@@ -55,7 +55,8 @@ func Grade(
 	sandbox Sandbox,
 ) (*RunResult, error) {
 	runResult := &RunResult{
-		Verdict: "JE",
+		Verdict:  "JE",
+		MaxScore: run.MaxScore,
 	}
 	if !sandbox.Supported() {
 		return runResult, errors.New("Sandbox not supported")
@@ -105,11 +106,16 @@ func Grade(
 
 	runResult.CompileMeta = make(map[string]RunMetadata)
 
+	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventBegin))
 	for _, b := range binaries {
 		binRoot := path.Join(runRoot, b.name)
 		binPath := path.Join(binRoot, "bin")
 		sourceFile := path.Join(binPath, fmt.Sprintf("%s.%s", b.name, b.language))
 
+		singleCompileEvent := ctx.EventFactory.NewCompleteEvent(
+			b.name,
+			common.Arg{"language", b.language},
+		)
 		compileMeta, err := sandbox.Compile(
 			ctx,
 			b.language,
@@ -121,6 +127,7 @@ func Grade(
 			b.name,
 			[]string{},
 		)
+		ctx.EventCollector.Add(singleCompileEvent)
 		generatedFiles = append(
 			generatedFiles,
 			path.Join(b.name, "compile.out"),
@@ -144,14 +151,16 @@ func Grade(
 			}
 			compileError := getCompileError(path.Join(binRoot, compileErrorFile))
 			runResult.CompileError = &compileError
+			ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventEnd))
 			return runResult, err
 		}
 	}
+	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventEnd))
 
 	groupResults := make([]GroupResult, len(input.Settings().Cases))
-	runResult.MaxScore = run.MaxScore
 	runResult.Verdict = "OK"
 	wallTimeLimit := (float64)(input.Settings().Limits.OverallWallTimeLimit / 1000.0)
+	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("run", common.EventBegin))
 	for i, group := range input.Settings().Cases {
 		caseResults := make([]CaseResult, len(group.Cases))
 		for j, caseData := range group.Cases {
@@ -161,6 +170,7 @@ func Grade(
 					Verdict: "TLE",
 				}
 			} else {
+				singleRunEvent := ctx.EventFactory.NewCompleteEvent(caseData.Name)
 				runMeta, err = sandbox.Run(
 					ctx,
 					input,
@@ -177,6 +187,7 @@ func Grade(
 					[]string{},
 					map[string]string{},
 				)
+				ctx.EventCollector.Add(singleRunEvent)
 				if err != nil {
 					ctx.Log.Error("failed to run "+caseData.Name, "err", err)
 				}
@@ -208,8 +219,10 @@ func Grade(
 			Cases:    caseResults,
 		}
 	}
+	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("run", common.EventEnd))
 
 	// Validate outputs.
+	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventBegin))
 	for i, group := range input.Settings().Cases {
 		correct := true
 		score := 0.0
@@ -305,6 +318,7 @@ func Grade(
 			runResult.Score += groupResults[i].Score
 		}
 	}
+	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventEnd))
 
 	runResult.Groups = groupResults
 
@@ -312,7 +326,7 @@ func Grade(
 		runResult.Verdict = "WA"
 	} else if runResult.Verdict == "OK" {
 		runResult.Verdict = "AC"
-		runResult.Score = 1
+		runResult.Score = runResult.MaxScore
 	}
 
 	ctx.Log.Debug("Finished running", "results", runResult)
@@ -320,6 +334,8 @@ func Grade(
 	if err != nil {
 		return runResult, err
 	}
+	uploadEvent := ctx.EventFactory.NewCompleteEvent("upload")
+	defer ctx.EventCollector.Add(uploadEvent)
 	if err := uploadFiles(
 		ctx,
 		client,

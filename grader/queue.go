@@ -15,14 +15,15 @@ import (
 // RunContext is a wrapper around a Run. This is used when a Run is sitting on
 // a Queue on the grader.
 type RunContext struct {
-	ID          int64
-	GUID        string
-	Contest     *string
-	ProblemName string
-	Run         *common.Run
-	Input       common.Input
-	tries       int
-	queue       *Queue
+	ID           int64
+	GUID         string
+	Contest      *string
+	ProblemName  string
+	Run          *common.Run
+	Input        common.Input
+	creationTime int64
+	tries        int
+	queue        *Queue
 }
 
 // newRunContext creates a RunContext from its database id.
@@ -53,8 +54,9 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 			AttemptID: common.NewAttemptID(),
 			MaxScore:  1.0,
 		},
-		ID:    id,
-		tries: ctx.Config.Grader.MaxGradeRetries,
+		ID:           id,
+		creationTime: time.Now().Unix(),
+		tries:        ctx.Config.Grader.MaxGradeRetries,
 	}
 	var contestName sql.NullString
 	var contestPoints sql.NullFloat64

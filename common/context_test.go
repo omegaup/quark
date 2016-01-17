@@ -8,7 +8,7 @@ import (
 
 func TestDebugContext(t *testing.T) {
 	ctx, err := NewContext(bytes.NewBufferString(
-		"{\"Logging\": {\"File\": \"stderr\"}}",
+		"{\"Logging\": {\"File\": \"stderr\"}, \"Tracing\": {\"Enabled\": false}}",
 	))
 	if err != nil {
 		panic(err)
@@ -31,7 +31,7 @@ func TestDebugContext(t *testing.T) {
 
 func TestConfigSerializability(t *testing.T) {
 	ctx, err := NewContext(bytes.NewBufferString(
-		"{\"Logging\": {\"File\": \"stderr\"}}",
+		"{\"Logging\": {\"File\": \"stderr\"}, \"Tracing\": {\"Enabled\": false}}",
 	))
 	if err != nil {
 		panic(err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/inconshreveable/log15"
 	"io"
+	"os"
 )
 
 // Configuration
@@ -38,6 +39,11 @@ type DbConfig struct {
 	DataSourceName string
 }
 
+type TracingConfig struct {
+	Enabled bool
+	File    string
+}
+
 type LoggingConfig struct {
 	File  string
 	Level string
@@ -48,6 +54,7 @@ type Config struct {
 	Grader       GraderConfig
 	Db           DbConfig
 	Logging      LoggingConfig
+	Tracing      TracingConfig
 	Runner       RunnerConfig
 	TLS          TLSConfig
 }
@@ -82,6 +89,10 @@ var defaultConfig = Config{
 		CertFile: "/etc/omegaup/grader/certificate.pem",
 		KeyFile:  "/etc/omegaup/grader/key.pem",
 	},
+	Tracing: TracingConfig{
+		Enabled: true,
+		File:    "/var/log/omegaup/tracing.json",
+	},
 }
 
 func (config *Config) String() string {
@@ -94,10 +105,13 @@ func (config *Config) String() string {
 
 // Context
 type Context struct {
-	Config  Config
-	Log     log15.Logger
-	Buffer  *bytes.Buffer
-	handler log15.Handler
+	Config         Config
+	Log            log15.Logger
+	Buffer         *bytes.Buffer
+	EventCollector EventCollector
+	EventFactory   *EventFactory
+	handler        log15.Handler
+	tracingFd      *os.File
 }
 
 // NewContext creates a new Context from the specified reader. This also
@@ -136,11 +150,56 @@ func NewContext(reader io.Reader) (*Context, error) {
 	context.handler = log15.LvlFilterHandler(level, context.handler)
 	context.Log.SetHandler(context.handler)
 
+	// Tracing
+	if context.Config.Tracing.Enabled {
+		s, err := os.Stat(context.Config.Tracing.File)
+		if os.IsNotExist(err) || s.Size() == 0 {
+			context.tracingFd, err = os.Create(context.Config.Tracing.File)
+			if err != nil {
+				return nil, err
+			}
+			context.EventCollector, err = NewWriterEventCollector(
+				context.tracingFd,
+				false,
+			)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			context.tracingFd, err = os.OpenFile(
+				context.Config.Tracing.File,
+				os.O_WRONLY|os.O_APPEND,
+				0664,
+			)
+			if err != nil {
+				return nil, err
+			}
+			context.EventCollector, err = NewWriterEventCollector(
+				context.tracingFd,
+				true,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		context.EventCollector = &NullEventCollector{}
+	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "main"
+	}
+	context.EventFactory = NewEventFactory(hostname, "main")
+	context.EventFactory.Register(context.EventCollector)
+
 	return &context, nil
 }
 
 // Close releases all resources owned by the context.
 func (context *Context) Close() {
+	if context.tracingFd != nil {
+		context.tracingFd.Close()
+	}
 }
 
 // DebugContext returns a new Context with an additional handler with a more

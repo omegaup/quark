@@ -19,6 +19,7 @@ func newTestInputManager(sizeLimit int64) *InputManager {
 		fmt.Sprintf(
 			"{"+
 				"\"Logging\": {\"File\": \"stderr\"}, "+
+				"\"Tracing\": {\"Enabled\": false}, "+
 				"\"InputManager\": {\"CacheSize\": %d}"+
 				"}",
 			sizeLimit,

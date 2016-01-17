@@ -187,8 +187,11 @@ func main() {
 			}()
 			ctx.Log.Debug("served run", "run", runCtx, "client", runnerName)
 			w.Header().Set("Content-Type", "text/json; charset=utf-8")
+			ev := ctx.EventFactory.NewIssuerClockSyncEvent()
+			w.Header().Set("Sync-ID", strconv.FormatUint(ev.SyncID, 10))
 			encoder := json.NewEncoder(w)
 			encoder.Encode(runCtx.Run)
+			ctx.EventCollector.Add(ev)
 			runCtx.Input.Release(runCtx.Input)
 		}
 	})

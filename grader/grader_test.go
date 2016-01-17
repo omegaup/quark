@@ -20,6 +20,7 @@ func newGraderContext() (*Context, error) {
 		fmt.Sprintf(
 			"{"+
 				"\"Logging\": {\"File\": \"stderr\"}, "+
+				"\"Tracing\": {\"Enabled\": false}, "+
 				"\"InputManager\": {\"CacheSize\": 1024}, "+
 				"\"Grader\": {\"RuntimePath\": %q}, "+
 				"\"DB\": {\"Driver\": \"sqlite3\", \"DataSourceName\": \":memory:\"}"+

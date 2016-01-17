@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -158,11 +159,30 @@ func processRun(
 		return err
 	}
 	defer resp.Body.Close()
+	syncID, err := strconv.ParseUint(resp.Header.Get("Sync-ID"), 10, 64)
+	if err != nil {
+		return err
+	}
+	ctx.EventCollector.Add(ctx.EventFactory.NewReceiverClockSyncEvent(syncID))
+
 	decoder := json.NewDecoder(resp.Body)
 	var run common.Run
 	if err := decoder.Decode(&run); err != nil {
 		return err
 	}
+	ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
+		"grade",
+		common.EventBegin,
+		common.Arg{"id", run.AttemptID},
+		common.Arg{"input", run.InputHash},
+		common.Arg{"language", run.Language},
+	))
+	defer func() {
+		ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
+			"grade",
+			common.EventEnd,
+		))
+	}()
 
 	uploadURL, err := baseURL.Parse(fmt.Sprintf("run/%d/results/", run.AttemptID))
 	if err != nil {
@@ -186,10 +206,12 @@ func processRun(
 	ioLock.Lock()
 	defer ioLock.Unlock()
 
+	inputEvent := ctx.EventFactory.NewCompleteEvent("input")
 	input, err := inputManager.Add(
 		run.InputHash,
 		runner.NewRunnerInputFactory(client, &ctx.Config),
 	)
+	ctx.EventCollector.Add(inputEvent)
 	if err != nil {
 		return err
 	}
