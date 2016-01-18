@@ -16,6 +16,7 @@ import (
 	"strings"
 )
 
+// TODO(lhchavez): Document and test.
 type LiteralCaseSettings struct {
 	Input          string   `json:"in"`
 	ExpectedOutput string   `json:"out"`

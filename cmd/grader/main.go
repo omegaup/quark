@@ -198,6 +198,9 @@ func main() {
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
 	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
+		// TODO(lhchavez): Cause an error to requeue the run.
+		// TODO(lhchavez): Cause a timeout to close the request.
+		// TODO(lhchavez): Merge the runner's tracing data with the grader's.
 		ctx := context()
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)

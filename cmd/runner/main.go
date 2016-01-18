@@ -316,12 +316,14 @@ func gradeAndUploadResults(
 
 	// Send logs.
 	_, err = multipartWriter.CreateFormFile("file", "logs.txt")
+	// TODO(lhchavez): Send logs.
 	if err != nil {
 		return err
 	}
 
 	// Send tracing data.
 	_, err = multipartWriter.CreateFormFile("file", "tracing.json")
+	// TODO(lhchavez): Send tracing.
 	if err != nil {
 		return err
 	}

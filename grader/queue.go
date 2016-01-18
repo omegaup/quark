@@ -108,6 +108,8 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 // has any retries left. It always adds the RunContext to the highest-priority
 // queue.
 func (run *RunContext) Requeue() bool {
+	// TODO(lhchavez): Cause Requeue to close the connection to the runner
+	// serving it.
 	run.tries -= 1
 	if run.tries <= 0 {
 		return false
