@@ -196,7 +196,7 @@ func main() {
 		}
 	})
 
-	runRe := regexp.MustCompile("/run/([0-9]+)/(results|files)/?")
+	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
 	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := context()
 		defer r.Body.Close()
@@ -211,7 +211,6 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		uploadType := res[2]
 		gradeDir := path.Join(
 			ctx.Config.Grader.RuntimePath,
 			"grade",
@@ -220,45 +219,73 @@ func main() {
 		)
 		if err := os.MkdirAll(gradeDir, 0755); err != nil {
 			ctx.Log.Error("Unable to create grade dir", "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if uploadType == "results" {
-			defer ctx.InflightMonitor.Remove(runID)
-			var result runner.RunResult
-			decoder := json.NewDecoder(r.Body)
-			if err := decoder.Decode(&result); err != nil {
-				ctx.Log.Error("Error obtaining result", "err", err)
-			} else {
-				resultsPath := path.Join(gradeDir, "details.json")
-				fd, err := os.Create(resultsPath)
-				if err != nil {
-					ctx.Log.Error("Unable to create results file", "err", err)
-					return
-				}
-				defer fd.Close()
-				prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
-				if err != nil {
-					ctx.Log.Error("Unable to marshal results file", "err", err)
-					return
-				}
-				if _, err := fd.Write(prettyPrinted); err != nil {
-					ctx.Log.Error("Unable to write results file", "err", err)
-					return
-				}
-				ctx.Log.Info("Results ready for run", "ctx", runCtx, "verdict", result.Verdict)
-			}
-		} else {
-			filesPath := path.Join(gradeDir, "files.zip")
-			fd, err := os.Create(filesPath)
-			if err != nil {
-				ctx.Log.Error("Unable to create results file", "err", err)
+
+		multipartReader, err := r.MultipartReader()
+		if err != nil {
+			ctx.Log.Error("Error decoding multipart data", "err", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		for {
+			part, err := multipartReader.NextPart()
+			if err == io.EOF {
+				ctx.Log.Debug("Done with run", "id", runID)
+				break
+			} else if err != nil {
+				ctx.Log.Error("Error receiving next file", "err", err)
+				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			if _, err := io.Copy(fd, r.Body); err != nil {
-				ctx.Log.Error("Unable to upload results", "err", err)
+			ctx.Log.Debug("Processing file", "id", runID, "filename", part.FileName())
+
+			if part.FileName() == "details.json" {
+				defer ctx.InflightMonitor.Remove(runID)
+				var result runner.RunResult
+				decoder := json.NewDecoder(part)
+				if err := decoder.Decode(&result); err != nil {
+					ctx.Log.Error("Error obtaining result", "err", err)
+					w.WriteHeader(http.StatusBadRequest)
+				} else {
+					resultsPath := path.Join(gradeDir, "details.json")
+					fd, err := os.Create(resultsPath)
+					if err != nil {
+						ctx.Log.Error("Unable to create results file", "err", err)
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					defer fd.Close()
+					prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
+					if err != nil {
+						ctx.Log.Error("Unable to marshal results file", "err", err)
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					if _, err := fd.Write(prettyPrinted); err != nil {
+						ctx.Log.Error("Unable to write results file", "err", err)
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					ctx.Log.Info("Results ready for run", "ctx", runCtx, "verdict", result.Verdict)
+				}
+			} else {
+				filePath := path.Join(gradeDir, part.FileName())
+				fd, err := os.Create(filePath)
+				if err != nil {
+					ctx.Log.Error("Unable to create results file", "err", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				if _, err := io.Copy(fd, part); err != nil {
+					ctx.Log.Error("Unable to upload results", "err", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
 			}
-			ctx.Log.Info("Files ready for run", "ctx", runCtx)
 		}
+		ctx.Log.Info("Finished processing run", "ctx", runCtx)
 	})
 
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")

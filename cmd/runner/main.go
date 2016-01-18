@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -13,6 +12,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -116,33 +116,81 @@ func main() {
 	}
 }
 
-// A reader that blocks until the data is available.
-// This is used so that the HTTP connection can be established quickly and then
-// block until the results are in. This sends a single byte upon connection
-// establishment and relies on the fact that all the data it sends is
-// JSON-encoded, so it always sends a '{'.
-type blockingReader struct {
-	hasRead    bool
-	reader     io.Reader
-	readerChan chan io.Reader
+// ChannelBuffer is a buffer that implementats io.Reader, io.Writer, and
+// io.WriterTo. Write() stores the incoming slices in a []byte channel, which
+// are then consumed when either Read() or WriteTo() are called.
+type ChannelBuffer struct {
+	chunks       chan []byte
+	currentChunk []byte
 }
 
-func (r *blockingReader) Read(p []byte) (int, error) {
-	if r.reader == nil {
-		if !r.hasRead {
-			r.hasRead = true
-			p[0] = '{'
-			return 1, nil
+func NewChannelBuffer() *ChannelBuffer {
+	return &ChannelBuffer{
+		chunks: make(chan []byte, 0),
+	}
+}
+
+func (cb *ChannelBuffer) CloseChannel() {
+	close(cb.chunks)
+}
+
+func (cb *ChannelBuffer) Write(buf []byte) (int, error) {
+	cb.chunks <- buf
+	return len(buf), nil
+}
+
+func (cb *ChannelBuffer) WriteTo(w io.Writer) (int64, error) {
+	totalWritten := int64(0)
+	for {
+		if cb.currentChunk == nil {
+			c, ok := <-cb.chunks
+			if !ok {
+				return totalWritten, nil
+			}
+			cb.currentChunk = c
 		}
-		r.reader = <-r.readerChan
-		close(r.readerChan)
-		// Make sure the first byte was actually a brace. Otherwise raise an error.
-		brace := make([]byte, 1)
-		if n, err := r.reader.Read(brace); err != nil || n != 1 || brace[0] != '{' {
-			return 0, io.ErrUnexpectedEOF
+
+		written, err := w.Write(cb.currentChunk)
+		totalWritten += int64(written)
+		if err != nil {
+			return totalWritten, err
+		}
+		if written == len(cb.currentChunk) {
+			cb.currentChunk = nil
+		} else if written > 0 {
+			cb.currentChunk = cb.currentChunk[written:]
 		}
 	}
-	return r.reader.Read(p)
+}
+
+func (cb *ChannelBuffer) Close() error {
+	return nil
+}
+
+func (cb *ChannelBuffer) Read(buf []byte) (int, error) {
+	if cb.currentChunk == nil {
+		c, ok := <-cb.chunks
+		if !ok {
+			return 0, io.EOF
+		}
+		cb.currentChunk = c
+	}
+
+	written := 0
+	for i, b := range cb.currentChunk {
+		if i >= len(buf) {
+			cb.currentChunk = cb.currentChunk[i:]
+			if len(cb.currentChunk) == 0 {
+				cb.currentChunk = nil
+			}
+			return written, nil
+		}
+		buf[i] = b
+		written += 1
+	}
+	cb.currentChunk = nil
+
+	return written, nil
 }
 
 func processRun(
@@ -188,19 +236,53 @@ func processRun(
 	if err != nil {
 		return err
 	}
-	requestBody := &blockingReader{
-		readerChan: make(chan io.Reader),
-	}
 	finished := make(chan error)
+
+	if err = gradeAndUploadResults(
+		ctx,
+		client,
+		uploadURL.String(),
+		&run,
+		finished,
+	); err != nil {
+		return err
+	}
+
+	return <-finished
+}
+
+func gradeAndUploadResults(
+	ctx *common.Context,
+	client *http.Client,
+	uploadURL string,
+	run *common.Run,
+	finished chan<- error,
+) error {
+	requestBody := NewChannelBuffer()
+	defer requestBody.CloseChannel()
+	multipartWriter := multipart.NewWriter(requestBody)
+	defer multipartWriter.Close()
 	go func() {
-		response, err := client.Post(uploadURL.String(), "text/json", requestBody)
+		req, err := http.NewRequest("POST", uploadURL, requestBody)
 		if err != nil {
 			finished <- err
-		} else {
-			response.Body.Close()
-			finished <- nil
+			return
 		}
+		req.Header.Add("Content-Type", multipartWriter.FormDataContentType())
+		response, err := client.Do(req)
+		if err != nil {
+			finished <- err
+			return
+		}
+		response.Body.Close()
+		finished <- nil
 	}()
+
+	// Send the header as soon as possible to avoid a timeout.
+	filesWriter, err := multipartWriter.CreateFormFile("file", "files.zip")
+	if err != nil {
+		return err
+	}
 
 	// Make sure no other I/O is being made while we grade this run.
 	ioLock.Lock()
@@ -211,20 +293,38 @@ func processRun(
 		run.InputHash,
 		runner.NewRunnerInputFactory(client, &ctx.Config),
 	)
+	defer input.Release(input)
 	ctx.EventCollector.Add(inputEvent)
 	if err != nil {
 		return err
 	}
-	defer input.Release(input)
-	result, err := runner.Grade(ctx, client, baseURL, &run, input, &minijail)
+
+	result, err := runner.Grade(ctx, filesWriter, run, input, &minijail)
 	if err != nil {
 		ctx.Log.Error("Error while grading", "err", err)
 	}
-	var resultBytes bytes.Buffer
-	encoder := json.NewEncoder(&resultBytes)
+
+	// Send results.
+	resultWriter, err := multipartWriter.CreateFormFile("file", "details.json")
+	if err != nil {
+		return err
+	}
+	encoder := json.NewEncoder(resultWriter)
 	if err := encoder.Encode(result); err != nil {
 		return err
 	}
-	requestBody.readerChan <- &resultBytes
-	return <-finished
+
+	// Send logs.
+	_, err = multipartWriter.CreateFormFile("file", "logs.txt")
+	if err != nil {
+		return err
+	}
+
+	// Send tracing data.
+	_, err = multipartWriter.CreateFormFile("file", "tracing.json")
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

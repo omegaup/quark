@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io/ioutil"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -169,11 +166,6 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	defer ctx.Close()
 	defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	}))
-	defer ts.Close()
-	ctx.Config.Runner.GraderURL = ts.URL
-
 	inputManager := common.NewInputManager(ctx)
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
@@ -195,10 +187,6 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	input, err := inputManager.Get(AplusB.Hash())
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
-	}
-	baseURL, err := url.Parse(ts.URL)
-	if err != nil {
-		panic(err)
 	}
 
 	runtests := []runnerTestCase{
@@ -327,8 +315,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	for idx, rte := range runtests {
 		results, err := Grade(
 			ctx,
-			http.DefaultClient,
-			baseURL,
+			&bytes.Buffer{},
 			&common.Run{
 				AttemptID: uint64(idx),
 				Language:  rte.language,

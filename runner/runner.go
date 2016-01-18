@@ -7,8 +7,6 @@ import (
 	"github.com/lhchavez/quark/common"
 	"io"
 	"io/ioutil"
-	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -48,8 +46,7 @@ type binary struct {
 
 func Grade(
 	ctx *common.Context,
-	client *http.Client,
-	baseURL *url.URL,
+	filesWriter io.Writer,
 	run *common.Run,
 	input common.Input,
 	sandbox Sandbox,
@@ -330,16 +327,11 @@ func Grade(
 	}
 
 	ctx.Log.Debug("Finished running", "results", runResult)
-	filesURL, err := baseURL.Parse(fmt.Sprintf("run/%d/files/", run.AttemptID))
-	if err != nil {
-		return runResult, err
-	}
 	uploadEvent := ctx.EventFactory.NewCompleteEvent("upload")
 	defer ctx.EventCollector.Add(uploadEvent)
 	if err := uploadFiles(
 		ctx,
-		client,
-		filesURL.String(),
+		filesWriter,
 		runRoot,
 		input,
 		generatedFiles,
@@ -353,8 +345,7 @@ func Grade(
 
 func uploadFiles(
 	ctx *common.Context,
-	client *http.Client,
-	uploadURL string,
+	filesWriter io.Writer,
 	runRoot string,
 	input common.Input,
 	files []string,
@@ -370,14 +361,9 @@ func uploadFiles(
 	if err != nil {
 		return err
 	}
-
-	resp, err := client.Post(uploadURL, "application/zip", fd)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-
-	return nil
+	defer fd.Close()
+	_, err = io.Copy(filesWriter, fd)
+	return err
 }
 
 func createZipFile(runRoot string, files []string) (string, error) {
