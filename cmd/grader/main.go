@@ -85,6 +85,82 @@ func startServer(ctx *grader.Context) error {
 	}
 }
 
+func processRun(
+	r *http.Request,
+	runID uint64,
+	runCtx *grader.RunContext,
+	ctx *grader.Context,
+) (int, bool) {
+	gradeDir := path.Join(
+		ctx.Config.Grader.RuntimePath,
+		"grade",
+		fmt.Sprintf("%02d", runCtx.ID%100),
+		fmt.Sprintf("%d", runCtx.ID),
+	)
+	if err := os.MkdirAll(gradeDir, 0755); err != nil {
+		ctx.Log.Error("Unable to create grade dir", "err", err)
+		return http.StatusInternalServerError, false
+	}
+
+	multipartReader, err := r.MultipartReader()
+	if err != nil {
+		ctx.Log.Error("Error decoding multipart data", "err", err)
+		return http.StatusBadRequest, true
+	}
+	for {
+		part, err := multipartReader.NextPart()
+		if err == io.EOF {
+			ctx.Log.Debug("Done with run", "id", runID)
+			break
+		} else if err != nil {
+			ctx.Log.Error("Error receiving next file", "err", err)
+			return http.StatusBadRequest, true
+		}
+		ctx.Log.Debug("Processing file", "id", runID, "filename", part.FileName())
+
+		if part.FileName() == "details.json" {
+			defer ctx.InflightMonitor.Remove(runID)
+			var result runner.RunResult
+			decoder := json.NewDecoder(part)
+			if err := decoder.Decode(&result); err != nil {
+				ctx.Log.Error("Error obtaining result", "err", err)
+				return http.StatusBadRequest, true
+			} else {
+				resultsPath := path.Join(gradeDir, "details.json")
+				fd, err := os.Create(resultsPath)
+				if err != nil {
+					ctx.Log.Error("Unable to create results file", "err", err)
+					return http.StatusInternalServerError, false
+				}
+				defer fd.Close()
+				prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
+				if err != nil {
+					ctx.Log.Error("Unable to marshal results file", "err", err)
+					return http.StatusInternalServerError, false
+				}
+				if _, err := fd.Write(prettyPrinted); err != nil {
+					ctx.Log.Error("Unable to write results file", "err", err)
+					return http.StatusInternalServerError, false
+				}
+				ctx.Log.Info("Results ready for run", "ctx", runCtx, "verdict", result.Verdict)
+			}
+		} else {
+			filePath := path.Join(gradeDir, part.FileName())
+			fd, err := os.Create(filePath)
+			if err != nil {
+				ctx.Log.Error("Unable to create results file", "err", err)
+				return http.StatusInternalServerError, false
+			}
+			if _, err := io.Copy(fd, part); err != nil {
+				ctx.Log.Error("Unable to upload results", "err", err)
+				return http.StatusInternalServerError, false
+			}
+		}
+	}
+	ctx.Log.Info("Finished processing run", "ctx", runCtx)
+	return http.StatusOK, false
+}
+
 func PeerName(r *http.Request) string {
 	if *insecure {
 		return r.RemoteAddr
@@ -166,25 +242,14 @@ func main() {
 		runnerName := PeerName(r)
 		ctx.Log.Debug("requesting run", "proto", r.Proto, "client", runnerName)
 
-		timeout := make(chan bool)
-		runCtx, ok := runs.GetRun(
+		runCtx, _, ok := runs.GetRun(
 			runnerName,
 			ctx.InflightMonitor,
 			w.(http.CloseNotifier).CloseNotify(),
-			timeout,
 		)
 		if !ok {
 			ctx.Log.Debug("client gone", "client", runnerName)
 		} else {
-			go func() {
-				if <-timeout {
-					ctx.Log.Error("run timed out. retrying", "context", runCtx)
-					if !runCtx.Requeue() {
-						ctx.Log.Error("run timed out too many times. giving up")
-					}
-				}
-				close(timeout)
-			}()
 			ctx.Log.Debug("served run", "run", runCtx, "client", runnerName)
 			w.Header().Set("Content-Type", "text/json; charset=utf-8")
 			ev := ctx.EventFactory.NewIssuerClockSyncEvent()
@@ -198,8 +263,6 @@ func main() {
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
 	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
-		// TODO(lhchavez): Cause an error to requeue the run.
-		// TODO(lhchavez): Cause a timeout to close the request.
 		// TODO(lhchavez): Merge the runner's tracing data with the grader's.
 		ctx := context()
 		defer r.Body.Close()
@@ -209,86 +272,27 @@ func main() {
 			return
 		}
 		runID, _ := strconv.ParseUint(res[1], 10, 64)
-		runCtx, ok := ctx.InflightMonitor.Get(runID)
+		runCtx, timeout, ok := ctx.InflightMonitor.Get(runID)
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		gradeDir := path.Join(
-			ctx.Config.Grader.RuntimePath,
-			"grade",
-			fmt.Sprintf("%02d", runCtx.ID%100),
-			fmt.Sprintf("%d", runCtx.ID),
-		)
-		if err := os.MkdirAll(gradeDir, 0755); err != nil {
-			ctx.Log.Error("Unable to create grade dir", "err", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		multipartReader, err := r.MultipartReader()
-		if err != nil {
-			ctx.Log.Error("Error decoding multipart data", "err", err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		for {
-			part, err := multipartReader.NextPart()
-			if err == io.EOF {
-				ctx.Log.Debug("Done with run", "id", runID)
-				break
-			} else if err != nil {
-				ctx.Log.Error("Error receiving next file", "err", err)
-				w.WriteHeader(http.StatusBadRequest)
-				return
+		go func() {
+			select {
+			case <-timeout:
+				// Once a timeout happens, close the inbound connection and make the
+				// whole thing fail.
+				r.Body.Close()
 			}
-			ctx.Log.Debug("Processing file", "id", runID, "filename", part.FileName())
-
-			if part.FileName() == "details.json" {
-				defer ctx.InflightMonitor.Remove(runID)
-				var result runner.RunResult
-				decoder := json.NewDecoder(part)
-				if err := decoder.Decode(&result); err != nil {
-					ctx.Log.Error("Error obtaining result", "err", err)
-					w.WriteHeader(http.StatusBadRequest)
-				} else {
-					resultsPath := path.Join(gradeDir, "details.json")
-					fd, err := os.Create(resultsPath)
-					if err != nil {
-						ctx.Log.Error("Unable to create results file", "err", err)
-						w.WriteHeader(http.StatusInternalServerError)
-						return
-					}
-					defer fd.Close()
-					prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
-					if err != nil {
-						ctx.Log.Error("Unable to marshal results file", "err", err)
-						w.WriteHeader(http.StatusInternalServerError)
-						return
-					}
-					if _, err := fd.Write(prettyPrinted); err != nil {
-						ctx.Log.Error("Unable to write results file", "err", err)
-						w.WriteHeader(http.StatusInternalServerError)
-						return
-					}
-					ctx.Log.Info("Results ready for run", "ctx", runCtx, "verdict", result.Verdict)
-				}
-			} else {
-				filePath := path.Join(gradeDir, part.FileName())
-				fd, err := os.Create(filePath)
-				if err != nil {
-					ctx.Log.Error("Unable to create results file", "err", err)
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-				if _, err := io.Copy(fd, part); err != nil {
-					ctx.Log.Error("Unable to upload results", "err", err)
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
+		}()
+		status, retry := processRun(r, runID, runCtx, ctx)
+		w.WriteHeader(status)
+		if retry {
+			ctx.Log.Error("run errored out. retrying", "context", runCtx)
+			if !runCtx.Requeue() {
+				ctx.Log.Error("run errored out too many times. giving up")
 			}
 		}
-		ctx.Log.Info("Finished processing run", "ctx", runCtx)
 	})
 
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")

@@ -24,6 +24,8 @@ type RunContext struct {
 	creationTime int64
 	tries        int
 	queue        *Queue
+	context      *common.Context
+	monitor      *InflightMonitor
 }
 
 // newRunContext creates a RunContext from its database id.
@@ -44,6 +46,7 @@ func newRunContext(
 		return nil, err
 	}
 	run.Input = input
+	run.context = &ctx.Context
 
 	return run, nil
 }
@@ -108,8 +111,9 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 // has any retries left. It always adds the RunContext to the highest-priority
 // queue.
 func (run *RunContext) Requeue() bool {
-	// TODO(lhchavez): Cause Requeue to close the connection to the runner
-	// serving it.
+	if run.monitor != nil {
+		run.monitor.Remove(run.Run.AttemptID)
+	}
 	run.tries -= 1
 	if run.tries <= 0 {
 		return false
@@ -145,19 +149,18 @@ func (queue *Queue) GetRun(
 	runner string,
 	monitor *InflightMonitor,
 	closeNotifier <-chan bool,
-	timeout chan<- bool,
-) (*RunContext, bool) {
+) (*RunContext, <-chan struct{}, bool) {
 	select {
 	case <-closeNotifier:
-		return nil, false
+		return nil, nil, false
 	case <-queue.ready:
 	}
 
 	for i := range queue.runs {
 		select {
 		case run := <-queue.runs[i]:
-			monitor.Add(run, runner, timeout)
-			return run, true
+			inflight := monitor.Add(run, runner)
+			return run, inflight.timeout, true
 		default:
 		}
 	}
@@ -196,6 +199,7 @@ type InflightRun struct {
 	creationTime int64
 	connected    chan struct{}
 	ready        chan struct{}
+	timeout      chan struct{}
 }
 
 // InflightMonitor manages all in-flight Runs (Runs that have been picked up by
@@ -221,8 +225,7 @@ func NewInflightMonitor() *InflightMonitor {
 func (monitor *InflightMonitor) Add(
 	run *RunContext,
 	runner string,
-	timeout chan<- bool,
-) {
+) *InflightRun {
 	monitor.Lock()
 	defer monitor.Unlock()
 	inflight := &InflightRun{
@@ -231,25 +234,39 @@ func (monitor *InflightMonitor) Add(
 		creationTime: time.Now().Unix(),
 		connected:    make(chan struct{}, 1),
 		ready:        make(chan struct{}, 1),
+		timeout:      make(chan struct{}, 1),
 	}
+	run.monitor = monitor
 	monitor.mapping[run.Run.AttemptID] = inflight
 	go func() {
 		select {
 		case <-inflight.connected:
 			select {
 			case <-inflight.ready:
-				timeout <- false
 			case <-time.After(monitor.readyTimeout):
-				timeout <- true
+				monitor.timeout(run, inflight.timeout)
 			}
 		case <-time.After(monitor.connectTimeout):
-			timeout <- true
+			monitor.timeout(run, inflight.timeout)
 		}
+		close(inflight.timeout)
 	}()
+	return inflight
+}
+
+func (monitor *InflightMonitor) timeout(
+	run *RunContext,
+	timeout chan<- struct{},
+) {
+	run.context.Log.Error("run timed out. retrying", "context", run)
+	if !run.Requeue() {
+		run.context.Log.Error("run timed out too many times. giving up")
+	}
+	timeout <- struct{}{}
 }
 
 // Get returns the RunContext associated with the specified attempt ID.
-func (monitor *InflightMonitor) Get(id uint64) (*RunContext, bool) {
+func (monitor *InflightMonitor) Get(id uint64) (*RunContext, <-chan struct{}, bool) {
 	monitor.Lock()
 	defer monitor.Unlock()
 	inflight, ok := monitor.mapping[id]
@@ -261,7 +278,7 @@ func (monitor *InflightMonitor) Get(id uint64) (*RunContext, bool) {
 		default:
 		}
 	}
-	return inflight.run, ok
+	return inflight.run, inflight.timeout, ok
 }
 
 // Remove removes the specified attempt ID from the in-flight runs and signals
@@ -271,6 +288,7 @@ func (monitor *InflightMonitor) Remove(id uint64) {
 	defer monitor.Unlock()
 	inflight, ok := monitor.mapping[id]
 	if ok {
+		inflight.run.monitor = nil
 		select {
 		// Try to signal that the run has been finished.
 		case inflight.ready <- struct{}{}:

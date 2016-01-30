@@ -38,44 +38,41 @@ func TestQueue(t *testing.T) {
 	}
 
 	closeNotifier := make(chan bool, 1)
-	timeout := make(chan bool)
 
 	// Test timeout.
 	originalConnectTimeout := ctx.InflightMonitor.connectTimeout
 	ctx.InflightMonitor.connectTimeout = 0
-	runCtx, _ := queue.GetRun("test", ctx.InflightMonitor, closeNotifier, timeout)
+	runCtx, timeout, _ := queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
 	if len(queue.runs[1]) != 0 {
 		t.Fatalf("len(queue.runs[1]) == %d, want %d", len(queue.runs[1]), 0)
 	}
-	if <-timeout != true {
+	if _, didTimeout := <-timeout; !didTimeout {
 		t.Fatalf("expected timeout but did not happen")
 	}
 	ctx.InflightMonitor.connectTimeout = originalConnectTimeout
 
-	// Try running it again, this time it will be successful.
-	runCtx.Requeue()
+	// The run has already been requeued. This time it will be successful.
 	if len(queue.runs[0]) != 1 {
 		t.Fatalf("len(queue.runs[0]) == %d, want %d", len(queue.runs[0]), 1)
 	}
-	runCtx, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier, timeout)
+	runCtx, timeout, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
 	if len(queue.runs[0]) != 0 {
 		t.Fatalf("len(queue.runs[0]) == %d, want %d", len(queue.runs[0]), 0)
 	}
-	if _, ok := ctx.InflightMonitor.Get(runCtx.Run.AttemptID); !ok {
+	if _, _, ok := ctx.InflightMonitor.Get(runCtx.Run.AttemptID); !ok {
 		t.Fatalf("Run %d not found in the inflight run monitor", runCtx.Run.AttemptID)
 	}
 	ctx.InflightMonitor.Remove(runCtx.Run.AttemptID)
-	if <-timeout != false {
+	if _, didTimeout := <-timeout; didTimeout {
 		t.Fatalf("expected run completion, but did not happen")
 	}
 
 	// Test the closeNotifier.
 	closeNotifier <- true
-	if _, ok := queue.GetRun(
+	if _, _, ok := queue.GetRun(
 		"test",
 		ctx.InflightMonitor,
 		closeNotifier,
-		timeout,
 	); ok {
 		t.Fatalf("Expected closeNotifier to cause no run to be available")
 	}
