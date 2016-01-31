@@ -16,24 +16,34 @@ import (
 	"strings"
 )
 
-// TODO(lhchavez): Document and test.
+// LiteralCaseSettings stores the input, expected output, and the weight of a
+// particular test case.
 type LiteralCaseSettings struct {
 	Input          string   `json:"in"`
 	ExpectedOutput string   `json:"out"`
 	Weight         *float64 `json:"weight,omitempty"`
 }
 
+// LiteralCustomValidatorSettings stores the source of the program that will
+// validate the contestant's outputs.
 type LiteralCustomValidatorSettings struct {
 	Source   string `json:"source"`
 	Language string `json:"language"`
 }
 
+// LiteralValidatorSettings stores the settings for the validator, that will
+// calculate a per-case grade. Valid values for Name are "custom", "literal",
+// "token", "token-caseless", "token-numeric". If "custom" is chosen, a valid
+// CustomValidator must be provided. If "token-numeric" is chosen, Tolerance
+// must contain a numeric tolerance (typically a small number).
 type LiteralValidatorSettings struct {
 	Name            string                          `json:"name"`
 	Tolerance       *float64                        `json:"tolerance,omitempty"`
 	CustomValidator *LiteralCustomValidatorSettings `json:"custom_validator,omitempty"`
 }
 
+// LiteralInteractiveSettings stores the settings for a problem that uses
+// libinteractive.
 type LiteralInteractiveSettings struct {
 	IDL        string `json:"idl"`
 	Interface  string `json:"interface"`
@@ -60,6 +70,9 @@ var (
 	DefaultValidatorTolerance = 1e-6
 )
 
+// LiteralInput is a standalone representation of an Input (although it cannot
+// be used directly as an Input). It is useful for testing and to evaluate a
+// run that doesn't have a problem associated with it.
 type LiteralInput struct {
 	Cases       map[string]LiteralCaseSettings `json:"cases"`
 	Limits      *LimitsSettings                `json:"limits,omitempty"`
@@ -67,6 +80,8 @@ type LiteralInput struct {
 	Interactive *LiteralInteractiveSettings    `json:"interactive,omitempty"`
 }
 
+// LiteralRun is a standalone representation of a Run. It is useful for testing
+// and to evaluate a run that doesn't have a problem associated with it.
 type LiteralRun struct {
 	Source   string `json:"source"`
 	Language string `json:"language"`
@@ -102,6 +117,8 @@ func validateInterface(interfaceName string) error {
 	return nil
 }
 
+// LiteralInputFactory is an InputFactory that will return an Input version of
+// the specified LiteralInput when asked for an input.
 type LiteralInputFactory struct {
 	settings ProblemSettings
 	config   *Config
@@ -110,6 +127,8 @@ type LiteralInputFactory struct {
 	tarfile  bytes.Buffer
 }
 
+// NewLiteralInputFactory validates the LiteralInput and stores it so it can be
+// returned when NewInput is called.
 func NewLiteralInputFactory(
 	input *LiteralInput,
 	config *Config,
@@ -280,6 +299,8 @@ func NewLiteralInputFactory(
 	return factory, nil
 }
 
+// NewInput returns the LiteralInput that was specified as the
+// LiteralInputFactory's Input in its constructor.
 func (factory *LiteralInputFactory) NewInput(hash string, mgr *InputManager) Input {
 	if hash != factory.hash {
 		return nil
@@ -309,6 +330,7 @@ func (factory *LiteralInputFactory) Hash() string {
 	return factory.hash
 }
 
+// inMemoryInput is an Input that is generated from a LiteralInput.
 type inMemoryInput struct {
 	BaseInput
 	archivePath string
