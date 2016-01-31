@@ -6,13 +6,18 @@ import (
 	"testing"
 )
 
-func TestDebugContext(t *testing.T) {
+func newTestingContext() *Context {
 	ctx, err := NewContext(bytes.NewBufferString(
 		"{\"Logging\": {\"File\": \"stderr\"}, \"Tracing\": {\"Enabled\": false}}",
 	))
 	if err != nil {
 		panic(err)
 	}
+	return ctx
+}
+
+func TestDebugContext(t *testing.T) {
+	ctx := newTestingContext()
 	defer ctx.Close()
 	dbg := ctx.DebugContext()
 	// This should not be added to the Buffer.
@@ -20,22 +25,22 @@ func TestDebugContext(t *testing.T) {
 	// This should be.
 	dbg.Log.Debug("Debug statement")
 
-	str := dbg.Buffer.String()
-	if strings.Index(str, "Critical error") != -1 {
-		t.Errorf("\"Critical error\" present in Buffer: %q", str)
+	logStr := string(dbg.LogBuffer())
+	if strings.Index(logStr, "Critical error") != -1 {
+		t.Errorf("\"Critical error\" present in LogBuffer: %q", logStr)
 	}
-	if strings.Index(str, "Debug statement") == -1 {
-		t.Errorf("\"Debug statement\" not present in Buffer: %q", str)
+	if strings.Index(logStr, "Debug statement") == -1 {
+		t.Errorf("\"Debug statement\" not present in LogBuffer: %q", logStr)
+	}
+
+	traceStr := string(dbg.TraceBuffer())
+	if len(traceStr) == 0 {
+		t.Errorf("Tracing string empty")
 	}
 }
 
 func TestConfigSerializability(t *testing.T) {
-	ctx, err := NewContext(bytes.NewBufferString(
-		"{\"Logging\": {\"File\": \"stderr\"}, \"Tracing\": {\"Enabled\": false}}",
-	))
-	if err != nil {
-		panic(err)
-	}
+	ctx := newTestingContext()
 	defer ctx.Close()
 	ctx.Config.String()
 }

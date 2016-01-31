@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -8,6 +10,7 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
+	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
 	"golang.org/x/net/http2"
@@ -144,6 +147,40 @@ func processRun(
 				}
 				ctx.Log.Info("Results ready for run", "ctx", runCtx, "verdict", result.Verdict)
 			}
+		} else if part.FileName() == "tracing.json" {
+			var buffer bytes.Buffer
+			if _, err := io.Copy(&buffer, part); err != nil {
+				ctx.Log.Error("Unable to read tracing events")
+				return http.StatusBadRequest, true
+			}
+			decoder := json.NewDecoder(bytes.NewBuffer(buffer.Bytes()))
+			var events []common.Event
+			if err := decoder.Decode(&events); err != nil {
+				ctx.Log.Error("Unable to decode the tracing events")
+				return http.StatusInternalServerError, false
+			}
+			for _, e := range events {
+				if err := ctx.EventCollector.Add(e); err != nil {
+					ctx.Log.Error("Unable to add tracing data", "err", err)
+					break
+				}
+			}
+			filePath := path.Join(gradeDir, "tracing.json.gz")
+			fd, err := os.Create(filePath)
+			if err != nil {
+				ctx.Log.Error("Unable to create tracing file", "err", err)
+				return http.StatusInternalServerError, false
+			}
+			defer fd.Close()
+			gz := gzip.NewWriter(fd)
+			if _, err := io.Copy(gz, &buffer); err != nil {
+				ctx.Log.Error("Unable to upload traces", "err", err)
+				return http.StatusInternalServerError, false
+			}
+			if err := gz.Close(); err != nil {
+				ctx.Log.Error("Unable to finalize traces", "err", err)
+				return http.StatusInternalServerError, false
+			}
 		} else {
 			filePath := path.Join(gradeDir, part.FileName())
 			fd, err := os.Create(filePath)
@@ -151,6 +188,7 @@ func processRun(
 				ctx.Log.Error("Unable to create results file", "err", err)
 				return http.StatusInternalServerError, false
 			}
+			defer fd.Close()
 			if _, err := io.Copy(fd, part); err != nil {
 				ctx.Log.Error("Unable to upload results", "err", err)
 				return http.StatusInternalServerError, false
@@ -263,7 +301,6 @@ func main() {
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
 	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
-		// TODO(lhchavez): Merge the runner's tracing data with the grader's.
 		ctx := context()
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)

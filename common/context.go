@@ -105,13 +105,14 @@ func (config *Config) String() string {
 
 // Context
 type Context struct {
-	Config         Config
-	Log            log15.Logger
-	Buffer         *bytes.Buffer
-	EventCollector EventCollector
-	EventFactory   *EventFactory
-	handler        log15.Handler
-	tracingFd      *os.File
+	Config          Config
+	Log             log15.Logger
+	EventCollector  EventCollector
+	EventFactory    *EventFactory
+	handler         log15.Handler
+	logBuffer       *bytes.Buffer
+	tracingFd       *os.File
+	memoryCollector *MemoryEventCollector
 }
 
 // NewContext creates a new Context from the specified reader. This also
@@ -207,15 +208,40 @@ func (context *Context) Close() {
 // statements will be (also) written to.
 func (context *Context) DebugContext() *Context {
 	var buffer bytes.Buffer
-	var childContext = Context{
-		Config: context.Config,
-		Log:    context.Log.New(),
-		Buffer: &buffer,
+	childContext := &Context{
+		Config:    context.Config,
+		Log:       context.Log.New(),
+		logBuffer: &buffer,
 		handler: log15.MultiHandler(
 			log15.StreamHandler(&buffer, log15.LogfmtFormat()),
 			context.handler,
 		),
+		memoryCollector: NewMemoryEventCollector(),
+		EventFactory:    context.EventFactory,
 	}
+	childContext.EventCollector = NewMultiEventCollector(
+		childContext.memoryCollector,
+		context.EventCollector,
+	)
+	childContext.EventFactory.Register(childContext.memoryCollector)
 	childContext.Log.SetHandler(childContext.handler)
-	return &childContext
+	return childContext
+}
+
+func (context *Context) LogBuffer() []byte {
+	if context.logBuffer == nil {
+		return nil
+	}
+	return context.logBuffer.Bytes()
+}
+
+func (context *Context) TraceBuffer() []byte {
+	if context.memoryCollector == nil {
+		return nil
+	}
+	data, err := json.Marshal(context.memoryCollector)
+	if err != nil {
+		return []byte(err.Error())
+	}
+	return data
 }

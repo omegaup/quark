@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -194,7 +195,7 @@ func (cb *ChannelBuffer) Read(buf []byte) (int, error) {
 }
 
 func processRun(
-	ctx *common.Context,
+	parentCtx *common.Context,
 	client *http.Client,
 	baseURL *url.URL,
 ) error {
@@ -207,6 +208,7 @@ func processRun(
 		return err
 	}
 	defer resp.Body.Close()
+	ctx := parentCtx.DebugContext()
 	syncID, err := strconv.ParseUint(resp.Header.Get("Sync-ID"), 10, 64)
 	if err != nil {
 		return err
@@ -218,24 +220,11 @@ func processRun(
 	if err := decoder.Decode(&run); err != nil {
 		return err
 	}
-	ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
-		"grade",
-		common.EventBegin,
-		common.Arg{"id", run.AttemptID},
-		common.Arg{"input", run.InputHash},
-		common.Arg{"language", run.Language},
-	))
-	defer func() {
-		ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
-			"grade",
-			common.EventEnd,
-		))
-	}()
-
 	uploadURL, err := baseURL.Parse(fmt.Sprintf("run/%d/results/", run.AttemptID))
 	if err != nil {
 		return err
 	}
+
 	finished := make(chan error)
 
 	if err = gradeAndUploadResults(
@@ -278,30 +267,9 @@ func gradeAndUploadResults(
 		finished <- nil
 	}()
 
-	// Send the header as soon as possible to avoid a timeout.
-	filesWriter, err := multipartWriter.CreateFormFile("file", "files.zip")
+	result, err := gradeRun(ctx, client, run, multipartWriter)
 	if err != nil {
 		return err
-	}
-
-	// Make sure no other I/O is being made while we grade this run.
-	ioLock.Lock()
-	defer ioLock.Unlock()
-
-	inputEvent := ctx.EventFactory.NewCompleteEvent("input")
-	input, err := inputManager.Add(
-		run.InputHash,
-		runner.NewRunnerInputFactory(client, &ctx.Config),
-	)
-	defer input.Release(input)
-	ctx.EventCollector.Add(inputEvent)
-	if err != nil {
-		return err
-	}
-
-	result, err := runner.Grade(ctx, filesWriter, run, input, &minijail)
-	if err != nil {
-		ctx.Log.Error("Error while grading", "err", err)
 	}
 
 	// Send results.
@@ -315,18 +283,80 @@ func gradeAndUploadResults(
 	}
 
 	// Send logs.
-	_, err = multipartWriter.CreateFormFile("file", "logs.txt")
-	// TODO(lhchavez): Send logs.
-	if err != nil {
-		return err
+	logsBuffer := ctx.LogBuffer()
+	if logsBuffer != nil {
+		logsWriter, err := multipartWriter.CreateFormFile("file", "logs.txt.gz")
+		if err != nil {
+			return err
+		}
+		gz := gzip.NewWriter(logsWriter)
+		if _, err = gz.Write(logsBuffer); err != nil {
+			return err
+		}
+		if err = gz.Close(); err != nil {
+			return err
+		}
 	}
 
-	// Send tracing data.
-	_, err = multipartWriter.CreateFormFile("file", "tracing.json")
-	// TODO(lhchavez): Send tracing.
-	if err != nil {
-		return err
+	// Send tracing data. As opposed to the logs, this one is not gzip-compressed
+	// since it is expected that the grader will merge the tracing data with its
+	// own log.
+	traceBuffer := ctx.TraceBuffer()
+	if traceBuffer != nil {
+		tracingWriter, err := multipartWriter.CreateFormFile("file", "tracing.json")
+		if err != nil {
+			return err
+		}
+		if _, err = tracingWriter.Write(traceBuffer); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+func gradeRun(
+	ctx *common.Context,
+	client *http.Client,
+	run *common.Run,
+	multipartWriter *multipart.Writer,
+) (*runner.RunResult, error) {
+	ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
+		"grade",
+		common.EventBegin,
+		common.Arg{"id", run.AttemptID},
+		common.Arg{"input", run.InputHash},
+		common.Arg{"language", run.Language},
+	))
+	defer func() {
+		ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
+			"grade",
+			common.EventEnd,
+		))
+	}()
+
+	// Send the header as soon as possible to avoid a timeout.
+	filesWriter, err := multipartWriter.CreateFormFile("file", "files.zip")
+	if err != nil {
+		return nil, err
+	}
+
+	// Make sure no other I/O is being made while we grade this run.
+	ioLockEvent := ctx.EventFactory.NewCompleteEvent("I/O lock")
+	ioLock.Lock()
+	defer ioLock.Unlock()
+	ctx.EventCollector.Add(ioLockEvent)
+
+	inputEvent := ctx.EventFactory.NewCompleteEvent("input")
+	input, err := inputManager.Add(
+		run.InputHash,
+		runner.NewRunnerInputFactory(client, &ctx.Config),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer input.Release(input)
+	ctx.EventCollector.Add(inputEvent)
+
+	return runner.Grade(ctx, filesWriter, run, input, &minijail)
 }
