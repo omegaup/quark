@@ -30,6 +30,10 @@ func TestPreloadInputs(t *testing.T) {
 			"",
 		},
 		{
+			"0000000000000000000000000000000000000000.tar.gz.len",
+			"MA==",
+		},
+		{
 			"0000000000000000000000000000000000000000.tar.gz.sha1",
 			`MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCAqMDAwMDAwMDAwMDAwMDAw
 			MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMC50YXIuZ3o=`,
@@ -37,6 +41,10 @@ func TestPreloadInputs(t *testing.T) {
 		{
 			"0000000000000000000000000000000000000001.tar.gz",
 			"",
+		},
+		{
+			"0000000000000000000000000000000000000001.tar.gz.len",
+			"MA==",
 		},
 		{
 			"4bba61b5499a7a511eb515594f3293a8741516ad.tar.gz",
@@ -53,6 +61,10 @@ func TestPreloadInputs(t *testing.T) {
 			"4bba61b5499a7a511eb515594f3293a8741516ad.tar.gz.sha1",
 			`YTMyZjBmMDE4NDQxZGY3MWVmYzhkMWM2YTU1MzkxMzU0YThkNDg5NyAqNGJiYTYxYjU0OTlhN2E1
 			MTFlYjUxNTU5NGYzMjkzYTg3NDE1MTZhZC50YXIuZ3oK`,
+		},
+		{
+			"4bba61b5499a7a511eb515594f3293a8741516ad.tar.gz.len",
+			"Mzk5",
 		},
 	}
 	for _, ft := range files {

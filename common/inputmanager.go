@@ -117,6 +117,10 @@ func (input *BaseInput) Hash() string {
 	return input.hash
 }
 
+func (input *BaseInput) Reserve(size int64) {
+	input.mgr.Reserve(size)
+}
+
 func (input *BaseInput) Commit(size int64) {
 	input.size = size
 	input.committed = true
@@ -314,8 +318,22 @@ func (mgr *InputManager) Insert(input Input) {
 	entry := mgr.getEntryLocked(input.Hash(), nil)
 	entry.listElement = mgr.evictList.PushFront(input)
 
-	// Evict elements as necessary to get below the allowed limit.
-	for mgr.evictList.Len() > 0 && mgr.totalSize > mgr.sizeLimit {
+	// After inserting the input, trim the cache.
+	mgr.reserveLocked(0)
+}
+
+// Reserve evicts Inputs from the pool to make the specified size available.
+func (mgr *InputManager) Reserve(size int64) {
+	mgr.Lock()
+	defer mgr.Unlock()
+
+	mgr.reserveLocked(size)
+}
+
+// reserveLocked evicts elements as necessary so that the current commited size
+// plus the specified size is below the allowed limit.
+func (mgr *InputManager) reserveLocked(size int64) {
+	for mgr.evictList.Len() > 0 && mgr.totalSize+size > mgr.sizeLimit {
 		element := mgr.evictList.Back()
 		evictedInput := element.Value.(Input)
 

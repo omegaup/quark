@@ -14,6 +14,8 @@ import (
 
 // RunContext is a wrapper around a Run. This is used when a Run is sitting on
 // a Queue on the grader.
+// TODO(lhchavez): Add an event collector to the RunContext so it can track
+// per-run events.
 type RunContext struct {
 	ID           int64
 	GUID         string
@@ -289,6 +291,11 @@ func (monitor *InflightMonitor) Remove(id uint64) {
 	inflight, ok := monitor.mapping[id]
 	if ok {
 		inflight.run.monitor = nil
+		select {
+		// Try to signal that the run has been connected.
+		case inflight.connected <- struct{}{}:
+		default:
+		}
 		select {
 		// Try to signal that the run has been finished.
 		case inflight.ready <- struct{}{}:

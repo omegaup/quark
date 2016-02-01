@@ -1,7 +1,6 @@
 package main
 
 import (
-	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -255,21 +254,29 @@ func gradeAndUploadResults(
 		req, err := http.NewRequest("POST", uploadURL, requestBody)
 		if err != nil {
 			finished <- err
+			close(finished)
 			return
 		}
 		req.Header.Add("Content-Type", multipartWriter.FormDataContentType())
 		response, err := client.Do(req)
 		if err != nil {
 			finished <- err
+			close(finished)
 			return
 		}
 		response.Body.Close()
 		finished <- nil
+		close(finished)
 	}()
 
 	result, err := gradeRun(ctx, client, run, multipartWriter)
 	if err != nil {
-		return err
+		// Still try to send the details
+		ctx.Log.Error("Error grading run", "err", err)
+		result = &runner.RunResult{
+			Verdict:  "JE",
+			MaxScore: run.MaxScore,
+		}
 	}
 
 	// Send results.
@@ -282,25 +289,18 @@ func gradeAndUploadResults(
 		return err
 	}
 
-	// Send logs.
+	// Send uncompressed logs.
 	logsBuffer := ctx.LogBuffer()
 	if logsBuffer != nil {
-		logsWriter, err := multipartWriter.CreateFormFile("file", "logs.txt.gz")
+		logsWriter, err := multipartWriter.CreateFormFile("file", "logs.txt")
 		if err != nil {
 			return err
 		}
-		gz := gzip.NewWriter(logsWriter)
-		if _, err = gz.Write(logsBuffer); err != nil {
-			return err
-		}
-		if err = gz.Close(); err != nil {
-			return err
+		if _, err = logsWriter.Write(logsBuffer); err != nil {
 		}
 	}
 
-	// Send tracing data. As opposed to the logs, this one is not gzip-compressed
-	// since it is expected that the grader will merge the tracing data with its
-	// own log.
+	// Send uncompressed tracing data.
 	traceBuffer := ctx.TraceBuffer()
 	if traceBuffer != nil {
 		tracingWriter, err := multipartWriter.CreateFormFile("file", "tracing.json")

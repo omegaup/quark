@@ -12,13 +12,15 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 )
 
 type graderBaseInput struct {
 	common.BaseInput
-	archivePath string
-	storedHash  string
+	archivePath      string
+	storedHash       string
+	uncompressedSize int64
 }
 
 func (input *graderBaseInput) Verify() error {
@@ -37,8 +39,13 @@ func (input *graderBaseInput) Verify() error {
 	if storedHash != fmt.Sprintf("%0x", hash) {
 		return errors.New("Hash verification failed")
 	}
+	uncompressedSize, err := input.getStoredLength()
+	if err != nil {
+		return err
+	}
 
 	input.storedHash = storedHash
+	input.uncompressedSize = uncompressedSize
 	input.Commit(stat.Size())
 	return nil
 }
@@ -60,9 +67,27 @@ func (input *graderBaseInput) getStoredHash() (string, error) {
 	return scanner.Text(), nil
 }
 
+func (input *graderBaseInput) getStoredLength() (int64, error) {
+	lenFd, err := os.Open(fmt.Sprintf("%s.len", input.archivePath))
+	if err != nil {
+		return 0, err
+	}
+	defer lenFd.Close()
+	scanner := bufio.NewScanner(lenFd)
+	scanner.Split(bufio.ScanLines)
+	if !scanner.Scan() {
+		if scanner.Err() != nil {
+			return 0, scanner.Err()
+		}
+		return 0, io.ErrUnexpectedEOF
+	}
+	return strconv.ParseInt(scanner.Text(), 10, 64)
+}
+
 func (input *graderBaseInput) Delete() error {
 	os.Remove(fmt.Sprintf("%s.tmp", input.archivePath))
 	os.Remove(fmt.Sprintf("%s.sha1", input.archivePath))
+	os.Remove(fmt.Sprintf("%s.len", input.archivePath))
 	return os.Remove(input.archivePath)
 }
 
@@ -77,6 +102,9 @@ func (input *graderBaseInput) Transmit(w http.ResponseWriter) error {
 	defer fd.Close()
 	w.Header().Add("Content-Type", "application/x-gzip")
 	w.Header().Add("Content-SHA1", input.storedHash)
+	w.Header().Add(
+		"X-Content-Uncompressed-Size", strconv.FormatInt(input.uncompressedSize, 10),
+	)
 	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, fd)
 	return err
@@ -95,7 +123,8 @@ func (input *GraderInput) Persist() error {
 	}
 	tmpPath := fmt.Sprintf("%s.tmp", input.archivePath)
 	defer os.Remove(tmpPath)
-	if err := input.createArchiveFromGit(tmpPath); err != nil {
+	uncompressedSize, err := input.createArchiveFromGit(tmpPath)
+	if err != nil {
 		return err
 	}
 
@@ -124,6 +153,16 @@ func (input *GraderInput) Persist() error {
 		return err
 	}
 
+	sizeFd, err := os.Create(fmt.Sprintf("%s.len", input.archivePath))
+	if err != nil {
+		return err
+	}
+	defer sizeFd.Close()
+
+	if _, err := fmt.Fprintf(sizeFd, "%d\n", uncompressedSize); err != nil {
+		return err
+	}
+
 	if err := os.Rename(tmpPath, input.archivePath); err != nil {
 		return err
 	}
@@ -133,32 +172,32 @@ func (input *GraderInput) Persist() error {
 	return nil
 }
 
-func (input *GraderInput) createArchiveFromGit(archivePath string) error {
+func (input *GraderInput) createArchiveFromGit(archivePath string) (int64, error) {
 	repository, err := git.OpenRepository(input.repositoryPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer repository.Free()
 
 	treeOid, err := git.NewOid(input.Hash())
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	tree, err := repository.LookupTree(treeOid)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tree.Free()
 	odb, err := repository.Odb()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer odb.Free()
 
 	tmpFd, err := os.Create(archivePath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tmpFd.Close()
 
@@ -169,7 +208,8 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 	defer archive.Close()
 
 	var walkErr error = nil
-	var foundSettings bool = false
+	foundSettings := false
+	var uncompressedSize int64 = 0
 	tree.Walk(func(parent string, entry *git.TreeEntry) int {
 		entryPath := path.Join(parent, entry.Name)
 		if entryPath == "settings.json" {
@@ -199,6 +239,7 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 				Mode:     0644,
 				Size:     blob.Size(),
 			}
+			uncompressedSize += blob.Size()
 			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
 				return -1
 			}
@@ -221,16 +262,16 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 	})
 
 	if walkErr != nil {
-		return walkErr
+		return 0, walkErr
 	}
 	if !foundSettings {
-		return fmt.Errorf(
+		return 0, fmt.Errorf(
 			"Could not find `settings.json` in %s:%s",
 			input.repositoryPath,
 			input.Hash(),
 		)
 	}
-	return nil
+	return uncompressedSize, nil
 }
 
 // GraderInputFactory is an InputFactory that can store specific versions of a

@@ -194,12 +194,18 @@ func TestInputFactory(t *testing.T) {
 				IAiCIAiCIAiCIAiCIAiC/BHeAU4V1PQAKAAA`,
 			),
 			"application/x-gzip",
-			map[string]string{"Content-Sha1": "a32f0f018441df71efc8d1c6a55391354a8d4897"},
+			map[string]string{
+				"Content-Sha1":                "a32f0f018441df71efc8d1c6a55391354a8d4897",
+				"X-Content-Uncompressed-Size": "20",
+			},
 		},
 		"/input/0000000000000000000000000000000000000001/": httpentry{
 			[]byte("invalid .tar.gz"),
 			"application/x-gzip",
-			map[string]string{},
+			map[string]string{
+				"Content-Sha1":                "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+				"X-Content-Uncompressed-Size": "20",
+			},
 		},
 		"/input/0000000000000000000000000000000000000002/": httpentry{
 			mustDecode(
@@ -213,9 +219,29 @@ func TestInputFactory(t *testing.T) {
 				IAiCIAiCIAiCIAiCIAiC/BHeAU4V1PQAKAAA`,
 			),
 			"application/x-gzip",
-			map[string]string{"Content-Sha1": "Invalid SHA1 hash"},
+			map[string]string{
+				"Content-Sha1":                "Invalid SHA1 hash",
+				"X-Content-Uncompressed-Size": "20",
+			},
 		},
 		"/input/0000000000000000000000000000000000000003/": httpentry{
+			mustDecode(
+				`H4sIAFBMXVYAA+2WzU+DMBTAd93+CsJZWUspEK/Gmx+HLXowHppZZx0UA2VqFv53X1HYXDKXmDCi
+				vt+B0r6Pvva1D5QeD7qGABHntqURJ5ttw9d3ShllA4d3HhlQFkbkjjNYinkutNmpt0/+S1F6TDyl
+				O53DJjUMgm/yz7bzH0WQf9JpVJ/88/xTx+87BKRHstJ0/gH4Qf3nNMD6fwhs/okHzw7n2F//6Vb+
+				fYb1/zCwvgNAeqWQxig9L7ynIuvqL3Df/Q/hZ5/6oR/5Aec+1ALKOOF4/w/BauQ47qkoZOGeOLej
+				4XC17q3cS5FKeHOJe+S4N1LNHw10qUeqOxjYLQWnoGBdn6tUGevNTgT9s1eTixuRJFNVG5NaDQQX
+				Ms3yt1odhsOIkjgOg0Z6VZrn0jRSGrJ4LVrKHPw1PlsP9mQ1OhMjZovWmgQxj8JWuGnFNoyuRaLu
+				hcnybQUQVx+rmyTZCww+iKSQMDJc29gVtxtksoXUx7pMZa5mdrOmWQJB61m9Ax5ch2pUjfo+CgiC
+				IAiCIAiCIAiCIAiCIAiC/BHeAU4V1PQAKAAA`,
+			),
+			"application/x-gzip",
+			map[string]string{
+				"Content-Sha1":                "a32f0f018441df71efc8d1c6a55391354a8d4897",
+				"X-Content-Uncompressed-Size": "Invalid length",
+			},
+		},
+		"/input/0000000000000000000000000000000000000004/": httpentry{
 			mustDecode("H4sIAJctXVYAA8vMK0vMyUxRKEksUjAYKMAFAMWXZ/uGAAAA"),
 			"application/x-gzip",
 			map[string]string{},
@@ -245,6 +271,7 @@ func TestInputFactory(t *testing.T) {
 		{"0000000000000000000000000000000000000001", false},
 		{"0000000000000000000000000000000000000002", false},
 		{"0000000000000000000000000000000000000003", false},
+		{"0000000000000000000000000000000000000004", false},
 		{"4bba61b5499a7a511eb515594f3293a8741516ad", true},
 	}
 	factory := NewRunnerInputFactory(http.DefaultClient, &ctx.Config)

@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -173,6 +174,14 @@ func (input *RunnerInput) Persist() error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	uncompressedSize, err := strconv.ParseInt(
+		resp.Header.Get("X-Content-Uncompressed-Size"), 10, 64,
+	)
+	if err != nil {
+		return err
+	}
+	input.Reserve(uncompressedSize)
 
 	hasher := common.NewHashReader(resp.Body, sha1.New())
 
