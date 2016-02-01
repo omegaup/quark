@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/inconshreveable/log15"
 	"github.com/lhchavez/quark/common"
 	"io/ioutil"
 	"path"
@@ -14,15 +15,21 @@ import (
 
 // RunContext is a wrapper around a Run. This is used when a Run is sitting on
 // a Queue on the grader.
-// TODO(lhchavez): Add an event collector to the RunContext so it can track
-// per-run events.
 type RunContext struct {
-	ID           int64
-	GUID         string
-	Contest      *string
-	ProblemName  string
-	Run          *common.Run
-	Input        common.Input
+	ID          int64
+	GUID        string
+	Contest     *string
+	ProblemName string
+	Run         *common.Run
+	Input       common.Input
+
+	// These fields are there so that the RunContext can be used as a normal
+	// Context.
+	Log            log15.Logger
+	EventCollector common.EventCollector
+	EventFactory   *common.EventFactory
+	Config         *common.Config
+
 	creationTime int64
 	tries        int
 	queue        *Queue
@@ -48,7 +55,12 @@ func newRunContext(
 		return nil, err
 	}
 	run.Input = input
-	run.context = &ctx.Context
+	run.context = ctx.Context.DebugContext()
+
+	run.Config = &run.context.Config
+	run.Log = run.context.Log
+	run.EventCollector = run.context.EventCollector
+	run.EventFactory = run.context.EventFactory
 
 	return run, nil
 }
@@ -107,6 +119,13 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 	}
 	runCtx.Run.Source = string(contents)
 	return runCtx, nil
+}
+
+func (run *RunContext) Close() {
+	if run.monitor != nil {
+		run.monitor.Remove(run.Run.AttemptID)
+	}
+	// TODO(lhchavez): Persist logs and tracing data.
 }
 
 // Requeue adds a RunContext back to the Queue from where it came from, if it
@@ -173,14 +192,15 @@ func (queue *Queue) AddRun(
 	ctx *Context,
 	id int64,
 	inputManager *common.InputManager,
-) (*common.Run, error) {
+) (*RunContext, error) {
 	run, err := newRunContext(ctx, id, inputManager)
 	if err != nil {
 		return nil, err
 	}
+	// TODO(lhchavez): Add async events for queue operations.
 	// Add new runs to the normal priority by default.
 	queue.enqueue(run, 1)
-	return run.Run, nil
+	return run, nil
 }
 
 // enqueue adds a run to the queue.
