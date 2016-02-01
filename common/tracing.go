@@ -134,6 +134,50 @@ func (collector *MemoryEventCollector) MarshalJSON() ([]byte, error) {
 	return json.Marshal(collector.Events)
 }
 
+func (collector *MemoryEventCollector) UnmarshalJSON(buf []byte) error {
+	var rawEvents []struct {
+		Name      string                 `json:"name"`
+		Type      string                 `json:"ph"`
+		Timestamp int64                  `json:"ts"`
+		PID       int                    `json:"pid"`
+		TID       int                    `json:"tid"`
+		Args      map[string]interface{} `json:"args,omitempty"`
+		Duration  *int64                 `json:"dur,omitempty"`
+	}
+
+	if err := json.Unmarshal(buf, &rawEvents); err != nil {
+		return err
+	}
+
+	for _, rawEvent := range rawEvents {
+		normalEvent := NormalEvent{
+			Name:      rawEvent.Name,
+			Type:      rawEvent.Type,
+			Timestamp: rawEvent.Timestamp,
+			PID:       rawEvent.PID,
+			TID:       rawEvent.TID,
+			Args:      rawEvent.Args,
+		}
+		if rawEvent.Type == EventComplete {
+			event := CompleteEvent{
+				NormalEvent: normalEvent,
+				Duration:    *rawEvent.Duration,
+			}
+			collector.Events = append(collector.Events, &event)
+		} else if rawEvent.Type == EventClockSync {
+			event := IssuerClockSyncEvent{
+				NormalEvent: normalEvent,
+				SyncID:      (uint64)(rawEvent.Args["sync_id"].(float64)),
+			}
+			collector.Events = append(collector.Events, &event)
+		} else {
+			collector.Events = append(collector.Events, &normalEvent)
+		}
+	}
+
+	return nil
+}
+
 type MultiEventCollector struct {
 	collectors []EventCollector
 }

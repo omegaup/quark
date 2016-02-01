@@ -326,7 +326,12 @@ func Grade(
 		runResult.Score = runResult.MaxScore
 	}
 
-	ctx.Log.Debug("Finished running", "results", runResult)
+	ctx.Log.Debug(
+		"Finished running",
+		"id", run.AttemptID,
+		"verdict", runResult.Verdict,
+		"score", runResult.Score,
+	)
 	uploadEvent := ctx.EventFactory.NewCompleteEvent("upload")
 	defer ctx.EventCollector.Add(uploadEvent)
 	if err := uploadFiles(

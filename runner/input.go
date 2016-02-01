@@ -57,7 +57,7 @@ func (factory *RunnerInputFactory) NewInput(
 			path: path.Join(
 				factory.config.Runner.RuntimePath,
 				"input",
-				hash,
+				fmt.Sprintf("%s/%s", hash[:2], hash[2:]),
 			),
 		},
 		client:     factory.client,
@@ -241,17 +241,17 @@ func (input *RunnerInput) Persist() error {
 		))
 	}
 
-	if err := os.Rename(tmpPath, input.path); err != nil {
-		return err
-	}
-
-	settingsFd, err := os.Open(path.Join(input.path, "settings.json"))
+	settingsFd, err := os.Open(path.Join(tmpPath, "settings.json"))
 	if err != nil {
 		return err
 	}
 	defer settingsFd.Close()
 	decoder := json.NewDecoder(settingsFd)
 	if err := decoder.Decode(input.Settings()); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, input.path); err != nil {
 		return err
 	}
 

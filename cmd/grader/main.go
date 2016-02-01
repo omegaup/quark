@@ -94,6 +94,7 @@ func processRun(
 	runCtx *grader.RunContext,
 	ctx *grader.Context,
 ) (int, bool) {
+	runnerName := PeerName(r)
 	gradeDir := path.Join(
 		ctx.Config.Grader.RuntimePath,
 		"grade",
@@ -101,101 +102,100 @@ func processRun(
 		fmt.Sprintf("%d", runCtx.ID),
 	)
 	if err := os.MkdirAll(gradeDir, 0755); err != nil {
-		ctx.Log.Error("Unable to create grade dir", "err", err)
+		ctx.Log.Error("Unable to create grade dir", "err", err, "runner", runnerName)
 		return http.StatusInternalServerError, false
 	}
 
 	multipartReader, err := r.MultipartReader()
 	if err != nil {
-		ctx.Log.Error("Error decoding multipart data", "err", err)
+		ctx.Log.Error("Error decoding multipart data", "err", err, "runner", runnerName)
 		return http.StatusBadRequest, true
 	}
 	for {
 		part, err := multipartReader.NextPart()
 		if err == io.EOF {
-			ctx.Log.Debug("Done with run", "id", runID)
+			ctx.Log.Debug("Done with run", "id", runID, "runner", runnerName)
 			break
 		} else if err != nil {
-			ctx.Log.Error("Error receiving next file", "err", err)
+			ctx.Log.Error("Error receiving next file", "err", err, "runner", runnerName)
 			return http.StatusBadRequest, true
 		}
-		ctx.Log.Debug("Processing file", "id", runID, "filename", part.FileName())
+		ctx.Log.Debug("Processing file", "id", runID, "filename", part.FileName(), "runner", runnerName)
 
 		if part.FileName() == "details.json" {
 			defer ctx.InflightMonitor.Remove(runID)
 			var result runner.RunResult
 			decoder := json.NewDecoder(part)
 			if err := decoder.Decode(&result); err != nil {
-				ctx.Log.Error("Error obtaining result", "err", err)
+				ctx.Log.Error("Error obtaining result", "err", err, "runner", runnerName)
 				return http.StatusBadRequest, true
 			} else {
 				resultsPath := path.Join(gradeDir, "details.json")
 				fd, err := os.Create(resultsPath)
 				if err != nil {
-					ctx.Log.Error("Unable to create results file", "err", err)
+					ctx.Log.Error("Unable to create results file", "err", err, "runner", runnerName)
 					return http.StatusInternalServerError, false
 				}
 				defer fd.Close()
 				prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
 				if err != nil {
-					ctx.Log.Error("Unable to marshal results file", "err", err)
+					ctx.Log.Error("Unable to marshal results file", "err", err, "runner", runnerName)
 					return http.StatusInternalServerError, false
 				}
 				if _, err := fd.Write(prettyPrinted); err != nil {
-					ctx.Log.Error("Unable to write results file", "err", err)
+					ctx.Log.Error("Unable to write results file", "err", err, "runner", runnerName)
 					return http.StatusInternalServerError, false
 				}
-				ctx.Log.Info("Results ready for run", "ctx", runCtx, "verdict", result.Verdict)
+				ctx.Log.Info("Results ready for run", "ctx", runCtx, "verdict", result.Verdict, "runner", runnerName)
 			}
 		} else if part.FileName() == "tracing.json" {
 			var buffer bytes.Buffer
 			if _, err := io.Copy(&buffer, part); err != nil {
-				ctx.Log.Error("Unable to read tracing events")
+				ctx.Log.Error("Unable to read tracing events", "err", err, "runner", runnerName)
 				return http.StatusBadRequest, true
 			}
-			decoder := json.NewDecoder(bytes.NewBuffer(buffer.Bytes()))
-			var events []common.Event
-			if err := decoder.Decode(&events); err != nil {
-				ctx.Log.Error("Unable to decode the tracing events")
+			var runnerCollector common.MemoryEventCollector
+			if err := json.Unmarshal(buffer.Bytes(), &runnerCollector); err != nil {
+				ctx.Log.Error("Unable to decode the tracing events", "err", err, "runner", runnerName)
 				return http.StatusInternalServerError, false
 			}
-			for _, e := range events {
+			for _, e := range runnerCollector.Events {
 				if err := ctx.EventCollector.Add(e); err != nil {
-					ctx.Log.Error("Unable to add tracing data", "err", err)
+					ctx.Log.Error("Unable to add tracing data", "err", err, "runner", runnerName)
 					break
 				}
 			}
 			filePath := path.Join(gradeDir, "tracing.json.gz")
 			fd, err := os.Create(filePath)
 			if err != nil {
-				ctx.Log.Error("Unable to create tracing file", "err", err)
+				ctx.Log.Error("Unable to create tracing file", "err", err, "runner", runnerName)
 				return http.StatusInternalServerError, false
 			}
 			defer fd.Close()
 			gz := gzip.NewWriter(fd)
 			if _, err := io.Copy(gz, &buffer); err != nil {
-				ctx.Log.Error("Unable to upload traces", "err", err)
+				ctx.Log.Error("Unable to upload traces", "err", err, "runner", runnerName)
 				return http.StatusInternalServerError, false
 			}
 			if err := gz.Close(); err != nil {
-				ctx.Log.Error("Unable to finalize traces", "err", err)
+				ctx.Log.Error("Unable to finalize traces", "err", err, "runner", runnerName)
 				return http.StatusInternalServerError, false
 			}
 		} else {
 			filePath := path.Join(gradeDir, part.FileName())
 			fd, err := os.Create(filePath)
 			if err != nil {
-				ctx.Log.Error("Unable to create results file", "err", err)
+				ctx.Log.Error("Unable to create results file", "err", err, "runner", runnerName)
 				return http.StatusInternalServerError, false
 			}
 			defer fd.Close()
 			if _, err := io.Copy(fd, part); err != nil {
-				ctx.Log.Error("Unable to upload results", "err", err)
+				ctx.Log.Error("Unable to upload results", "err", err, "runner", runnerName)
 				return http.StatusInternalServerError, false
 			}
 		}
 	}
-	ctx.Log.Info("Finished processing run", "ctx", runCtx)
+	ctx.Log.Info("Finished processing run", "ctx", runCtx, "runner", runnerName)
 	return http.StatusOK, false
 }
 

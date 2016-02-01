@@ -169,11 +169,16 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 	defer archive.Close()
 
 	var walkErr error = nil
+	var foundSettings bool = false
 	tree.Walk(func(parent string, entry *git.TreeEntry) int {
+		entryPath := path.Join(parent, entry.Name)
+		if entryPath == "settings.json" {
+			foundSettings = true
+		}
 		switch entry.Type {
 		case git.ObjectTree:
 			hdr := &tar.Header{
-				Name:     path.Join(parent, entry.Name),
+				Name:     entryPath,
 				Typeflag: tar.TypeDir,
 				Mode:     0755,
 				Size:     0,
@@ -189,7 +194,7 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 			defer blob.Free()
 
 			hdr := &tar.Header{
-				Name:     path.Join(parent, entry.Name),
+				Name:     entryPath,
 				Typeflag: tar.TypeReg,
 				Mode:     0644,
 				Size:     blob.Size(),
@@ -215,7 +220,17 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) error {
 		return 0
 	})
 
-	return walkErr
+	if walkErr != nil {
+		return walkErr
+	}
+	if !foundSettings {
+		return fmt.Errorf(
+			"Could not find `settings.json` in %s:%s",
+			input.repositoryPath,
+			input.Hash(),
+		)
+	}
+	return nil
 }
 
 // GraderInputFactory is an InputFactory that can store specific versions of a
@@ -249,7 +264,7 @@ func (factory *GraderInputFactory) NewInput(
 			archivePath: path.Join(
 				factory.config.Grader.RuntimePath,
 				"cache",
-				fmt.Sprintf("%s.tar.gz", hash),
+				fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
 			),
 		},
 		repositoryPath: path.Join(
