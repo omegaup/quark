@@ -122,7 +122,7 @@ func processRun(
 		runCtx.Log.Debug("Processing file", "id", runID, "filename", part.FileName(), "runner", runnerName)
 
 		if part.FileName() == "details.json" {
-			defer runCtx.Finished()
+			defer runCtx.Close()
 			var result runner.RunResult
 			decoder := json.NewDecoder(part)
 			if err := decoder.Decode(&result); err != nil {

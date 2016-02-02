@@ -201,6 +201,32 @@ type CachedInputFactory interface {
 	GetInputHash(info os.FileInfo) (hash string, ok bool)
 }
 
+// IdentityInputFactory is an InputFactory that only constructs one Input.
+type IdentityInputFactory struct {
+	input Input
+}
+
+// NewIdentityInputFactory returns an IdentityInputFactory associated with the
+// provided Input.
+func NewIdentityInputFactory(input Input) *IdentityInputFactory {
+	return &IdentityInputFactory{
+		input: input,
+	}
+}
+
+// NewInput returns the Input provided in the constructor. Panics if the
+// requested hash does not match the one of the Input.
+func (factory *IdentityInputFactory) NewInput(hash string, mgr *InputManager) Input {
+	if factory.input.Hash() != hash {
+		panic(fmt.Errorf(
+			"Invalid hash for IdentityInputFactory. Expected %s got %s",
+			factory.input.Hash(),
+			hash,
+		))
+	}
+	return factory.input
+}
+
 // NewInputManager creates a new InputManager with the provided Context.
 func NewInputManager(ctx *Context) *InputManager {
 	return &InputManager{
@@ -315,7 +341,7 @@ func (mgr *InputManager) Insert(input Input) {
 	defer mgr.Unlock()
 
 	mgr.totalSize += input.Size()
-	entry := mgr.getEntryLocked(input.Hash(), nil)
+	entry := mgr.getEntryLocked(input.Hash(), NewIdentityInputFactory(input))
 	entry.listElement = mgr.evictList.PushFront(input)
 
 	// After inserting the input, trim the cache.
