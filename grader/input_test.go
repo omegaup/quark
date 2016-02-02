@@ -26,28 +26,28 @@ func TestPreloadInputs(t *testing.T) {
 		filename, contents string
 	}{
 		{
-			"0000000000000000000000000000000000000000.tar.gz",
+			"00/00000000000000000000000000000000000000.tar.gz",
 			"",
 		},
 		{
-			"0000000000000000000000000000000000000000.tar.gz.len",
+			"00/00000000000000000000000000000000000000.tar.gz.len",
 			"MA==",
 		},
 		{
-			"0000000000000000000000000000000000000000.tar.gz.sha1",
+			"00/00000000000000000000000000000000000000.tar.gz.sha1",
 			`MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCAqMDAwMDAwMDAwMDAwMDAw
 			MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMC50YXIuZ3o=`,
 		},
 		{
-			"0000000000000000000000000000000000000001.tar.gz",
+			"00/00000000000000000000000000000000000001.tar.gz",
 			"",
 		},
 		{
-			"0000000000000000000000000000000000000001.tar.gz.len",
+			"00/00000000000000000000000000000000000001.tar.gz.len",
 			"MA==",
 		},
 		{
-			"4bba61b5499a7a511eb515594f3293a8741516ad.tar.gz",
+			"4b/ba61b5499a7a511eb515594f3293a8741516ad.tar.gz",
 			`H4sIAFBMXVYAA+2WzU+DMBTAd93+CsJZWUspEK/Gmx+HLXowHppZZx0UA2VqFv53X1HYXDKXmDCi
 			vt+B0r6Pvva1D5QeD7qGABHntqURJ5ttw9d3ShllA4d3HhlQFkbkjjNYinkutNmpt0/+S1F6TDyl
 			O53DJjUMgm/yz7bzH0WQf9JpVJ/88/xTx+87BKRHstJ0/gH4Qf3nNMD6fwhs/okHzw7n2F//6Vb+
@@ -58,12 +58,12 @@ func TestPreloadInputs(t *testing.T) {
 			IAiCIAiCIAiCIAiCIAiC/BHeAU4V1PQAKAAA`,
 		},
 		{
-			"4bba61b5499a7a511eb515594f3293a8741516ad.tar.gz.sha1",
+			"4b/ba61b5499a7a511eb515594f3293a8741516ad.tar.gz.sha1",
 			`YTMyZjBmMDE4NDQxZGY3MWVmYzhkMWM2YTU1MzkxMzU0YThkNDg5NyAqNGJiYTYxYjU0OTlhN2E1
 			MTFlYjUxNTU5NGYzMjkzYTg3NDE1MTZhZC50YXIuZ3oK`,
 		},
 		{
-			"4bba61b5499a7a511eb515594f3293a8741516ad.tar.gz.len",
+			"4b/ba61b5499a7a511eb515594f3293a8741516ad.tar.gz.len",
 			"Mzk5",
 		},
 	}
@@ -78,6 +78,12 @@ func TestPreloadInputs(t *testing.T) {
 		)
 		if err != nil {
 			t.Fatalf("Failed to decode base64-encoded string: %q", err)
+		}
+		if err := os.MkdirAll(
+			path.Join(cachePath, path.Dir(ft.filename)),
+			0755,
+		); err != nil {
+			t.Fatalf("Failed to create directory: %q", err)
 		}
 		if err := ioutil.WriteFile(
 			path.Join(cachePath, ft.filename),

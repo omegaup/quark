@@ -198,7 +198,7 @@ type CachedInputFactory interface {
 	// GetInputHash returns both the hash of the input for the specified
 	// os.FileInfo. It returns ok = false in case the os.FileInfo does not refer
 	// to an Input.
-	GetInputHash(info os.FileInfo) (hash string, ok bool)
+	GetInputHash(dirname string, info os.FileInfo) (hash string, ok bool)
 }
 
 // IdentityInputFactory is an InputFactory that only constructs one Input.
@@ -388,30 +388,37 @@ func (mgr *InputManager) Size() int64 {
 // not be doing expensive I/O operations in the middle of a
 // performance-sensitive operation (like running contestants' code).
 func (mgr *InputManager) PreloadInputs(
-	dirname string,
+	rootdir string,
 	factory CachedInputFactory,
 	ioLock *sync.Mutex,
 ) error {
-	contents, err := ioutil.ReadDir(dirname)
-	if err != nil {
-		return err
-	}
-	for _, info := range contents {
-		hash, ok := factory.GetInputHash(info)
-		if !ok {
+	// Since all the filenames in the cache directory are (or contain) the hash,
+	// it is useful to introduce 256 intermediate directories with the first two
+	// nibbles of the hash to avoid the cache directory entry to grow too large
+	// and become inefficient.
+	for i := 0; i < 256; i++ {
+		dirname := path.Join(rootdir, fmt.Sprintf("%02x", i))
+		contents, err := ioutil.ReadDir(dirname)
+		if err != nil {
 			continue
 		}
+		for _, info := range contents {
+			hash, ok := factory.GetInputHash(dirname, info)
+			if !ok {
+				continue
+			}
 
-		// Make sure no other I/O is being made while we pre-fetch this input.
-		ioLock.Lock()
-		input, err := mgr.Add(hash, factory)
-		if err != nil {
-			os.RemoveAll(path.Join(dirname, info.Name()))
-			mgr.ctx.Log.Error("Cached input corrupted", "hash", hash)
-		} else {
-			input.Release(input)
+			// Make sure no other I/O is being made while we pre-fetch this input.
+			ioLock.Lock()
+			input, err := mgr.Add(hash, factory)
+			if err != nil {
+				os.RemoveAll(path.Join(dirname, info.Name()))
+				mgr.ctx.Log.Error("Cached input corrupted", "hash", hash)
+			} else {
+				input.Release(input)
+			}
+			ioLock.Unlock()
 		}
-		ioLock.Unlock()
 	}
 	mgr.ctx.Log.Info("Finished preloading cached inputs",
 		"cache_size", mgr.Size())

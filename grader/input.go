@@ -336,11 +336,15 @@ func (factory *GraderCachedInputFactory) NewInput(
 			hash,
 			mgr,
 		),
-		archivePath: path.Join(factory.inputPath, fmt.Sprintf("%s.tar.gz", hash)),
+		archivePath: path.Join(
+			factory.inputPath,
+			fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
+		),
 	}
 }
 
 func (factory *GraderCachedInputFactory) GetInputHash(
+	dirname string,
 	info os.FileInfo,
 ) (hash string, ok bool) {
 	const extension = ".tar.gz"
@@ -348,5 +352,9 @@ func (factory *GraderCachedInputFactory) GetInputHash(
 	if !strings.HasSuffix(filename, extension) {
 		return "", false
 	}
-	return strings.TrimSuffix(filename, extension), true
+	return fmt.Sprintf(
+		"%s%s",
+		path.Base(dirname),
+		strings.TrimSuffix(filename, extension),
+	), true
 }

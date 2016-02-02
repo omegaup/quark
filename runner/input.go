@@ -288,12 +288,13 @@ func (factory *RunnerCachedInputFactory) NewInput(
 			hash,
 			mgr,
 		),
-		path: path.Join(factory.cachePath, hash),
+		path: path.Join(factory.cachePath, fmt.Sprintf("%s/%s", hash[:2], hash[2:])),
 	}
 }
 
 func (factory *RunnerCachedInputFactory) GetInputHash(
+	dirname string,
 	info os.FileInfo,
 ) (hash string, ok bool) {
-	return info.Name(), info.IsDir()
+	return fmt.Sprintf("%s%s", path.Base(dirname), info.Name()), info.IsDir()
 }

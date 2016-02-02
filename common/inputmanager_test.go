@@ -72,7 +72,10 @@ func (factory *testCachedInputFactory) NewInput(
 	hash string,
 	mgr *InputManager,
 ) Input {
-	contents, err := ioutil.ReadFile(path.Join(factory.path, hash+".prob.valid"))
+	contents, err := ioutil.ReadFile(path.Join(
+		factory.path,
+		fmt.Sprintf("%s/%s.prob.valid", hash[:2], hash[2:]),
+	))
 	if err != nil {
 		panic(err)
 	}
@@ -83,10 +86,14 @@ func (factory *testCachedInputFactory) NewInput(
 }
 
 func (factory *testCachedInputFactory) GetInputHash(
+	dirname string,
 	info os.FileInfo,
 ) (string, bool) {
-	return strings.TrimSuffix(info.Name(), ".prob"),
-		strings.HasSuffix(info.Name(), ".prob")
+	return fmt.Sprintf(
+		"%s%s",
+		path.Base(dirname),
+		strings.TrimSuffix(info.Name(), ".prob"),
+	), strings.HasSuffix(info.Name(), ".prob")
 }
 
 func TestInputManagerSerializability(t *testing.T) {
@@ -155,12 +162,18 @@ func TestPreloadInputs(t *testing.T) {
 	inputfiles := []struct {
 		filename, contents string
 	}{
-		{"0.prob", ""},
-		{"0.prob.valid", "0"},
-		{"1.prob", ""},
-		{"1.prob.valid", "1"},
+		{"00/0.prob", ""},
+		{"00/0.prob.valid", "0"},
+		{"00/1.prob", ""},
+		{"00/1.prob.valid", "1"},
 	}
 	for _, ift := range inputfiles {
+		if err := os.MkdirAll(
+			path.Join(dirname, path.Dir(ift.filename)),
+			0755,
+		); err != nil {
+			t.Fatalf("Failed to create directory: %q", err)
+		}
 		if err := ioutil.WriteFile(
 			path.Join(dirname, ift.filename),
 			[]byte(ift.contents),
@@ -178,13 +191,13 @@ func TestPreloadInputs(t *testing.T) {
 		t.Fatalf("InputManager.PreloadInputs failed with %q", err)
 	}
 
-	// 0 was invalid, so it must not exist.
-	if _, err := inputManager.Get("0"); err == nil {
-		t.Errorf("InputManager.Get(\"0\") == %q, want !nil", err)
+	// 000 was invalid, so it must not exist.
+	if _, err := inputManager.Get("000"); err == nil {
+		t.Errorf("InputManager.Get(\"000\") == %q, want !nil", err)
 	}
-	// 1 was valid, so it must exist.
-	if _, err := inputManager.Get("1"); err != nil {
-		t.Errorf("InputManager.Get(\"1\") == %q, want nil", err)
+	// 001 was valid, so it must exist.
+	if _, err := inputManager.Get("001"); err != nil {
+		t.Errorf("InputManager.Get(\"001\") == %q, want nil", err)
 	}
 }
 
