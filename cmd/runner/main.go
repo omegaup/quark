@@ -14,6 +14,7 @@ import (
 	"math/rand"
 	"mime/multipart"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"path"
@@ -101,6 +102,9 @@ func main() {
 	ctx.Log.Info("omegaUp runner ready to serve")
 
 	var sleepTime float32 = 1
+	go func() {
+		ctx.Log.Error("http listen and serve", "err", http.ListenAndServe(":6060", nil))
+	}()
 
 	for {
 		if err := processRun(ctx, client, baseURL); err != nil {
@@ -164,6 +168,10 @@ func (cb *ChannelBuffer) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (cb *ChannelBuffer) Close() error {
+	// If there are any chunks remaining, they should be drained before
+	// returning.  The other goroutine should eventually close the channel.
+	for _ = range cb.chunks {
+	}
 	return nil
 }
 
@@ -224,7 +232,7 @@ func processRun(
 		return err
 	}
 
-	finished := make(chan error)
+	finished := make(chan error, 1)
 
 	if err = gradeAndUploadResults(
 		ctx,
@@ -251,6 +259,7 @@ func gradeAndUploadResults(
 	multipartWriter := multipart.NewWriter(requestBody)
 	defer multipartWriter.Close()
 	go func() {
+		defer requestBody.Close()
 		req, err := http.NewRequest("POST", uploadURL, requestBody)
 		if err != nil {
 			finished <- err
