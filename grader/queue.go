@@ -299,8 +299,9 @@ func (monitor *InflightMonitor) Get(id uint64) (*RunContext, <-chan struct{}, bo
 		case inflight.connected <- struct{}{}:
 		default:
 		}
+		return inflight.run, inflight.timeout, ok
 	}
-	return inflight.run, inflight.timeout, ok
+	return nil, nil, ok
 }
 
 // Remove removes the specified attempt ID from the in-flight runs and signals
