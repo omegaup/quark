@@ -58,7 +58,7 @@ func newRunContext(
 		return nil, err
 	}
 	run.Input = input
-	run.context = ctx.Context.DebugContext()
+	run.context = ctx.Context.DebugContext("id", id)
 
 	run.Config = &run.context.Config
 	run.Log = run.context.Log

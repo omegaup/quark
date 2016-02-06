@@ -207,11 +207,11 @@ func (context *Context) Close() {
 // DebugContext returns a new Context with an additional handler with a more
 // verbose filter (using the Debug level) and a Buffer in which all logging
 // statements will be (also) written to.
-func (context *Context) DebugContext() *Context {
+func (context *Context) DebugContext(logCtx ...interface{}) *Context {
 	var buffer bytes.Buffer
 	childContext := &Context{
 		Config:    context.Config,
-		Log:       context.Log.New(),
+		Log:       context.Log.New(logCtx...),
 		logBuffer: &buffer,
 		handler: log15.MultiHandler(
 			log15.StreamHandler(&buffer, log15.LogfmtFormat()),
