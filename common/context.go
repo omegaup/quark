@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/inconshreveable/log15"
 	"io"
 	"os"
@@ -226,6 +227,12 @@ func (context *Context) DebugContext() *Context {
 	childContext.EventFactory.Register(childContext.memoryCollector)
 	childContext.Log.SetHandler(childContext.handler)
 	return childContext
+}
+
+func (context *Context) AppendLogSection(sectionName string, contents []byte) {
+	fmt.Fprintf(context.logBuffer, "================  %s  ================\n", sectionName)
+	context.logBuffer.Write(contents)
+	fmt.Fprintf(context.logBuffer, "================ /%s  ================\n", sectionName)
 }
 
 func (context *Context) LogBuffer() []byte {

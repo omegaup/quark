@@ -1,13 +1,16 @@
 package grader
 
 import (
+	"compress/gzip"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/inconshreveable/log15"
 	"github.com/lhchavez/quark/common"
+	"github.com/lhchavez/quark/runner"
 	"io/ioutil"
+	"os"
 	"path"
 	"sync"
 	"time"
@@ -121,11 +124,85 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 	return runCtx, nil
 }
 
+func (run *RunContext) GradeDir() string {
+	return path.Join(
+		run.Config.Grader.RuntimePath,
+		"grade",
+		fmt.Sprintf("%02d", run.ID%100),
+		fmt.Sprintf("%d", run.ID),
+	)
+}
+
 func (run *RunContext) Close() {
 	if run.monitor != nil {
 		run.monitor.Remove(run.Run.AttemptID)
 	}
-	// TODO(lhchavez): Persist logs and tracing data.
+	gradeDir := run.GradeDir()
+
+	if _, err := os.Stat(path.Join(gradeDir, "details.json")); os.IsNotExist(err) {
+		// No details.json file present. Let's add one.
+		result := &runner.RunResult{
+			Verdict:  "JE",
+			MaxScore: run.Run.MaxScore,
+		}
+		fd, err := os.Create(path.Join(gradeDir, "details.json"))
+		if err != nil {
+			run.Log.Error("Unable to create details.json file", "err", err)
+			return
+		}
+		defer fd.Close()
+		prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
+		if err != nil {
+			run.Log.Error("Unable to marshal results file", "err", err)
+			return
+		}
+		if _, err := fd.Write(prettyPrinted); err != nil {
+			run.Log.Error("Unable to write results file", "err", err)
+			return
+		}
+	}
+
+	// Persist logs
+	{
+		fd, err := os.Create(path.Join(gradeDir, "logs.txt.gz"))
+		if err != nil {
+			run.Log.Error("Unable to create log file", "err", err)
+			return
+		}
+		defer fd.Close()
+		gz := gzip.NewWriter(fd)
+		if _, err := gz.Write(run.context.LogBuffer()); err != nil {
+			run.Log.Error("Unable to write log file", "err", err)
+			return
+		}
+		if err := gz.Close(); err != nil {
+			run.Log.Error("Unable to finalize log file", "err", err)
+			return
+		}
+	}
+
+	// Persist tracing info
+	{
+		fd, err := os.Create(path.Join(gradeDir, "tracing.json.gz"))
+		if err != nil {
+			run.Log.Error("Unable to create tracing file", "err", err)
+			return
+		}
+		defer fd.Close()
+		gz := gzip.NewWriter(fd)
+		if _, err := gz.Write(run.context.TraceBuffer()); err != nil {
+			run.Log.Error("Unable to upload traces", "err", err)
+			return
+		}
+		if err := gz.Close(); err != nil {
+			run.Log.Error("Unable to finalize traces", "err", err)
+			return
+		}
+	}
+}
+
+func (run *RunContext) AppendRunnerLogs(runnerName string, contents []byte) {
+	run.context.AppendLogSection(runnerName, contents)
 }
 
 // Requeue adds a RunContext back to the Queue from where it came from, if it
@@ -137,6 +214,7 @@ func (run *RunContext) Requeue() bool {
 	}
 	run.tries -= 1
 	if run.tries <= 0 {
+		run.Close()
 		return false
 	}
 	run.Run.UpdateAttemptID()
@@ -288,10 +366,10 @@ func (monitor *InflightMonitor) timeout(
 }
 
 // Get returns the RunContext associated with the specified attempt ID.
-func (monitor *InflightMonitor) Get(id uint64) (*RunContext, <-chan struct{}, bool) {
+func (monitor *InflightMonitor) Get(attemptID uint64) (*RunContext, <-chan struct{}, bool) {
 	monitor.Lock()
 	defer monitor.Unlock()
-	inflight, ok := monitor.mapping[id]
+	inflight, ok := monitor.mapping[attemptID]
 	if ok {
 		// Try to signal that the runner has connected, unless it was already
 		// signalled before.
@@ -306,10 +384,10 @@ func (monitor *InflightMonitor) Get(id uint64) (*RunContext, <-chan struct{}, bo
 
 // Remove removes the specified attempt ID from the in-flight runs and signals
 // the RunContext for completion.
-func (monitor *InflightMonitor) Remove(id uint64) {
+func (monitor *InflightMonitor) Remove(attemptID uint64) {
 	monitor.Lock()
 	defer monitor.Unlock()
-	inflight, ok := monitor.mapping[id]
+	inflight, ok := monitor.mapping[attemptID]
 	if ok {
 		inflight.run.monitor = nil
 		select {
@@ -323,7 +401,7 @@ func (monitor *InflightMonitor) Remove(id uint64) {
 		default:
 		}
 	}
-	delete(monitor.mapping, id)
+	delete(monitor.mapping, attemptID)
 }
 
 func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
