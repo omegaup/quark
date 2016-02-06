@@ -129,42 +129,8 @@ func processRun(
 			if err := decoder.Decode(&result); err != nil {
 				runCtx.Log.Error("Error obtaining result", "err", err, "runner", runnerName)
 				return http.StatusBadRequest, true
-			} else {
-				resultsPath := path.Join(gradeDir, "details.json")
-				fd, err := os.Create(resultsPath)
-				if err != nil {
-					runCtx.Log.Error(
-						"Unable to create results file",
-						"err", err,
-						"runner", runnerName,
-					)
-					return http.StatusInternalServerError, false
-				}
-				defer fd.Close()
-				prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
-				if err != nil {
-					runCtx.Log.Error(
-						"Unable to marshal results file",
-						"err", err,
-						"runner", runnerName,
-					)
-					return http.StatusBadRequest, true
-				}
-				if _, err := fd.Write(prettyPrinted); err != nil {
-					runCtx.Log.Error(
-						"Unable to write results file",
-						"err", err,
-						"runner", runnerName,
-					)
-					return http.StatusInternalServerError, false
-				}
-				runCtx.Log.Info(
-					"Results ready for run",
-					"ctx", runCtx,
-					"verdict", result.Verdict,
-					"runner", runnerName,
-				)
 			}
+			runCtx.Result = result
 		} else if part.FileName() == "logs.txt" {
 			var buffer bytes.Buffer
 			if _, err := io.Copy(&buffer, part); err != nil {
@@ -215,7 +181,12 @@ func processRun(
 			}
 		}
 	}
-	runCtx.Log.Info("Finished processing run", "ctx", runCtx, "runner", runnerName)
+	runCtx.Log.Info(
+		"Finished processing run",
+		"verdict", runCtx.Result.Verdict,
+		"runner", runnerName,
+		"ctx", runCtx,
+	)
 	return http.StatusOK, false
 }
 

@@ -25,6 +25,7 @@ type RunContext struct {
 	ProblemName string
 	Run         *common.Run
 	Input       common.Input
+	Result      runner.RunResult
 
 	// These fields are there so that the RunContext can be used as a normal
 	// Context.
@@ -74,6 +75,9 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 			AttemptID: common.NewAttemptID(),
 			MaxScore:  1.0,
 		},
+		Result: runner.RunResult{
+			Verdict: "JE",
+		},
 		ID:           id,
 		creationTime: time.Now().Unix(),
 		tries:        ctx.Config.Grader.MaxGradeRetries,
@@ -109,6 +113,7 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 	if contestPoints.Valid {
 		runCtx.Run.MaxScore = contestPoints.Float64
 	}
+	runCtx.Result.MaxScore = runCtx.Run.MaxScore
 	contents, err := ioutil.ReadFile(
 		path.Join(
 			ctx.Config.Grader.RuntimePath,
@@ -138,20 +143,20 @@ func (run *RunContext) Close() {
 		run.monitor.Remove(run.Run.AttemptID)
 	}
 	gradeDir := run.GradeDir()
+	if err := os.MkdirAll(gradeDir, 0755); err != nil {
+		run.Log.Error("Unable to create grade dir", "err", err)
+		return
+	}
 
-	if _, err := os.Stat(path.Join(gradeDir, "details.json")); os.IsNotExist(err) {
-		// No details.json file present. Let's add one.
-		result := &runner.RunResult{
-			Verdict:  "JE",
-			MaxScore: run.Run.MaxScore,
-		}
+	// Results
+	{
 		fd, err := os.Create(path.Join(gradeDir, "details.json"))
 		if err != nil {
 			run.Log.Error("Unable to create details.json file", "err", err)
 			return
 		}
 		defer fd.Close()
-		prettyPrinted, err := json.MarshalIndent(&result, "", "  ")
+		prettyPrinted, err := json.MarshalIndent(&run.Result, "", "  ")
 		if err != nil {
 			run.Log.Error("Unable to marshal results file", "err", err)
 			return
