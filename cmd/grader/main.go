@@ -187,6 +187,16 @@ func processRun(
 		"runner", runnerName,
 		"ctx", runCtx,
 	)
+	if runCtx.Result.Verdict == "JE" {
+		// Retry the run in case it is some transient problem.
+		runCtx.Log.Info(
+			"Judge Error. Re-attempting run.",
+			"verdict", runCtx.Result.Verdict,
+			"runner", runnerName,
+			"ctx", runCtx,
+		)
+		return http.StatusOK, true
+	}
 	return http.StatusOK, false
 }
 
@@ -325,7 +335,9 @@ func main() {
 			runCtx.Close()
 		} else {
 			runCtx.Log.Error("run errored out. retrying", "context", runCtx)
-			if !runCtx.Requeue() {
+			// status is OK only when the runner successfully sent a JE verdict.
+			lastAttempt := status == http.StatusOK
+			if !runCtx.Requeue(lastAttempt) {
 				runCtx.Log.Error("run errored out too many times. giving up")
 			}
 		}

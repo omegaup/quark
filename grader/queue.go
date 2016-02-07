@@ -227,7 +227,7 @@ func (run *RunContext) AppendRunnerLogs(runnerName string, contents []byte) {
 // Requeue adds a RunContext back to the Queue from where it came from, if it
 // has any retries left. It always adds the RunContext to the highest-priority
 // queue.
-func (run *RunContext) Requeue() bool {
+func (run *RunContext) Requeue(lastAttempt bool) bool {
 	if run.monitor != nil {
 		run.monitor.Remove(run.Run.AttemptID)
 	}
@@ -235,6 +235,12 @@ func (run *RunContext) Requeue() bool {
 	if run.tries <= 0 {
 		run.Close()
 		return false
+	}
+	if lastAttempt {
+		// If this is the result of a runner successfully sending a JE verdict, it
+		// _might_ be a transient problem. In any case, only attempt to run it at
+		// most once more.
+		run.tries = 1
 	}
 	run.Run.UpdateAttemptID()
 	// Since it was already ready to be executed, place it in the high-priority
@@ -378,7 +384,7 @@ func (monitor *InflightMonitor) timeout(
 	timeout chan<- struct{},
 ) {
 	run.context.Log.Error("run timed out. retrying", "context", run)
-	if !run.Requeue() {
+	if !run.Requeue(false) {
 		run.context.Log.Error("run timed out too many times. giving up")
 	}
 	timeout <- struct{}{}
