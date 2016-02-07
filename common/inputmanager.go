@@ -323,9 +323,9 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
 				delete(mgr.mapping, hash)
 				return nil, err
 			}
-			mgr.ctx.Log.Info("Generated input", "hash", input.Hash())
+			mgr.ctx.Log.Info("Generated input", "hash", input.Hash(), "size", input.Size())
 		} else {
-			mgr.ctx.Log.Debug("Reusing input", "hash", input.Hash())
+			mgr.ctx.Log.Debug("Reusing input", "hash", input.Hash(), "size", input.Size())
 		}
 	}
 	input.Acquire()
