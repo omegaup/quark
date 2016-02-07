@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,7 +25,6 @@ type RunContext struct {
 	Contest     *string
 	ProblemName string
 	Run         *common.Run
-	Input       common.Input
 	Result      runner.RunResult
 
 	// These fields are there so that the RunContext can be used as a normal
@@ -33,6 +33,12 @@ type RunContext struct {
 	EventCollector common.EventCollector
 	EventFactory   *common.EventFactory
 	Config         *common.Config
+
+	// A flag to be able to atomically close the RunContext exactly once.
+	closed int32
+	// A reference to the Input so that it is not evicted while RunContext is
+	// still active
+	input common.Input
 
 	creationTime int64
 	tries        int
@@ -58,7 +64,7 @@ func newRunContext(
 	if err != nil {
 		return nil, err
 	}
-	run.Input = input
+	run.input = input
 	run.context = ctx.Context.DebugContext("id", id)
 
 	run.Config = &run.context.Config
@@ -139,8 +145,16 @@ func (run *RunContext) GradeDir() string {
 }
 
 func (run *RunContext) Close() {
+	if atomic.SwapInt32(&run.closed, 1) != 0 {
+		run.Log.Warn("Attempting to close an already closed run")
+		return
+	}
 	if run.monitor != nil {
 		run.monitor.Remove(run.Run.AttemptID)
+	}
+	if run.input != nil {
+		run.input.Release(run.input)
+		run.input = nil
 	}
 	gradeDir := run.GradeDir()
 	if err := os.MkdirAll(gradeDir, 0755); err != nil {

@@ -286,7 +286,6 @@ func main() {
 			encoder := json.NewEncoder(w)
 			encoder.Encode(runCtx.Run)
 			runCtx.EventCollector.Add(ev)
-			runCtx.Input.Release(runCtx.Input)
 		}
 	})
 
@@ -307,9 +306,14 @@ func main() {
 		}
 		go func() {
 			select {
-			case <-timeout:
+			case _, timedout := <-timeout:
+				if !timedout {
+					return
+				}
 				// Once a timeout happens, close the inbound connection and make the
 				// whole thing fail.
+				runCtx.Log.Error("run timed out. Closing everything")
+				w.WriteHeader(http.StatusRequestTimeout)
 				r.Body.Close()
 			}
 		}()
