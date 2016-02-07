@@ -212,21 +212,21 @@ func (input *RunnerInput) Persist() error {
 		filePath := path.Join(tmpPath, hdr.Name)
 		if hdr.FileInfo().IsDir() {
 			if err := os.MkdirAll(filePath, 0755); err != nil {
-				panic(err)
+				return err
 			}
 		} else {
 			if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
-				panic(err)
+				return err
 			}
 			fd, err := os.Create(filePath)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			defer fd.Close()
 
 			innerHasher := common.NewHashReader(archive, sha1.New())
 			if _, err := io.Copy(fd, innerHasher); err != nil {
-				panic(err)
+				return err
 			}
 			_, err = fmt.Fprintf(
 				sha1sumFile,
@@ -236,7 +236,7 @@ func (input *RunnerInput) Persist() error {
 				hdr.Name,
 			)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			size += hdr.Size
 		}
