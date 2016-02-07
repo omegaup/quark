@@ -339,7 +339,7 @@ type InflightMonitor struct {
 func NewInflightMonitor() *InflightMonitor {
 	return &InflightMonitor{
 		mapping:        make(map[uint64]*InflightRun),
-		connectTimeout: time.Duration(2) * time.Second,
+		connectTimeout: time.Duration(10) * time.Second,
 		readyTimeout:   time.Duration(10) * time.Minute,
 	}
 }
