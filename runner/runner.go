@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"syscall"
 )
 
 type CaseResult struct {
@@ -39,9 +40,74 @@ type RunResult struct {
 	Groups       []GroupResult          `json:"groups"`
 }
 
+type binaryType int
+
+const (
+	binaryProblemsetter binaryType = iota
+	binaryContestant
+	binaryValidator
+)
+
 type binary struct {
-	name     string
-	language string
+	name             string
+	language         string
+	binPath          string
+	outputPathPrefix string
+	binaryType       binaryType
+	receiveInput     bool
+	sourceFiles      []string
+	extraFlags       []string
+	extraMountPoints map[string]string
+}
+
+type intermediateRunResult struct {
+	runMeta    *RunMetadata
+	binaryType binaryType
+}
+
+func extraParentFlags(language string) []string {
+	if language == "c" || language == "cpp" || language == "cpp11" {
+		return []string{"-Wl,-e__entry"}
+	}
+	return []string{}
+}
+
+func normalizedSourceFiles(
+	runRoot string,
+	name string,
+	iface *common.InteractiveInterface,
+) []string {
+	binRoot := path.Join(runRoot, name, "bin")
+	sources := make([]string, len(iface.MakefileRules[0].Requisites))
+	for idx, requisite := range iface.MakefileRules[0].Requisites {
+		sources[idx] = path.Join(binRoot, path.Base(requisite))
+	}
+	return sources
+}
+
+func generateParentMountpoints(
+	runRoot string,
+	interactive *common.InteractiveSettings,
+) map[string]string {
+	result := make(map[string]string)
+	for name, _ := range interactive.Interfaces {
+		if name == interactive.Main {
+			continue
+		}
+		for src, dst := range generateMountpoint(runRoot, name) {
+			result[src] = dst
+		}
+	}
+	return result
+}
+
+func generateMountpoint(
+	runRoot string,
+	name string,
+) map[string]string {
+	return map[string]string{
+		path.Join(runRoot, name, "pipes"): fmt.Sprintf("/home/%s_pipes", name),
+	}
 }
 
 func Grade(
@@ -69,24 +135,160 @@ func Grade(
 
 	ctx.Log.Info("Running", "run", run)
 
-	binaries := []binary{
-		{"Main", run.Language},
+	var binaries []*binary
+
+	interactive := input.Settings().Interactive
+	if interactive != nil {
+		ctx.Log.Info("libinteractive", "version", interactive.LibinteractiveVersion)
+		binaries = []*binary{
+			&binary{
+				interactive.Main,
+				interactive.ParentLang,
+				path.Join(runRoot, interactive.Main, "bin"),
+				"",
+				binaryProblemsetter,
+				true,
+				normalizedSourceFiles(
+					runRoot,
+					interactive.Main,
+					interactive.Interfaces[interactive.Main][interactive.ParentLang],
+				),
+				extraParentFlags(interactive.ParentLang),
+				generateParentMountpoints(runRoot, interactive),
+			},
+		}
+		for name, lang_iface := range interactive.Interfaces {
+			if name == interactive.Main {
+				continue
+			}
+			binaries = append(
+				binaries,
+				&binary{
+					name,
+					run.Language,
+					path.Join(runRoot, name, "bin"),
+					name,
+					binaryContestant,
+					false,
+					normalizedSourceFiles(
+						runRoot,
+						name,
+						lang_iface[run.Language],
+					),
+					[]string{},
+					generateMountpoint(runRoot, name),
+				},
+			)
+		}
+
+		// Setup all source files.
+		for _, bin := range binaries {
+			binPath := path.Join(runRoot, bin.name, "bin")
+			if err := os.MkdirAll(binPath, 0755); err != nil {
+				return runResult, err
+			}
+		}
+		if err := os.Link(
+			path.Join(
+				input.Path(),
+				fmt.Sprintf("interactive/Main.%s", interactive.ParentLang),
+			),
+			path.Join(
+				runRoot,
+				fmt.Sprintf("Main/bin/Main.%s", interactive.ParentLang),
+			),
+		); err != nil {
+			return runResult, err
+		}
+		for name, lang_iface := range interactive.Interfaces {
+			var lang string
+			if name == "Main" {
+				lang = interactive.ParentLang
+			} else {
+				lang = run.Language
+			}
+			for filename, contents := range lang_iface[lang].Files {
+				sourcePath := path.Join(
+					runRoot,
+					fmt.Sprintf("%s/bin/%s", name, path.Base(filename)),
+				)
+				err := ioutil.WriteFile(sourcePath, []byte(contents), 0644)
+				if err != nil {
+					return runResult, err
+				}
+			}
+			if name == "Main" {
+				for iface_name, _ := range interactive.Interfaces {
+					if iface_name == "Main" {
+						continue
+					}
+					pipesMountPath := path.Join(
+						runRoot,
+						fmt.Sprintf("%s/bin/%s_pipes", name, iface_name),
+					)
+					if err := os.MkdirAll(pipesMountPath, 0755); err != nil {
+						return runResult, err
+					}
+				}
+				continue
+			}
+			sourcePath := path.Join(
+				runRoot,
+				fmt.Sprintf("%s/bin/%s.%s", name, interactive.ModuleName, run.Language),
+			)
+			err := ioutil.WriteFile(sourcePath, []byte(run.Source), 0644)
+			if err != nil {
+				return runResult, err
+			}
+			pipesMountPath := path.Join(
+				runRoot,
+				fmt.Sprintf("%s/bin/%s_pipes", name, name),
+			)
+			if err := os.MkdirAll(pipesMountPath, 0755); err != nil {
+				return runResult, err
+			}
+			pipesPath := path.Join(runRoot, name, "pipes")
+			if err := os.MkdirAll(pipesPath, 0755); err != nil {
+				return runResult, err
+			}
+			if err := syscall.Mkfifo(path.Join(pipesPath, "in"), 0644); err != nil {
+				return runResult, err
+			}
+			if err := syscall.Mkfifo(path.Join(pipesPath, "out"), 0644); err != nil {
+				return runResult, err
+			}
+		}
+	} else {
+		// Setup all source files.
+		mainBinPath := path.Join(runRoot, "Main", "bin")
+		if err := os.MkdirAll(mainBinPath, 0755); err != nil {
+			return runResult, err
+		}
+		mainSourcePath := path.Join(mainBinPath, fmt.Sprintf("Main.%s", run.Language))
+		err := ioutil.WriteFile(mainSourcePath, []byte(run.Source), 0644)
+		if err != nil {
+			return runResult, err
+		}
+
+		binaries = []*binary{
+			&binary{
+				"Main",
+				run.Language,
+				mainBinPath,
+				"",
+				binaryContestant,
+				true,
+				[]string{mainSourcePath},
+				[]string{},
+				map[string]string{},
+			},
+		}
 	}
 
 	generatedFiles := make([]string, 0)
 
-	// Setup all source files.
-	mainBinPath := path.Join(runRoot, "Main", "bin")
-	if err := os.MkdirAll(mainBinPath, 0755); err != nil {
-		return runResult, err
-	}
-	mainSourceFile := path.Join(mainBinPath, fmt.Sprintf("Main.%s", run.Language))
-	err := ioutil.WriteFile(mainSourceFile, []byte(run.Source), 0644)
-	if err != nil {
-		return runResult, err
-	}
-
 	validatorBinPath := path.Join(runRoot, "validator", "bin")
+	regularBinaryCount := len(binaries)
 	if input.Settings().Validator.Name == "custom" {
 		if err := os.MkdirAll(validatorBinPath, 0755); err != nil {
 			return runResult, err
@@ -98,7 +300,20 @@ func Grade(
 		if err != nil {
 			return runResult, err
 		}
-		binaries = append(binaries, binary{"validator", validatorLang})
+		binaries = append(
+			binaries,
+			&binary{
+				"validator",
+				validatorLang,
+				validatorBinPath,
+				"validator",
+				binaryValidator,
+				false,
+				[]string{},
+				[]string{},
+				map[string]string{},
+			},
+		)
 	}
 
 	runResult.CompileMeta = make(map[string]RunMetadata)
@@ -107,7 +322,6 @@ func Grade(
 	for _, b := range binaries {
 		binRoot := path.Join(runRoot, b.name)
 		binPath := path.Join(binRoot, "bin")
-		sourceFile := path.Join(binPath, fmt.Sprintf("%s.%s", b.name, b.language))
 
 		singleCompileEvent := ctx.EventFactory.NewCompleteEvent(
 			b.name,
@@ -116,13 +330,13 @@ func Grade(
 		compileMeta, err := sandbox.Compile(
 			ctx,
 			b.language,
-			[]string{sourceFile},
+			b.sourceFiles,
 			binPath,
 			path.Join(binRoot, "compile.out"),
 			path.Join(binRoot, "compile.err"),
 			path.Join(binRoot, "compile.meta"),
 			b.name,
-			[]string{},
+			b.extraFlags,
 		)
 		ctx.EventCollector.Add(singleCompileEvent)
 		generatedFiles = append(
@@ -168,38 +382,117 @@ func Grade(
 				}
 			} else {
 				singleRunEvent := ctx.EventFactory.NewCompleteEvent(caseData.Name)
-				runMeta, err = sandbox.Run(
-					ctx,
-					input,
-					run.Language,
-					mainBinPath,
-					path.Join(input.Path(), "in", fmt.Sprintf("%s.in", caseData.Name)),
-					path.Join(runRoot, fmt.Sprintf("%s.out", caseData.Name)),
-					path.Join(runRoot, fmt.Sprintf("%s.err", caseData.Name)),
-					path.Join(runRoot, fmt.Sprintf("%s.meta", caseData.Name)),
-					"Main",
-					nil,
-					nil,
-					nil,
-					[]string{},
-					map[string]string{},
-				)
-				ctx.EventCollector.Add(singleRunEvent)
-				if err != nil {
-					ctx.Log.Error("failed to run "+caseData.Name, "err", err)
+				metaChan := make(chan intermediateRunResult, 1)
+				for _, bin := range binaries {
+					if bin.binaryType == binaryValidator {
+						continue
+					}
+					go func(bin *binary) {
+						var inputPath string
+						if bin.receiveInput {
+							inputPath = path.Join(
+								input.Path(),
+								"in",
+								fmt.Sprintf("%s.in", caseData.Name),
+							)
+						} else {
+							inputPath = "/dev/null"
+						}
+						runMeta, err := sandbox.Run(
+							ctx,
+							input,
+							bin.language,
+							bin.binPath,
+							inputPath,
+							path.Join(
+								runRoot,
+								bin.outputPathPrefix,
+								fmt.Sprintf("%s.out", caseData.Name),
+							),
+							path.Join(
+								runRoot,
+								bin.outputPathPrefix,
+								fmt.Sprintf("%s.err", caseData.Name),
+							),
+							path.Join(
+								runRoot,
+								bin.outputPathPrefix,
+								fmt.Sprintf("%s.meta", caseData.Name),
+							),
+							bin.name,
+							nil,
+							nil,
+							nil,
+							[]string{},
+							bin.extraMountPoints,
+						)
+						if err != nil {
+							ctx.Log.Error(
+								"failed to run "+caseData.Name,
+								"interface", bin.name,
+								"err", err,
+							)
+						}
+						generatedFiles = append(
+							generatedFiles,
+							path.Join(
+								bin.outputPathPrefix,
+								fmt.Sprintf("%s.out", caseData.Name),
+							),
+							path.Join(
+								bin.outputPathPrefix,
+								fmt.Sprintf("%s.err", caseData.Name),
+							),
+							path.Join(
+								bin.outputPathPrefix,
+								fmt.Sprintf("%s.meta", caseData.Name),
+							),
+						)
+						metaChan <- intermediateRunResult{runMeta, bin.binaryType}
+					}(bin)
 				}
-				generatedFiles = append(
-					generatedFiles,
-					fmt.Sprintf("%s.out", caseData.Name),
-					fmt.Sprintf("%s.err", caseData.Name),
-					fmt.Sprintf("%s.meta", caseData.Name),
-				)
+				var parentMetadata *RunMetadata = nil
+				chosenMetadata := RunMetadata{
+					Verdict: "OK",
+				}
+				chosenMetadataEmpty := true
+				var totalTime float64 = 0
+				var totalWallTime float64 = 0
+				totalMemory := 0
+				for i := 0; i < regularBinaryCount; i++ {
+					intermediateResult := <-metaChan
+					if intermediateResult.binaryType == binaryProblemsetter {
+						parentMetadata = intermediateResult.runMeta
+					} else {
+						if intermediateResult.runMeta.Verdict != "OK" {
+							if chosenMetadataEmpty {
+								chosenMetadata = *intermediateResult.runMeta
+								chosenMetadataEmpty = false
+							}
+						}
+						totalTime += intermediateResult.runMeta.Time
+						totalWallTime += intermediateResult.runMeta.WallTime
+						totalMemory += max(totalMemory, intermediateResult.runMeta.Memory)
+					}
+				}
+				close(metaChan)
+				ctx.EventCollector.Add(singleRunEvent)
+				chosenMetadata.Time = totalTime
+				chosenMetadata.WallTime = totalWallTime
+				chosenMetadata.Memory = totalMemory
+
+				if parentMetadata != nil && parentMetadata.Verdict != "OK" {
+					// TODO: https://github.com/omegaup/backend/blob/master/runner/src/main/scala/com/omegaup/runner/Runner.scalaL582
+				}
+
+				runMeta = &chosenMetadata
 			}
 			runResult.Verdict = worseVerdict(runResult.Verdict, runMeta.Verdict)
 			runResult.Time += runMeta.Time
 			runResult.WallTime += runMeta.WallTime
 			runResult.Memory = max(runResult.Memory, runMeta.Memory)
 
+			// TODO: change CaseResult to split original metadatas and final metadata
 			caseResults[j] = CaseResult{
 				Name:     caseData.Name,
 				MaxScore: runResult.MaxScore * caseData.Weight,

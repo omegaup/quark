@@ -154,6 +154,7 @@ func (*MinijailSandbox) Compile(
 	finalParams := make([]string, 0)
 	finalParams = append(finalParams, commonParams...)
 	finalParams = append(finalParams, params...)
+	finalParams = append(finalParams, extraFlags...)
 	finalParams = append(finalParams, chrootedInputFiles...)
 
 	ctx.Log.Debug("invoking minijail", "params", finalParams)

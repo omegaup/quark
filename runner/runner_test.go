@@ -347,6 +347,156 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	}
 }
 
+func TestLibinteractive(t *testing.T) {
+	minijail := &MinijailSandbox{}
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	if !minijail.Supported() {
+		t.Skip("minijail sandbox not supported")
+	}
+	ctx, err := newRunnerContext()
+	if err != nil {
+		t.Fatalf("RunnerContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+	defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+
+	inputManager := common.NewInputManager(ctx)
+	AplusB, err := common.NewLiteralInputFactory(
+		&common.LiteralInput{
+			Cases: map[string]common.LiteralCaseSettings{
+				"0": {Input: "1 2", ExpectedOutput: "3"},
+				"1": {Input: "2 3", ExpectedOutput: "5"},
+			},
+			Validator: &common.LiteralValidatorSettings{
+				Name: "token-numeric",
+			},
+			Interactive: &common.LiteralInteractiveSettings{
+				IDLSource: `
+					interface Main {};
+					interface AplusB {
+						int sum(int a, int b);
+					};
+				`,
+				MainSource: `
+					#include "AplusB.h"
+					#include <iostream>
+					using namespace std;
+					int main() {
+						int A, B;
+						cin >> A >> B;
+						cout << sum(A, B) << endl;
+					}
+				`,
+				ModuleName: "AplusB",
+				ParentLang: "cpp",
+			},
+		},
+		&ctx.Config,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create Input: %q", err)
+	}
+	inputManager.Add(AplusB.Hash(), AplusB)
+
+	input, err := inputManager.Get(AplusB.Hash())
+	if err != nil {
+		t.Fatalf("Failed to open problem: %q", err)
+	}
+
+	runtests := []runnerTestCase{
+		{
+			"cpp",
+			`
+				#include <iostream>
+				using namespace std;
+				int main() {
+					int A, B;
+					cin >> A >> B;
+					cout << A + B << endl;
+				}
+			`,
+			"CE",
+			0.0,
+			expectedResult{
+				"",
+				`  File "test.py", line 1
+	    if
+		     ^
+				 SyntaxError: invalid syntax`,
+				&RunMetadata{ExitStatus: 1, Verdict: "RTE"},
+			},
+			map[string]expectedResult{},
+		},
+		{
+			"cpp",
+			`
+				#include "AplusB.h"
+				int sum(int A, int B) {
+					return -1;
+				}
+			`,
+			"WA",
+			0.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"-1", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"-1", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"cpp",
+			`
+				#include "AplusB.h"
+				int sum(int A, int B) {
+					return A + B;
+				}
+			`,
+			"AC",
+			1.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+	}
+	for idx, rte := range runtests {
+		results, err := Grade(
+			ctx,
+			&bytes.Buffer{},
+			&common.Run{
+				AttemptID: uint64(idx),
+				Language:  rte.language,
+				InputHash: input.Hash(),
+				Source:    rte.source,
+				MaxScore:  1.0,
+			},
+			input,
+			minijail,
+		)
+		if err != nil {
+			t.Errorf("Failed to run %v: %q", rte, err)
+			continue
+		}
+		if results.Verdict != rte.expectedVerdict {
+			t.Errorf(
+				"results.Verdict = %q, expected %q",
+				results.Verdict,
+				rte.expectedVerdict,
+			)
+		}
+		if results.Score != rte.expectedScore {
+			t.Errorf(
+				"results.Score = %v, expected %v",
+				results.Score,
+				rte.expectedScore,
+			)
+		}
+	}
+}
+
 func TestWorseVerdict(t *testing.T) {
 	verdictentries := []struct {
 		a, b, expected string

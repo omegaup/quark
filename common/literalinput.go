@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"sort"
@@ -45,9 +46,9 @@ type LiteralValidatorSettings struct {
 // LiteralInteractiveSettings stores the settings for a problem that uses
 // libinteractive.
 type LiteralInteractiveSettings struct {
-	IDL        string `json:"idl"`
-	Interface  string `json:"interface"`
-	Language   string `json:"language"`
+	IDLSource  string `json:"idl"`
+	ModuleName string `json:"module_name"`
+	ParentLang string `json:"language"`
 	MainSource string `json:"main_source"`
 }
 
@@ -263,19 +264,46 @@ func NewLiteralInputFactory(
 	// Interactive
 	if input.Interactive != nil {
 		interactive := input.Interactive
-		if err := validateLanguage(interactive.Language); err != nil {
+		if err := validateLanguage(interactive.ParentLang); err != nil {
 			return nil, err
 		}
-		if err := validateInterface(interactive.Interface); err != nil {
+		if err := validateInterface(interactive.ModuleName); err != nil {
 			return nil, err
 		}
-		factory.files[fmt.Sprintf("interactive/Main.%s", interactive.Language)] =
+		factory.files[fmt.Sprintf("interactive/Main.%s", interactive.ParentLang)] =
 			[]byte(interactive.MainSource)
-		factory.files[fmt.Sprintf("interactive/%s.idl", interactive.Interface)] =
-			[]byte(interactive.IDL)
-		factory.settings.Interactive = &InteractiveSettings{
-			Lang:      interactive.Language,
-			Interface: interactive.Interface,
+		factory.files[fmt.Sprintf("interactive/%s.idl", interactive.ModuleName)] =
+			[]byte(interactive.IDLSource)
+		cmd := exec.Command(
+			"/usr/bin/java",
+			"-jar",
+			"/usr/share/java/libinteractive.jar",
+			"json",
+			"--module-name", interactive.ModuleName,
+			"--parent-lang", interactive.ParentLang,
+		)
+		cmd.Stdin = strings.NewReader(interactive.IDLSource)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, err
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return nil, err
+		}
+		if err = cmd.Start(); err != nil {
+			return nil, err
+		}
+		decoder := json.NewDecoder(stdout)
+		if err := decoder.Decode(&factory.settings.Interactive); err != nil {
+			var buf bytes.Buffer
+			// Best-effort stderr reading.
+			io.Copy(&buf, stderr)
+			cmd.Wait()
+			return nil, errors.New(string(buf.Bytes()))
+		}
+		if err := cmd.Wait(); err != nil {
+			return nil, err
 		}
 	}
 

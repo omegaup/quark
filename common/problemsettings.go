@@ -18,11 +18,29 @@ type LimitsSettings struct {
 	ValidatorTimeLimit   int
 }
 
+type InteractiveInterface struct {
+	MakefileRules []struct {
+		Targets    []string
+		Requisites []string
+		Compiler   string
+		Params     string
+		Debug      bool
+	}
+	ExecutableDescription struct {
+		Args []string
+		Env  map[string]string
+	}
+	Files map[string]string
+}
+
 // InteractiveSettings contains the information needed by libinteractive to
 // generate interactive shims.
 type InteractiveSettings struct {
-	Interface string
-	Lang      string
+	Interfaces            map[string]map[string]*InteractiveInterface
+	Main                  string
+	ModuleName            string
+	ParentLang            string
+	LibinteractiveVersion string
 }
 
 // CaseSettings contains the information of a single test case.
