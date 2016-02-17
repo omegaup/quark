@@ -119,7 +119,7 @@ func (input *runnerBaseInput) Verify() error {
 
 func (input *runnerBaseInput) Delete() error {
 	os.RemoveAll(fmt.Sprintf("%s.tmp", input.path))
-	os.Remove(fmt.Sprintf("%s.sha1", input.path))
+	os.RemoveAll(fmt.Sprintf("%s.sha1", input.path))
 	return os.RemoveAll(input.path)
 }
 
@@ -232,7 +232,7 @@ func (input *RunnerInput) Persist() error {
 				sha1sumFile,
 				"%0x *%s/%s\n",
 				innerHasher.Sum(nil),
-				input.Hash(),
+				input.Hash()[2:],
 				hdr.Name,
 			)
 			if err != nil {
@@ -241,6 +241,8 @@ func (input *RunnerInput) Persist() error {
 			size += hdr.Size
 		}
 	}
+
+	hasher.Drain()
 
 	if resp.Header.Get("Content-SHA1") != fmt.Sprintf("%0x", hasher.Sum(nil)) {
 		return errors.New(fmt.Sprintf(

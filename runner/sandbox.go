@@ -24,7 +24,7 @@ type RunMetadata struct {
 	ExitStatus int     `json:"exit_status,omitempty"`
 	Time       float64 `json:"time"`
 	WallTime   float64 `json:"wall_time"`
-	Memory     int     `json:"memory"`
+	Memory     int64   `json:"memory"`
 	Signal     *string `json:"signal,omitempty"`
 	Syscall    *string `json:"syscall,omitempty"`
 }
@@ -190,10 +190,10 @@ func (*MinijailSandbox) Run(
 		"-1", outputFile,
 		"-2", errorFile,
 		"-M", metaFile,
-		"-t", strconv.Itoa(timeLimit),
-		"-w", strconv.Itoa(input.Settings().Limits.ExtraWallTime),
-		"-O", strconv.Itoa(input.Settings().Limits.OutputLimit),
-		"-k", strconv.Itoa(input.Settings().Limits.StackLimit),
+		"-t", strconv.FormatInt(timeLimit, 10),
+		"-w", strconv.FormatInt(input.Settings().Limits.ExtraWallTime, 10),
+		"-O", strconv.FormatInt(input.Settings().Limits.OutputLimit, 10),
+		"-k", strconv.FormatInt(input.Settings().Limits.StackLimit, 10),
 	}
 
 	extraMinijailFlags := make([]string, 2*len(extraMountPoints))
@@ -220,7 +220,7 @@ func (*MinijailSandbox) Run(
 	// 16MB + memory limit to prevent some RTE
 	memoryLimit := (16*1024 + input.Settings().Limits.MemoryLimit) * 1024
 	// "640MB should be enough for anybody"
-	hardLimit := strconv.Itoa(min(640*1024*1024, memoryLimit))
+	hardLimit := strconv.FormatInt(min64(640*1024*1024, memoryLimit), 10)
 
 	var params []string
 
@@ -308,7 +308,7 @@ func parseMetaFile(
 			meta.WallTime, _ = strconv.ParseFloat(tokens[1], 64)
 			meta.WallTime /= 1e6
 		case "mem":
-			meta.Memory, _ = strconv.Atoi(tokens[1])
+			meta.Memory, _ = strconv.ParseInt(tokens[1], 10, 64)
 		case "signal":
 			meta.Signal = &tokens[1]
 		case "signal_number":
@@ -358,14 +358,14 @@ func parseMetaFile(
 	return meta, nil
 }
 
-func min(a, b int) int {
+func min64(a, b int64) int64 {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-func max(a, b int) int {
+func max64(a, b int64) int64 {
 	if a > b {
 		return a
 	}

@@ -464,6 +464,17 @@ func (r *HashReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
+// Ensures EOF has been reached in the underlying Reader.
+func (r *HashReader) Drain() {
+	buf := make([]byte, 256)
+	for {
+		// Read until an error occurs.
+		if _, err := r.Read(buf); err != nil {
+			return
+		}
+	}
+}
+
 // Sum returns the hash of the Reader. Typically invoked after Read reaches
 // EOF.
 func (r *HashReader) Sum(b []byte) []byte {

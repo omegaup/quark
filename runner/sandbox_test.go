@@ -156,17 +156,17 @@ func TestParseMetaFile(t *testing.T) {
 
 func TestMinMax(t *testing.T) {
 	test := []struct {
-		a, b, expectMin, expectMax int
+		a, b, expectMin, expectMax int64
 	}{
 		{0, 1, 0, 1},
 		{1, 0, 0, 1},
 	}
 	for _, te := range test {
-		gotMin := min(te.a, te.b)
+		gotMin := min64(te.a, te.b)
 		if gotMin != te.expectMin {
 			t.Errorf("gotMin(%q) == %d, expected %d", te, gotMin, te.expectMin)
 		}
-		gotMax := max(te.a, te.b)
+		gotMax := max64(te.a, te.b)
 		if gotMax != te.expectMax {
 			t.Errorf("gotMax(%q) == %d, expected %d", te, gotMax, te.expectMax)
 		}

@@ -9,13 +9,13 @@ type ValidatorSettings struct {
 
 // LimitsSettings represents runtime limits for the Input.
 type LimitsSettings struct {
-	ExtraWallTime        int
-	MemoryLimit          int
-	OutputLimit          int
-	OverallWallTimeLimit int
-	StackLimit           int
-	TimeLimit            int
-	ValidatorTimeLimit   int
+	ExtraWallTime        int64
+	MemoryLimit          int64
+	OutputLimit          int64
+	OverallWallTimeLimit int64
+	StackLimit           int64
+	TimeLimit            int64
+	ValidatorTimeLimit   int64
 }
 
 type InteractiveInterface struct {

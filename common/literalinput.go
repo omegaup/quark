@@ -478,7 +478,7 @@ func createTar(buf *bytes.Buffer, files map[string][]byte) error {
 	return nil
 }
 
-func min(a, b int) int {
+func min(a, b int64) int64 {
 	if a < b {
 		return a
 	}

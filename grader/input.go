@@ -168,6 +168,7 @@ func (input *GraderInput) Persist() error {
 	}
 
 	input.storedHash = fmt.Sprintf("%0x", hash)
+	input.uncompressedSize = uncompressedSize
 	input.Commit(stat.Size())
 	return nil
 }

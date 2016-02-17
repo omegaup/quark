@@ -31,7 +31,7 @@ type RunnerConfig struct {
 	RuntimePath         string
 	CompileTimeLimit    int
 	CompileOutputLimit  int
-	JavaVmEstimatedSize int
+	JavaVmEstimatedSize int64
 	PreserveFiles       bool
 }
 

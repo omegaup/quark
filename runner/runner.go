@@ -36,7 +36,7 @@ type RunResult struct {
 	MaxScore     float64                `json:"max_score"`
 	Time         float64                `json:"time"`
 	WallTime     float64                `json:"wall_time"`
-	Memory       int                    `json:"memory"`
+	Memory       int64                  `json:"memory"`
 	Groups       []GroupResult          `json:"groups"`
 }
 
@@ -70,6 +70,13 @@ func extraParentFlags(language string) []string {
 		return []string{"-Wl,-e__entry"}
 	}
 	return []string{}
+}
+
+func normalizedLanguage(language string) string {
+	if language == "cpp11" {
+		return "cpp"
+	}
+	return language
 }
 
 func normalizedSourceFiles(
@@ -124,6 +131,9 @@ func Grade(
 	if !sandbox.Supported() {
 		return runResult, errors.New("Sandbox not supported")
 	}
+	if run.Language == "cat" {
+		return runResult, errors.New("Output-only not supported")
+	}
 	runRoot := path.Join(
 		ctx.Config.Runner.RuntimePath,
 		"grade",
@@ -136,6 +146,7 @@ func Grade(
 	ctx.Log.Info("Running", "run", run)
 
 	var binaries []*binary
+	generatedFiles := make([]string, 0)
 
 	interactive := input.Settings().Interactive
 	if interactive != nil {
@@ -161,6 +172,13 @@ func Grade(
 			if name == interactive.Main {
 				continue
 			}
+			iface, ok := lang_iface[normalizedLanguage(run.Language)]
+			if !ok {
+				runResult.Verdict = "CE"
+				compileError := fmt.Sprintf("libinteractive does not support language '%s'", run.Language)
+				runResult.CompileError = &compileError
+				return runResult, nil
+			}
 			binaries = append(
 				binaries,
 				&binary{
@@ -173,7 +191,7 @@ func Grade(
 					normalizedSourceFiles(
 						runRoot,
 						name,
-						lang_iface[run.Language],
+						iface,
 					),
 					[]string{},
 					generateMountpoint(runRoot, name),
@@ -205,7 +223,7 @@ func Grade(
 			if name == "Main" {
 				lang = interactive.ParentLang
 			} else {
-				lang = run.Language
+				lang = normalizedLanguage(run.Language)
 			}
 			for filename, contents := range lang_iface[lang].Files {
 				sourcePath := path.Join(
@@ -284,8 +302,6 @@ func Grade(
 			},
 		}
 	}
-
-	generatedFiles := make([]string, 0)
 
 	validatorBinPath := path.Join(runRoot, "validator", "bin")
 	regularBinaryCount := len(binaries)
@@ -458,7 +474,7 @@ func Grade(
 				chosenMetadataEmpty := true
 				var totalTime float64 = 0
 				var totalWallTime float64 = 0
-				totalMemory := 0
+				var totalMemory int64 = 0
 				for i := 0; i < regularBinaryCount; i++ {
 					intermediateResult := <-metaChan
 					if intermediateResult.binaryType == binaryProblemsetter {
@@ -472,7 +488,7 @@ func Grade(
 						}
 						totalTime += intermediateResult.runMeta.Time
 						totalWallTime += intermediateResult.runMeta.WallTime
-						totalMemory += max(totalMemory, intermediateResult.runMeta.Memory)
+						totalMemory += max64(totalMemory, intermediateResult.runMeta.Memory)
 					}
 				}
 				close(metaChan)
@@ -490,7 +506,7 @@ func Grade(
 			runResult.Verdict = worseVerdict(runResult.Verdict, runMeta.Verdict)
 			runResult.Time += runMeta.Time
 			runResult.WallTime += runMeta.WallTime
-			runResult.Memory = max(runResult.Memory, runMeta.Memory)
+			runResult.Memory = max64(runResult.Memory, runMeta.Memory)
 
 			// TODO: change CaseResult to split original metadatas and final metadata
 			caseResults[j] = CaseResult{
@@ -730,4 +746,11 @@ func sliceIndex(limit int, predicate func(i int) bool) int {
 		}
 	}
 	return -1
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
