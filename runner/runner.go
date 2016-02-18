@@ -2,14 +2,17 @@ package runner
 
 import (
 	"archive/zip"
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/lhchavez/quark/common"
+	"github.com/vincent-petithory/dataurl"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -92,6 +95,65 @@ func normalizedSourceFiles(
 	return sources
 }
 
+func parseOutputOnlyFile(
+	ctx *common.Context,
+	data string,
+	settings *common.ProblemSettings,
+) (map[string]string, error) {
+	dataURL, err := dataurl.DecodeString(data)
+	result := make(map[string]string)
+	if err != nil {
+		// |data| is not a dataurl. Try just returning the data as an Entry.
+		ctx.Log.Info("data is not a dataurl. Generating Main.out", "err", err)
+		result["Main.out"] = data
+		return result, nil
+	}
+	z, err := zip.NewReader(bytes.NewReader(dataURL.Data), int64(len(dataURL.Data)))
+	if err != nil {
+		ctx.Log.Warn("error reading zip", "err", err)
+		return result, err
+	}
+	for _, f := range z.File {
+		if !strings.HasSuffix(f.FileHeader.Name, ".out") ||
+			strings.Contains(f.FileHeader.Name, "/") {
+			ctx.Log.Info(
+				"Compressed file has invalid name",
+				"name", f.FileHeader.Name,
+			)
+			continue
+		}
+		if f.FileHeader.UncompressedSize64 > uint64(settings.Limits.OutputLimit) {
+			ctx.Log.Info(
+				"Compressed file is too large",
+				"name", f.FileHeader.Name,
+				"size", f.FileHeader.UncompressedSize64,
+			)
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			ctx.Log.Info(
+				"Error opening file",
+				"name", f.FileHeader.Name,
+				"err", err,
+			)
+			continue
+		}
+		defer rc.Close()
+		var buf bytes.Buffer
+		if _, err := io.Copy(&buf, rc); err != nil {
+			ctx.Log.Info(
+				"Error reading file",
+				"name", f.FileHeader.Name,
+				"err", err,
+			)
+			continue
+		}
+		result[f.FileHeader.Name] = buf.String()
+	}
+	return result, nil
+}
+
 func generateParentMountpoints(
 	runRoot string,
 	interactive *common.InteractiveSettings,
@@ -131,9 +193,6 @@ func Grade(
 	if !sandbox.Supported() {
 		return runResult, errors.New("Sandbox not supported")
 	}
-	if run.Language == "cat" {
-		return runResult, errors.New("Output-only not supported")
-	}
 	runRoot := path.Join(
 		ctx.Config.Runner.RuntimePath,
 		"grade",
@@ -146,7 +205,8 @@ func Grade(
 	ctx.Log.Info("Running", "run", run)
 
 	var binaries []*binary
-	generatedFiles := make([]string, 0)
+	var outputOnlyFiles map[string]string
+	runResult.CompileMeta = make(map[string]RunMetadata)
 
 	interactive := input.Settings().Interactive
 	if interactive != nil {
@@ -288,18 +348,32 @@ func Grade(
 			return runResult, err
 		}
 
-		binaries = []*binary{
-			&binary{
-				"Main",
-				run.Language,
-				mainBinPath,
-				"",
-				binaryContestant,
-				true,
-				[]string{mainSourcePath},
-				[]string{},
-				map[string]string{},
-			},
+		if run.Language == "cat" {
+			outputOnlyFiles, err = parseOutputOnlyFile(ctx, run.Source, input.Settings())
+			if err != nil {
+				runResult.Verdict = "CE"
+				compileError := err.Error()
+				runResult.CompileError = &compileError
+				return runResult, err
+			}
+			runResult.CompileMeta["Main"] = RunMetadata{
+				Verdict: "OK",
+			}
+			binaries = []*binary{}
+		} else {
+			binaries = []*binary{
+				&binary{
+					"Main",
+					run.Language,
+					mainBinPath,
+					"",
+					binaryContestant,
+					true,
+					[]string{mainSourcePath},
+					[]string{},
+					map[string]string{},
+				},
+			}
 		}
 	}
 
@@ -332,7 +406,7 @@ func Grade(
 		)
 	}
 
-	runResult.CompileMeta = make(map[string]RunMetadata)
+	generatedFiles := make([]string, 0)
 
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventBegin))
 	for _, b := range binaries {
@@ -396,6 +470,53 @@ func Grade(
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
 				}
+			} else if run.Language == "cat" {
+				outName := fmt.Sprintf("%s.out", caseData.Name)
+				errName := fmt.Sprintf("%s.err", caseData.Name)
+				metaName := fmt.Sprintf("%s.meta", caseData.Name)
+				outPath := path.Join(runRoot, outName)
+				metaPath := path.Join(runRoot, metaName)
+				if contents, ok := outputOnlyFiles[outName]; ok {
+					if err := ioutil.WriteFile(outPath, []byte(contents), 0644); err != nil {
+						ctx.Log.Error(
+							"failed to run "+caseData.Name,
+							"err", err,
+						)
+					}
+					runMeta = &RunMetadata{
+						Verdict: "OK",
+					}
+					if err := ioutil.WriteFile(metaPath, []byte("status:0"), 0644); err != nil {
+						ctx.Log.Error(
+							"failed to run "+caseData.Name,
+							"err", err,
+						)
+					}
+				} else {
+					if err := ioutil.WriteFile(outPath, []byte{}, 0644); err != nil {
+						ctx.Log.Error(
+							"failed to run "+caseData.Name,
+							"err", err,
+						)
+					}
+					runMeta = &RunMetadata{
+						Verdict: "RTE",
+					}
+					if err := ioutil.WriteFile(metaPath, []byte("status:1"), 0644); err != nil {
+						ctx.Log.Error(
+							"failed to run "+caseData.Name,
+							"err", err,
+						)
+					}
+				}
+				errPath := path.Join(runRoot, errName)
+				if err := ioutil.WriteFile(errPath, []byte{}, 0644); err != nil {
+					ctx.Log.Error(
+						"failed to run "+caseData.Name,
+						"err", err,
+					)
+				}
+				generatedFiles = append(generatedFiles, outName, errName, metaName)
 			} else {
 				singleRunEvent := ctx.EventFactory.NewCompleteEvent(caseData.Name)
 				metaChan := make(chan intermediateRunResult, 1)

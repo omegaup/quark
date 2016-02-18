@@ -35,7 +35,7 @@ func TestPreloadInputs(t *testing.T) {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	// defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
 
 	inputManager := common.NewInputManager(ctx)
 

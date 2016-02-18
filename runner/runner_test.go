@@ -311,6 +311,23 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
+		{
+			"cat",
+			"data:application/zip;base64,UEsDBAoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABwAMC" +
+				"5vdXRVVAkAAy1HxVYtR8VWdXgLAAEE6AMAAAToAwAAMwpQSwMECgAAAAAA56JRSFc5PQ" +
+				"MCAAAAAgAAAAUAHAAxLm91dFVUCQADMUfFVjFHxVZ1eAsAAQToAwAABOgDAAA1ClBLAQ" +
+				"IeAwoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABgAAAAAAAEAAAC0gQAAAAAwLm91dFVUBQ" +
+				"ADLUfFVnV4CwABBOgDAAAE6AMAAFBLAQIeAwoAAAAAAOeiUUhXOT0DAgAAAAIAAAAFAB" +
+				"gAAAAAAAEAAAC0gUEAAAAxLm91dFVUBQADMUfFVnV4CwABBOgDAAAE6AMAAFBLBQYAAA" +
+				"AAAgACAJYAAACCAAAAAAA=",
+			"AC",
+			1.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
 	}
 	for idx, rte := range runtests {
 		results, err := Grade(
