@@ -94,6 +94,8 @@ func processRun(
 ) (int, bool) {
 	runnerName := PeerName(r)
 	gradeDir := runCtx.GradeDir()
+	// Best-effort deletion of the grade dir.
+	os.RemoveAll(gradeDir)
 	if err := os.MkdirAll(gradeDir, 0755); err != nil {
 		runCtx.Log.Error("Unable to create grade dir", "err", err, "runner", runnerName)
 		return http.StatusInternalServerError, false

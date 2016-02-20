@@ -771,7 +771,7 @@ func Grade(
 		input,
 		generatedFiles,
 	); err != nil {
-		ctx.Log.Debug("uploadFiles failed", "err", err)
+		ctx.Log.Error("uploadFiles failed", "err", err)
 		return runResult, err
 	}
 
@@ -786,7 +786,7 @@ func uploadFiles(
 	files []string,
 ) error {
 	path, err := createZipFile(runRoot, files)
-	if path != "" {
+	if path != "" && !ctx.Config.Runner.PreserveFiles {
 		defer os.Remove(path)
 	}
 	if err != nil {

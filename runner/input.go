@@ -134,7 +134,7 @@ func (input *runnerBaseInput) getStoredHashes() (map[string]string, error) {
 	defer hashFd.Close()
 	scanner := bufio.NewScanner(hashFd)
 	scanner.Split(bufio.ScanLines)
-	sha1sumRe := regexp.MustCompile("^\\s*([a-f0-9]{40}) [ *](\\S+)\\s*$")
+	sha1sumRe := regexp.MustCompile("^\\s*([a-f0-9]{40}) [ *](.+)\\s*$")
 	for scanner.Scan() {
 		res := sha1sumRe.FindStringSubmatch(scanner.Text())
 		if res == nil {

@@ -184,19 +184,12 @@ func (cb *ChannelBuffer) Read(buf []byte) (int, error) {
 		cb.currentChunk = c
 	}
 
-	written := 0
-	for i, b := range cb.currentChunk {
-		if i >= len(buf) {
-			cb.currentChunk = cb.currentChunk[i:]
-			if len(cb.currentChunk) == 0 {
-				cb.currentChunk = nil
-			}
-			return written, nil
-		}
-		buf[i] = b
-		written += 1
+	written := copy(buf, cb.currentChunk)
+	if written == len(cb.currentChunk) {
+		cb.currentChunk = nil
+	} else {
+		cb.currentChunk = cb.currentChunk[written:]
 	}
-	cb.currentChunk = nil
 
 	return written, nil
 }
@@ -291,10 +284,12 @@ func gradeAndUploadResults(
 	// Send results.
 	resultWriter, err := multipartWriter.CreateFormFile("file", "details.json")
 	if err != nil {
+		ctx.Log.Error("Error sending details.json", "err", err)
 		return err
 	}
 	encoder := json.NewEncoder(resultWriter)
 	if err := encoder.Encode(result); err != nil {
+		ctx.Log.Error("Error encoding details.json", "err", err)
 		return err
 	}
 
@@ -303,9 +298,11 @@ func gradeAndUploadResults(
 	if logsBuffer != nil {
 		logsWriter, err := multipartWriter.CreateFormFile("file", "logs.txt")
 		if err != nil {
+			ctx.Log.Error("Error creating logs.txt", "err", err)
 			return err
 		}
 		if _, err = logsWriter.Write(logsBuffer); err != nil {
+			ctx.Log.Error("Error sending logs.txt", "err", err)
 		}
 	}
 
@@ -314,9 +311,11 @@ func gradeAndUploadResults(
 	if traceBuffer != nil {
 		tracingWriter, err := multipartWriter.CreateFormFile("file", "tracing.json")
 		if err != nil {
+			ctx.Log.Error("Error creating tracing.json", "err", err)
 			return err
 		}
 		if _, err = tracingWriter.Write(traceBuffer); err != nil {
+			ctx.Log.Error("Error sending tracing.json", "err", err)
 			return err
 		}
 	}
