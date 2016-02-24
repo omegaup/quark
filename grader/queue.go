@@ -245,7 +245,11 @@ func (run *RunContext) Requeue(lastAttempt bool) bool {
 	run.Run.UpdateAttemptID()
 	// Since it was already ready to be executed, place it in the high-priority
 	// queue.
-	run.queue.enqueue(run, 0)
+	if !run.queue.enqueue(run, 0) {
+		// That queue is full. We've exhausted all our options, bail out.
+		run.Close()
+		return false
+	}
 	return true
 }
 
@@ -302,18 +306,34 @@ func (queue *Queue) AddRun(
 	}
 	// TODO(lhchavez): Add async events for queue operations.
 	// Add new runs to the normal priority by default.
-	queue.enqueue(run, 1)
+	queue.enqueueBlocking(run, 1)
 	return run, nil
 }
 
-// enqueue adds a run to the queue.
-func (queue *Queue) enqueue(run *RunContext, idx int) {
+// enqueueBlocking adds a run to the queue, waits if needed.
+func (queue *Queue) enqueueBlocking(run *RunContext, idx int) {
 	if run == nil {
 		panic("null RunContext")
 	}
 	run.queue = queue
 	queue.runs[idx] <- run
 	queue.ready <- struct{}{}
+}
+
+// enqueue adds a run to the queue, returns true if possible.
+func (queue *Queue) enqueue(run *RunContext, idx int) bool {
+	if run == nil {
+		panic("null RunContext")
+	}
+	run.queue = queue
+	select {
+	case queue.runs[idx] <- run:
+		queue.ready <- struct{}{}
+		return true
+	default:
+		// There is no space left in the queue.
+		return false
+	}
 }
 
 // InflightRun is a wrapper around a RunContext when it is handed off a queue
@@ -483,7 +503,7 @@ func NewQueueManager(channelLength int) *QueueManager {
 func (manager *QueueManager) Add(name string) *Queue {
 	queue := &Queue{
 		Name:  name,
-		ready: make(chan struct{}, manager.channelLength),
+		ready: make(chan struct{}, 3*manager.channelLength),
 	}
 	for r := range queue.runs {
 		queue.runs[r] = make(chan *RunContext, manager.channelLength)
