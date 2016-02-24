@@ -12,11 +12,11 @@ import (
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
-	"golang.org/x/net/http2"
 	"html"
 	"io"
 	"io/ioutil"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path"
 	"regexp"
@@ -60,7 +60,6 @@ func startServer(ctx *grader.Context) error {
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%d", ctx.Config.Grader.Port),
 	}
-	http2.ConfigureServer(server, &http2.Server{})
 
 	ctx.Log.Info("omegaUp grader started")
 	if *insecure {
@@ -186,6 +185,7 @@ func processRun(
 	runCtx.Log.Info(
 		"Finished processing run",
 		"verdict", runCtx.Result.Verdict,
+		"score", runCtx.Result.Score,
 		"runner", runnerName,
 		"ctx", runCtx,
 	)

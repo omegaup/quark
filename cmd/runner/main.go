@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/runner"
+	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -83,15 +84,19 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		tr := &http.Transport{
+		transport := &http.Transport{
 			TLSClientConfig: &tls.Config{
 				Certificates: []tls.Certificate{keyPair},
 				RootCAs:      certPool,
 				ClientAuth:   tls.RequireAndVerifyClientCert,
 			},
-			DisableCompression: true,
+			// Workaround for https://github.com/golang/go/issues/14391
+			ExpectContinueTimeout: 0,
 		}
-		client = &http.Client{Transport: tr}
+		if err := http2.ConfigureTransport(transport); err != nil {
+			panic(err)
+		}
+		client = &http.Client{Transport: transport}
 	}
 
 	baseURL, err := url.Parse(ctx.Config.Runner.GraderURL)
