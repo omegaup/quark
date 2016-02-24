@@ -139,6 +139,9 @@ func newRunnerContext() (*common.Context, error) {
 	if err != nil {
 		return nil, err
 	}
+	if os.Getenv("PRESERVE") != "" {
+		ctx.Config.Runner.PreserveFiles = true
+	}
 
 	return ctx, nil
 }
@@ -164,7 +167,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	if os.Getenv("PRESERVE") == "" {
+		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	}
 
 	inputManager := common.NewInputManager(ctx)
 	AplusB, err := common.NewLiteralInputFactory(
@@ -377,7 +382,9 @@ func TestLibinteractive(t *testing.T) {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	if os.Getenv("PRESERVE") == "" {
+		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	}
 
 	inputManager := common.NewInputManager(ctx)
 	AplusB, err := common.NewLiteralInputFactory(
@@ -395,6 +402,9 @@ func TestLibinteractive(t *testing.T) {
 					interface AplusB {
 						int sum(int a, int b);
 					};
+					interface Identity {
+						int identity(int x);
+					};
 				`,
 				MainSource: `
 					#include "AplusB.h"
@@ -403,7 +413,7 @@ func TestLibinteractive(t *testing.T) {
 					int main() {
 						int A, B;
 						cin >> A >> B;
-						cout << sum(A, B) << endl;
+						cout << identity(sum(identity(A), identity(B))) << endl;
 					}
 				`,
 				ModuleName: "AplusB",
@@ -428,9 +438,10 @@ func TestLibinteractive(t *testing.T) {
 			`
 				#include <iostream>
 				using namespace std;
-				int main() {
+				int main(int argc, char* argv[]) {
 					int A, B;
 					cin >> A >> B;
+					cerr << argv[1] << endl;
 					cout << A + B << endl;
 				}
 			`,
@@ -447,10 +458,13 @@ func TestLibinteractive(t *testing.T) {
 			map[string]expectedResult{},
 		},
 		{
-			"cpp",
+			"cpp11",
 			`
 				#include "AplusB.h"
 				int sum(int A, int B) {
+					return -1;
+				}
+				int identity(int x) {
 					return -1;
 				}
 			`,
@@ -469,7 +483,43 @@ func TestLibinteractive(t *testing.T) {
 				int sum(int A, int B) {
 					return A + B;
 				}
+				int identity(int x) {
+					return x;
+				}
 			`,
+			"AC",
+			1.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"java",
+			`
+				class AplusB {
+					public static int sum(int A, int B) {
+						return A + B;
+					}
+				}
+				class Identity {
+					public static int identity(int x) {
+						return x;
+					}
+				}
+			`,
+			"AC",
+			1.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"py",
+			"def sum(A, B):\n  return A + B\ndef identity(x):\n  return x",
 			"AC",
 			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},

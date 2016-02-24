@@ -80,9 +80,9 @@ func (*MinijailSandbox) Compile(
 		"-O", strconv.Itoa(ctx.Config.Runner.CompileOutputLimit),
 	}
 
-	chrootedInputFiles := make([]string, len(inputFiles))
+	inputFlags := make([]string, 0)
 
-	for i, inputFile := range inputFiles {
+	for _, inputFile := range inputFiles {
 		if !strings.HasPrefix(inputFile, chdir) {
 			return nil, errors.New("file " + inputFile + " is not within the chroot")
 		}
@@ -90,7 +90,7 @@ func (*MinijailSandbox) Compile(
 		if err != nil {
 			return nil, err
 		}
-		chrootedInputFiles[i] = rel
+		inputFlags = append(inputFlags, rel)
 	}
 
 	var params []string
@@ -111,7 +111,7 @@ func (*MinijailSandbox) Compile(
 	case "cpp", "cpp11":
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/gcc"),
-			"--", "/usr/bin/g++", "-lm", "-o", target, "-xc++", "-std=c++11", "-O2",
+			"--", "/usr/bin/g++", "-lm", "-o", target, "-std=c++11", "-O2",
 		}
 	case "pas":
 		params = []string{
@@ -155,7 +155,7 @@ func (*MinijailSandbox) Compile(
 	finalParams = append(finalParams, commonParams...)
 	finalParams = append(finalParams, params...)
 	finalParams = append(finalParams, extraFlags...)
-	finalParams = append(finalParams, chrootedInputFiles...)
+	finalParams = append(finalParams, inputFlags...)
 
 	ctx.Log.Debug("invoking minijail", "params", finalParams)
 

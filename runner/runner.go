@@ -53,6 +53,7 @@ const (
 
 type binary struct {
 	name             string
+	target           string
 	language         string
 	binPath          string
 	outputPathPrefix string
@@ -84,6 +85,7 @@ func normalizedLanguage(language string) string {
 
 func normalizedSourceFiles(
 	runRoot string,
+	lang string,
 	name string,
 	iface *common.InteractiveInterface,
 ) []string {
@@ -214,6 +216,7 @@ func Grade(
 		binaries = []*binary{
 			&binary{
 				interactive.Main,
+				interactive.Main,
 				interactive.ParentLang,
 				path.Join(runRoot, interactive.Main, "bin"),
 				"",
@@ -221,6 +224,7 @@ func Grade(
 				true,
 				normalizedSourceFiles(
 					runRoot,
+					interactive.ParentLang,
 					interactive.Main,
 					interactive.Interfaces[interactive.Main][interactive.ParentLang],
 				),
@@ -239,10 +243,15 @@ func Grade(
 				runResult.CompileError = &compileError
 				return runResult, nil
 			}
+			var target string = name
+			if run.Language == "py" || run.Language == "java" {
+				target = fmt.Sprintf("%s_entry", target)
+			}
 			binaries = append(
 				binaries,
 				&binary{
 					name,
+					target,
 					run.Language,
 					path.Join(runRoot, name, "bin"),
 					name,
@@ -250,6 +259,7 @@ func Grade(
 					false,
 					normalizedSourceFiles(
 						runRoot,
+						run.Language,
 						name,
 						iface,
 					),
@@ -269,11 +279,17 @@ func Grade(
 		if err := os.Link(
 			path.Join(
 				input.Path(),
-				fmt.Sprintf("interactive/Main.%s", interactive.ParentLang),
+				fmt.Sprintf(
+					"interactive/Main.%s",
+					normalizedLanguage(interactive.ParentLang),
+				),
 			),
 			path.Join(
 				runRoot,
-				fmt.Sprintf("Main/bin/Main.%s", interactive.ParentLang),
+				fmt.Sprintf(
+					"Main/bin/Main.%s",
+					normalizedLanguage(interactive.ParentLang),
+				),
 			),
 		); err != nil {
 			return runResult, err
@@ -281,7 +297,7 @@ func Grade(
 		for name, lang_iface := range interactive.Interfaces {
 			var lang string
 			if name == "Main" {
-				lang = interactive.ParentLang
+				lang = normalizedLanguage(interactive.ParentLang)
 			} else {
 				lang = normalizedLanguage(run.Language)
 			}
@@ -312,7 +328,12 @@ func Grade(
 			}
 			sourcePath := path.Join(
 				runRoot,
-				fmt.Sprintf("%s/bin/%s.%s", name, interactive.ModuleName, run.Language),
+				fmt.Sprintf(
+					"%s/bin/%s.%s",
+					name,
+					interactive.ModuleName,
+					normalizedLanguage(run.Language),
+				),
 			)
 			err := ioutil.WriteFile(sourcePath, []byte(run.Source), 0644)
 			if err != nil {
@@ -342,7 +363,10 @@ func Grade(
 		if err := os.MkdirAll(mainBinPath, 0755); err != nil {
 			return runResult, err
 		}
-		mainSourcePath := path.Join(mainBinPath, fmt.Sprintf("Main.%s", run.Language))
+		mainSourcePath := path.Join(
+			mainBinPath,
+			fmt.Sprintf("Main.%s", normalizedLanguage(run.Language)),
+		)
 		err := ioutil.WriteFile(mainSourcePath, []byte(run.Source), 0644)
 		if err != nil {
 			return runResult, err
@@ -354,7 +378,7 @@ func Grade(
 				runResult.Verdict = "CE"
 				compileError := err.Error()
 				runResult.CompileError = &compileError
-				return runResult, err
+				return runResult, nil
 			}
 			runResult.CompileMeta["Main"] = RunMetadata{
 				Verdict: "OK",
@@ -363,6 +387,7 @@ func Grade(
 		} else {
 			binaries = []*binary{
 				&binary{
+					"Main",
 					"Main",
 					run.Language,
 					mainBinPath,
@@ -394,12 +419,13 @@ func Grade(
 			binaries,
 			&binary{
 				"validator",
+				"validator",
 				validatorLang,
 				validatorBinPath,
 				"validator",
 				binaryValidator,
 				false,
-				[]string{},
+				[]string{validatorSourceFile},
 				[]string{},
 				map[string]string{},
 			},
@@ -450,7 +476,11 @@ func Grade(
 			} else {
 				compileErrorFile = "compile.err"
 			}
-			compileError := getCompileError(path.Join(binRoot, compileErrorFile))
+			compileError := fmt.Sprintf(
+				"%s:\n%s",
+				b.name,
+				getCompileError(path.Join(binRoot, compileErrorFile)),
+			)
 			runResult.CompileError = &compileError
 			ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventEnd))
 			return runResult, err
@@ -535,6 +565,10 @@ func Grade(
 						} else {
 							inputPath = "/dev/null"
 						}
+						extraParams := make([]string, 0)
+						if bin.binaryType == binaryProblemsetter {
+							extraParams = append(extraParams, caseData.Name)
+						}
 						runMeta, err := sandbox.Run(
 							ctx,
 							input,
@@ -556,11 +590,11 @@ func Grade(
 								bin.outputPathPrefix,
 								fmt.Sprintf("%s.meta", caseData.Name),
 							),
-							bin.name,
+							bin.target,
 							nil,
 							nil,
 							nil,
-							[]string{},
+							extraParams,
 							bin.extraMountPoints,
 						)
 						if err != nil {
