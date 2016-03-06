@@ -37,6 +37,11 @@ var (
 	server        *http.Server
 )
 
+type processRunStatus struct {
+	status int
+	retry  bool
+}
+
 func loadContext() error {
 	f, err := os.Open(*configPath)
 	if err != nil {
@@ -90,14 +95,16 @@ func processRun(
 	r *http.Request,
 	attemptID uint64,
 	runCtx *grader.RunContext,
-) (int, bool) {
+) *processRunStatus {
 	runnerName := PeerName(r)
+	// TODO: make this a per-attempt directory so we can only commit directories
+	// that will be not retried.
 	gradeDir := runCtx.GradeDir()
 	// Best-effort deletion of the grade dir.
 	os.RemoveAll(gradeDir)
 	if err := os.MkdirAll(gradeDir, 0755); err != nil {
 		runCtx.Log.Error("Unable to create grade dir", "err", err, "runner", runnerName)
-		return http.StatusInternalServerError, false
+		return &processRunStatus{http.StatusInternalServerError, false}
 	}
 
 	multipartReader, err := r.MultipartReader()
@@ -107,7 +114,7 @@ func processRun(
 			"err", err,
 			"runner", runnerName,
 		)
-		return http.StatusBadRequest, true
+		return &processRunStatus{http.StatusBadRequest, true}
 	}
 	for {
 		part, err := multipartReader.NextPart()
@@ -115,7 +122,7 @@ func processRun(
 			break
 		} else if err != nil {
 			runCtx.Log.Error("Error receiving next file", "err", err, "runner", runnerName)
-			return http.StatusBadRequest, true
+			return &processRunStatus{http.StatusBadRequest, true}
 		}
 		runCtx.Log.Debug(
 			"Processing file",
@@ -129,14 +136,14 @@ func processRun(
 			decoder := json.NewDecoder(part)
 			if err := decoder.Decode(&result); err != nil {
 				runCtx.Log.Error("Error obtaining result", "err", err, "runner", runnerName)
-				return http.StatusBadRequest, true
+				return &processRunStatus{http.StatusBadRequest, true}
 			}
 			runCtx.Result = result
 		} else if part.FileName() == "logs.txt" {
 			var buffer bytes.Buffer
 			if _, err := io.Copy(&buffer, part); err != nil {
 				runCtx.Log.Error("Unable to read logs", "err", err, "runner", runnerName)
-				return http.StatusBadRequest, true
+				return &processRunStatus{http.StatusBadRequest, true}
 			}
 			runCtx.AppendRunnerLogs(runnerName, buffer.Bytes())
 		} else if part.FileName() == "tracing.json" {
@@ -148,7 +155,7 @@ func processRun(
 					"err", err,
 					"runner", runnerName,
 				)
-				return http.StatusBadRequest, true
+				return &processRunStatus{http.StatusBadRequest, true}
 			}
 			for _, e := range runnerCollector.Events {
 				if err := runCtx.EventCollector.Add(e); err != nil {
@@ -169,7 +176,7 @@ func processRun(
 					"err", err,
 					"runner", runnerName,
 				)
-				return http.StatusInternalServerError, false
+				return &processRunStatus{http.StatusInternalServerError, false}
 			}
 			defer fd.Close()
 			if _, err := io.Copy(fd, part); err != nil {
@@ -178,7 +185,7 @@ func processRun(
 					"err", err,
 					"runner", runnerName,
 				)
-				return http.StatusBadRequest, true
+				return &processRunStatus{http.StatusBadRequest, true}
 			}
 		}
 	}
@@ -197,9 +204,9 @@ func processRun(
 			"runner", runnerName,
 			"ctx", runCtx,
 		)
-		return http.StatusOK, true
+		return &processRunStatus{http.StatusOK, true}
 	}
-	return http.StatusOK, false
+	return &processRunStatus{http.StatusOK, false}
 }
 
 func PeerName(r *http.Request) string {
@@ -316,29 +323,30 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		resultChan := make(chan *processRunStatus, 1)
 		go func() {
 			select {
 			case _, timedout := <-timeout:
 				if !timedout {
 					return
 				}
-				// Once a timeout happens, close the inbound connection and make the
-				// whole thing fail.
-				runCtx.Log.Error("run timed out. Closing everything")
-				w.WriteHeader(http.StatusRequestTimeout)
-				r.Body.Close()
+				runCtx.Log.Error("run timed out")
+				resultChan <- &processRunStatus{http.StatusRequestTimeout, true}
 			}
 		}()
-		status, retry := processRun(r, attemptID, runCtx)
-		w.WriteHeader(status)
-		if !retry {
+		go func() {
+			resultChan <- processRun(r, attemptID, runCtx)
+		}()
+		result := <-resultChan
+		w.WriteHeader(result.status)
+		if !result.retry {
 			// The run either finished correctly or encountered a fatal error.
 			// Close the context and write the results to disk.
 			runCtx.Close()
 		} else {
 			runCtx.Log.Error("run errored out. retrying", "context", runCtx)
 			// status is OK only when the runner successfully sent a JE verdict.
-			lastAttempt := status == http.StatusOK
+			lastAttempt := result.status == http.StatusOK
 			if !runCtx.Requeue(lastAttempt) {
 				runCtx.Log.Error("run errored out too many times. giving up")
 			}
