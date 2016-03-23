@@ -94,6 +94,7 @@ func (*MinijailSandbox) Compile(
 	}
 
 	var params []string
+	linkerFlags := make([]string, 0)
 
 	switch lang {
 	case "java":
@@ -106,13 +107,15 @@ func (*MinijailSandbox) Compile(
 	case "c":
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/gcc"),
-			"--", "/usr/bin/gcc", "-lm", "-o", target, "-std=c11", "-O2",
+			"--", "/usr/bin/gcc", "-o", target, "-std=c11", "-O2",
 		}
+		linkerFlags = append(linkerFlags, "-lm")
 	case "cpp", "cpp11":
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/gcc"),
-			"--", "/usr/bin/g++", "-lm", "-o", target, "-std=c++11", "-O2",
+			"--", "/usr/bin/g++", "-o", target, "-std=c++11", "-O2",
 		}
+		linkerFlags = append(linkerFlags, "-lm")
 	case "pas":
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/fpc"),
@@ -147,7 +150,7 @@ func (*MinijailSandbox) Compile(
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/ghc"),
 			"-b", path.Join(minijailPath, "root-hs") + ",/usr/lib/ghc",
-			"--", "/usr/bin/ghc", "-B/usr/lib/ghc", "-O2", "-o", target,
+			"--", "/usr/lib/ghc/lib/ghc", "-B/usr/lib/ghc", "-O2", "-o", target,
 		}
 	}
 
@@ -156,6 +159,7 @@ func (*MinijailSandbox) Compile(
 	finalParams = append(finalParams, params...)
 	finalParams = append(finalParams, extraFlags...)
 	finalParams = append(finalParams, inputFlags...)
+	finalParams = append(finalParams, linkerFlags...)
 
 	ctx.Log.Debug("invoking minijail", "params", finalParams)
 
@@ -165,7 +169,7 @@ func (*MinijailSandbox) Compile(
 		return nil, err
 	}
 	defer metaFd.Close()
-	return parseMetaFile(ctx, nil, lang, metaFd)
+	return parseMetaFile(ctx, nil, lang, metaFd, false)
 }
 
 func (*MinijailSandbox) Run(
@@ -282,7 +286,7 @@ func (*MinijailSandbox) Run(
 		return nil, err
 	}
 	defer metaFd.Close()
-	return parseMetaFile(ctx, input.Settings(), lang, metaFd)
+	return parseMetaFile(ctx, input.Settings(), lang, metaFd, lang == "c")
 }
 
 func parseMetaFile(
@@ -290,6 +294,7 @@ func parseMetaFile(
 	settings *common.ProblemSettings,
 	lang string,
 	metaFile io.Reader,
+	allowNonZeroExitCode bool,
 ) (*RunMetadata, error) {
 	meta := &RunMetadata{
 		Verdict:    "JE",
@@ -341,7 +346,7 @@ func parseMetaFile(
 			ctx.Log.Error("Received odd signal", "signal", *meta.Signal)
 			meta.Verdict = "RTE"
 		}
-	} else if meta.ExitStatus == 0 || lang == "c" {
+	} else if meta.ExitStatus == 0 || allowNonZeroExitCode {
 		meta.Verdict = "OK"
 	} else {
 		meta.Verdict = "RTE"

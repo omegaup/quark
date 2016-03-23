@@ -17,18 +17,20 @@ import (
 )
 
 type CaseResult struct {
-	Verdict  string                 `json:"verdict"`
-	Name     string                 `json:"name"`
-	MaxScore float64                `json:"max_score"`
-	Score    float64                `json:"score"`
-	Meta     map[string]RunMetadata `json:"meta"`
+	Verdict      string                 `json:"verdict"`
+	Name         string                 `json:"name"`
+	Score        float64                `json:"score"`
+	ContestScore float64                `json:"contest_score"`
+	MaxScore     float64                `json:"max_score"`
+	Meta         map[string]RunMetadata `json:"meta"`
 }
 
 type GroupResult struct {
-	Group    string       `json:"group"`
-	MaxScore float64      `json:"max_score"`
-	Score    float64      `json:"score"`
-	Cases    []CaseResult `json:"cases"`
+	Group        string       `json:"group"`
+	Score        float64      `json:"score"`
+	ContestScore float64      `json:"contest_score"`
+	MaxScore     float64      `json:"max_score"`
+	Cases        []CaseResult `json:"cases"`
 }
 
 type RunResult struct {
@@ -36,6 +38,7 @@ type RunResult struct {
 	CompileError *string                `json:"compile_error,omitempty"`
 	CompileMeta  map[string]RunMetadata `json:"compile_meta"`
 	Score        float64                `json:"score"`
+	ContestScore float64                `json:"contest_score"`
 	MaxScore     float64                `json:"max_score"`
 	Time         float64                `json:"time"`
 	WallTime     float64                `json:"wall_time"`
@@ -718,7 +721,7 @@ func Grade(
 						&originalInputFile,
 						&originalOutputFile,
 						&runMetaFile,
-						[]string{},
+						[]string{caseData.Name},
 						map[string]string{},
 					)
 					if err != nil {
@@ -764,7 +767,9 @@ func Grade(
 				if err != nil {
 					ctx.Log.Debug("error comparing values", "err", err)
 				}
-				caseResults.Score = runResult.MaxScore * runScore * caseData.Weight
+				caseResults.Score = runScore
+				caseResults.ContestScore = runResult.MaxScore * caseResults.Score *
+					caseData.Weight
 				score += runScore * caseData.Weight
 				if runScore == 0 {
 					correct = false
@@ -775,8 +780,10 @@ func Grade(
 			}
 		}
 		if correct {
-			groupResults[i].Score = runResult.MaxScore * score
+			groupResults[i].Score = score
 			runResult.Score += groupResults[i].Score
+			groupResults[i].ContestScore = runResult.MaxScore * score
+			runResult.ContestScore += groupResults[i].ContestScore
 		}
 	}
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventEnd))
@@ -787,7 +794,8 @@ func Grade(
 		runResult.Verdict = "WA"
 	} else if runResult.Verdict == "OK" {
 		runResult.Verdict = "AC"
-		runResult.Score = runResult.MaxScore
+		runResult.Score = 1.0
+		runResult.ContestScore = runResult.MaxScore
 	}
 
 	ctx.Log.Debug(

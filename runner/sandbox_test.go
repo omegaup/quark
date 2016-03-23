@@ -143,6 +143,7 @@ func TestParseMetaFile(t *testing.T) {
 			te.settings,
 			te.lang,
 			bytes.NewBufferString(te.contents),
+			te.lang == "c",
 		)
 		if err != nil {
 			t.Errorf("Parsing meta file failed: %q", err)
