@@ -122,17 +122,19 @@ func parseOutputOnlyFile(
 		if !strings.HasSuffix(f.FileHeader.Name, ".out") ||
 			strings.Contains(f.FileHeader.Name, "/") {
 			ctx.Log.Info(
-				"Compressed file has invalid name",
+				"Output-only compressed file has invalid name. Skipping",
 				"name", f.FileHeader.Name,
 			)
 			continue
 		}
 		if f.FileHeader.UncompressedSize64 > uint64(settings.Limits.OutputLimit) {
+			// TODO: Make this return an OLE.
 			ctx.Log.Info(
-				"Compressed file is too large",
+				"Output-only compressed file is too large. Generating empty file",
 				"name", f.FileHeader.Name,
 				"size", f.FileHeader.UncompressedSize64,
 			)
+			result[f.FileHeader.Name] = ""
 			continue
 		}
 		rc, err := f.Open()
@@ -218,21 +220,21 @@ func Grade(
 		ctx.Log.Info("libinteractive", "version", interactive.LibinteractiveVersion)
 		binaries = []*binary{
 			&binary{
-				interactive.Main,
-				interactive.Main,
-				interactive.ParentLang,
-				path.Join(runRoot, interactive.Main, "bin"),
-				"",
-				binaryProblemsetter,
-				true,
-				normalizedSourceFiles(
+				name:             interactive.Main,
+				target:           interactive.Main,
+				language:         interactive.ParentLang,
+				binPath:          path.Join(runRoot, interactive.Main, "bin"),
+				outputPathPrefix: "",
+				binaryType:       binaryProblemsetter,
+				receiveInput:     true,
+				sourceFiles: normalizedSourceFiles(
 					runRoot,
 					interactive.ParentLang,
 					interactive.Main,
 					interactive.Interfaces[interactive.Main][interactive.ParentLang],
 				),
-				extraParentFlags(interactive.ParentLang),
-				generateParentMountpoints(runRoot, interactive),
+				extraFlags:       extraParentFlags(interactive.ParentLang),
+				extraMountPoints: generateParentMountpoints(runRoot, interactive),
 			},
 		}
 		for name, lang_iface := range interactive.Interfaces {
@@ -253,21 +255,21 @@ func Grade(
 			binaries = append(
 				binaries,
 				&binary{
-					name,
-					target,
-					run.Language,
-					path.Join(runRoot, name, "bin"),
-					name,
-					binaryContestant,
-					false,
-					normalizedSourceFiles(
+					name:             name,
+					target:           target,
+					language:         run.Language,
+					binPath:          path.Join(runRoot, name, "bin"),
+					outputPathPrefix: name,
+					binaryType:       binaryContestant,
+					receiveInput:     false,
+					sourceFiles: normalizedSourceFiles(
 						runRoot,
 						run.Language,
 						name,
 						iface,
 					),
-					[]string{},
-					generateMountpoint(runRoot, name),
+					extraFlags:       []string{},
+					extraMountPoints: generateMountpoint(runRoot, name),
 				},
 			)
 		}
@@ -390,16 +392,16 @@ func Grade(
 		} else {
 			binaries = []*binary{
 				&binary{
-					"Main",
-					"Main",
-					run.Language,
-					mainBinPath,
-					"",
-					binaryContestant,
-					true,
-					[]string{mainSourcePath},
-					[]string{},
-					map[string]string{},
+					name:             "Main",
+					target:           "Main",
+					language:         run.Language,
+					binPath:          mainBinPath,
+					outputPathPrefix: "",
+					binaryType:       binaryContestant,
+					receiveInput:     true,
+					sourceFiles:      []string{mainSourcePath},
+					extraFlags:       []string{},
+					extraMountPoints: map[string]string{},
 				},
 			}
 		}
@@ -421,16 +423,16 @@ func Grade(
 		binaries = append(
 			binaries,
 			&binary{
-				"validator",
-				"validator",
-				validatorLang,
-				validatorBinPath,
-				"validator",
-				binaryValidator,
-				false,
-				[]string{validatorSourceFile},
-				[]string{},
-				map[string]string{},
+				name:             "validator",
+				target:           "validator",
+				language:         validatorLang,
+				binPath:          validatorBinPath,
+				outputPathPrefix: "validator",
+				binaryType:       binaryValidator,
+				receiveInput:     false,
+				sourceFiles:      []string{validatorSourceFile},
+				extraFlags:       []string{},
+				extraMountPoints: map[string]string{},
 			},
 		)
 	}
@@ -446,9 +448,14 @@ func Grade(
 			b.name,
 			common.Arg{"language", b.language},
 		)
+		lang := b.language
+		if b.binaryType == binaryValidator && lang == "cpp" {
+			// Let's not make problemsetters be forced to use old languages.
+			lang = "cpp11"
+		}
 		compileMeta, err := sandbox.Compile(
 			ctx,
-			b.language,
+			lang,
 			b.sourceFiles,
 			binPath,
 			path.Join(binRoot, "compile.out"),
@@ -570,7 +577,7 @@ func Grade(
 						}
 						extraParams := make([]string, 0)
 						if bin.binaryType == binaryProblemsetter {
-							extraParams = append(extraParams, caseData.Name)
+							extraParams = append(extraParams, caseData.Name, run.Language)
 						}
 						runMeta, err := sandbox.Run(
 							ctx,
@@ -602,7 +609,8 @@ func Grade(
 						)
 						if err != nil {
 							ctx.Log.Error(
-								"failed to run "+caseData.Name,
+								"failed to run",
+								"caseName", caseData.Name,
 								"interface", bin.name,
 								"err", err,
 							)
@@ -721,12 +729,17 @@ func Grade(
 						&originalInputFile,
 						&originalOutputFile,
 						&runMetaFile,
-						[]string{caseData.Name},
+						[]string{caseData.Name, run.Language},
 						map[string]string{},
 					)
 					if err != nil {
-						ctx.Log.Error("failed to validate "+caseData.Name, "err", err)
+						ctx.Log.Error(
+							"failed to validate",
+							"case name", caseData.Name,
+							"err", err,
+						)
 					}
+					groupResults[i].Cases[j].Meta["validator"] = *validateMeta
 					generatedFiles = append(
 						generatedFiles,
 						fmt.Sprintf("validator/%s.out", caseData.Name),
@@ -735,6 +748,11 @@ func Grade(
 					)
 					if validateMeta.Verdict != "OK" {
 						// If the validator did not exit cleanly, assume an empty output.
+						ctx.Log.Info(
+							"validator verdict not OK. Using /dev/null",
+							"case name", caseData.Name,
+							"meta", validateMeta,
+						)
 						contestantPath = "/dev/null"
 					} else {
 						contestantPath = path.Join(

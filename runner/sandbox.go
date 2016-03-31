@@ -84,11 +84,17 @@ func (*MinijailSandbox) Compile(
 
 	for _, inputFile := range inputFiles {
 		if !strings.HasPrefix(inputFile, chdir) {
-			return nil, errors.New("file " + inputFile + " is not within the chroot")
+			return &RunMetadata{
+				Verdict:    "JE",
+				ExitStatus: -1,
+			}, errors.New("file " + inputFile + " is not within the chroot")
 		}
 		rel, err := filepath.Rel(chdir, inputFile)
 		if err != nil {
-			return nil, err
+			return &RunMetadata{
+				Verdict:    "JE",
+				ExitStatus: -1,
+			}, err
 		}
 		inputFlags = append(inputFlags, rel)
 	}
@@ -110,7 +116,13 @@ func (*MinijailSandbox) Compile(
 			"--", "/usr/bin/gcc", "-o", target, "-std=c11", "-O2",
 		}
 		linkerFlags = append(linkerFlags, "-lm")
-	case "cpp", "cpp11":
+	case "cpp":
+		params = []string{
+			"-S", path.Join(minijailPath, "scripts/gcc"),
+			"--", "/usr/bin/g++", "-o", target, "-O2",
+		}
+		linkerFlags = append(linkerFlags, "-lm")
+	case "cpp11":
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/gcc"),
 			"--", "/usr/bin/g++", "-o", target, "-std=c++11", "-O2",
@@ -163,10 +175,18 @@ func (*MinijailSandbox) Compile(
 
 	ctx.Log.Debug("invoking minijail", "params", finalParams)
 
-	_ = exec.Command("/usr/bin/sudo", finalParams...).Run()
+	if err := exec.Command("/usr/bin/sudo", finalParams...).Run(); err != nil {
+		ctx.Log.Error(
+			"Minijail execution failed",
+			"err", err,
+		)
+	}
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
-		return nil, err
+		return &RunMetadata{
+			Verdict:    "JE",
+			ExitStatus: -1,
+		}, err
 	}
 	defer metaFd.Close()
 	return parseMetaFile(ctx, nil, lang, metaFd, false)
@@ -208,17 +228,38 @@ func (*MinijailSandbox) Run(
 		i += 2
 	}
 
+	type fileLink struct {
+		sourceFile, targetFile string
+	}
+	fileLinks := []fileLink{}
 	if originalInputFile != nil {
-		os.Link(*originalInputFile, path.Join(chdir, "data.in"))
-		defer os.Remove(path.Join(chdir, "data.in"))
+		fileLinks = append(fileLinks, fileLink{
+			sourceFile: *originalInputFile,
+			targetFile: path.Join(chdir, "data.in"),
+		})
 	}
 	if originalOutputFile != nil {
-		os.Link(*originalOutputFile, path.Join(chdir, "data.out"))
-		defer os.Remove(path.Join(chdir, "data.out"))
+		fileLinks = append(fileLinks, fileLink{
+			sourceFile: *originalOutputFile,
+			targetFile: path.Join(chdir, "data.out"),
+		})
 	}
 	if runMetaFile != nil {
-		os.Link(*runMetaFile, path.Join(chdir, "meta.in"))
-		defer os.Remove(path.Join(chdir, "meta.in"))
+		fileLinks = append(fileLinks, fileLink{
+			sourceFile: *runMetaFile,
+			targetFile: path.Join(chdir, "meta.in"),
+		})
+	}
+	for _, fl := range fileLinks {
+		if _, err := os.Stat(fl.targetFile); err == nil {
+			os.Remove(fl.targetFile)
+		}
+		if err := os.Link(fl.sourceFile, fl.targetFile); err != nil {
+			return &RunMetadata{
+				Verdict:    "JE",
+				ExitStatus: -1,
+			}, err
+		}
 	}
 
 	// 16MB + memory limit to prevent some RTE
@@ -280,10 +321,18 @@ func (*MinijailSandbox) Run(
 
 	ctx.Log.Debug("invoking minijail", "params", finalParams)
 
-	_ = exec.Command("/usr/bin/sudo", finalParams...).Run()
+	if err := exec.Command("/usr/bin/sudo", finalParams...).Run(); err != nil {
+		ctx.Log.Error(
+			"Minijail execution failed",
+			"err", err,
+		)
+	}
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
-		return nil, err
+		return &RunMetadata{
+			Verdict:    "JE",
+			ExitStatus: -1,
+		}, err
 	}
 	defer metaFd.Close()
 	return parseMetaFile(ctx, input.Settings(), lang, metaFd, lang == "c")
@@ -353,9 +402,11 @@ func parseMetaFile(
 	}
 
 	if lang == "java" {
-		meta.Memory -= ctx.Config.Runner.JavaVmEstimatedSize
+		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVmEstimatedSize)
 	}
-	if settings != nil && meta.Memory > settings.Limits.MemoryLimit {
+	if settings != nil &&
+		meta.Memory > settings.Limits.MemoryLimit &&
+		(lang != "java" || meta.ExitStatus != 0) {
 		meta.Verdict = "MLE"
 		meta.Memory = settings.Limits.MemoryLimit
 	}
