@@ -354,9 +354,10 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		}
 		if results.Verdict != rte.expectedVerdict {
 			t.Errorf(
-				"results.Verdict = %q, expected %q",
+				"results.Verdict = %q, expected %q, test %v",
 				results.Verdict,
 				rte.expectedVerdict,
+				idx,
 			)
 		}
 		if results.Score != rte.expectedScore {
