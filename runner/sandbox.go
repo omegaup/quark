@@ -6,17 +6,70 @@ import (
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 var (
 	minijailPath string = "/var/lib/minijail"
 )
+
+// Preloads an input so that the contestant's program has to wait less time.
+type inputPreloader struct {
+	file     *os.File
+	fileSize int64
+	mapping  []byte
+	checksum uint8
+}
+
+func newInputPreloader(filePath string) (*inputPreloader, error) {
+	if filePath == "/dev/null" {
+		return nil, nil
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	preloader := &inputPreloader{
+		file:     file,
+		fileSize: info.Size(),
+	}
+	mapping, err := syscall.Mmap(
+		int(preloader.file.Fd()),
+		0,
+		int(preloader.fileSize),
+		syscall.PROT_READ,
+		syscall.MAP_SHARED,
+	)
+	if err == nil {
+		pageSize := os.Getpagesize()
+		preloader.mapping = mapping
+		for i := 0; i < int(preloader.fileSize); i += pageSize {
+			preloader.checksum += preloader.mapping[i]
+		}
+	} else {
+		// mmap failed, so just read all the file.
+		io.Copy(ioutil.Discard, preloader.file)
+	}
+	return preloader, nil
+}
+
+func (preloader *inputPreloader) release() {
+	if preloader.mapping != nil {
+		syscall.Munmap(preloader.mapping)
+	}
+	preloader.file.Close()
+}
 
 // RunMetadata represents the results of an execution.
 type RunMetadata struct {
@@ -320,6 +373,14 @@ func (*MinijailSandbox) Run(
 	finalParams = append(finalParams, extraParams...)
 
 	ctx.Log.Debug("invoking minijail", "params", finalParams)
+
+	preloader, err := newInputPreloader(inputFile)
+	if err != nil {
+		ctx.Log.Error("Failed to preload input", "file", inputFile, "err", err)
+	} else if preloader != nil {
+		// preloader might be nil, even with no error.
+		preloader.release()
+	}
 
 	if err := exec.Command("/usr/bin/sudo", finalParams...).Run(); err != nil {
 		ctx.Log.Error(
