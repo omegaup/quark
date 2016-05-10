@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -139,6 +140,7 @@ func processRun(
 				return &processRunStatus{http.StatusBadRequest, true}
 			}
 			runCtx.Result = result
+			runCtx.Result.JudgedBy = runnerName
 		} else if part.FileName() == "logs.txt" {
 			var buffer bytes.Buffer
 			if _, err := io.Copy(&buffer, part); err != nil {
@@ -309,7 +311,7 @@ func main() {
 	})
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
-	http.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/run/", http.TimeoutHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context()
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)
@@ -318,26 +320,12 @@ func main() {
 			return
 		}
 		attemptID, _ := strconv.ParseUint(res[1], 10, 64)
-		runCtx, timeout, ok := ctx.InflightMonitor.Get(attemptID)
+		runCtx, _, ok := ctx.InflightMonitor.Get(attemptID)
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		resultChan := make(chan *processRunStatus, 1)
-		go func() {
-			select {
-			case _, timedout := <-timeout:
-				if !timedout {
-					return
-				}
-				runCtx.Log.Error("run timed out")
-				resultChan <- &processRunStatus{http.StatusRequestTimeout, true}
-			}
-		}()
-		go func() {
-			resultChan <- processRun(r, attemptID, runCtx)
-		}()
-		result := <-resultChan
+		result := processRun(r, attemptID, runCtx)
 		w.WriteHeader(result.status)
 		if !result.retry {
 			// The run either finished correctly or encountered a fatal error.
@@ -351,7 +339,7 @@ func main() {
 				runCtx.Log.Error("run errored out too many times. giving up")
 			}
 		}
-	})
+	}), time.Duration(5*time.Minute), "Request timed out"))
 
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
 	http.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {

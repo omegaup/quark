@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"mime/multipart"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"net/url"
@@ -90,6 +91,7 @@ func main() {
 				RootCAs:      certPool,
 				ClientAuth:   tls.RequireAndVerifyClientCert,
 			},
+			ResponseHeaderTimeout: time.Duration(5 * time.Minute),
 			// Workaround for https://github.com/golang/go/issues/14391
 			ExpectContinueTimeout: 0,
 		}
@@ -113,6 +115,11 @@ func main() {
 
 	for {
 		if err := processRun(ctx, client, baseURL); err != nil {
+			if err, ok := err.(net.Error); ok && err.Timeout() {
+				// Timeouts are expected. Just retry.
+				sleepTime = 1
+				continue
+			}
 			ctx.Log.Error("error grading run", "err", err)
 			// Randomized exponential backoff.
 			time.Sleep(time.Duration(rand.Float32()*sleepTime) * time.Second)
@@ -348,12 +355,6 @@ func gradeRun(
 		))
 	}()
 
-	// Send the header as soon as possible to avoid a timeout.
-	filesWriter, err := multipartWriter.CreateFormFile("file", "files.zip")
-	if err != nil {
-		return nil, err
-	}
-
 	// Make sure no other I/O is being made while we grade this run.
 	ioLockEvent := ctx.EventFactory.NewCompleteEvent("I/O lock")
 	ioLock.Lock()
@@ -370,6 +371,12 @@ func gradeRun(
 	}
 	defer input.Release(input)
 	ctx.EventCollector.Add(inputEvent)
+
+	// Send the header as soon as possible to avoid a timeout.
+	filesWriter, err := multipartWriter.CreateFormFile("file", "files.zip")
+	if err != nil {
+		return nil, err
+	}
 
 	return runner.Grade(ctx, filesWriter, run, input, &minijail)
 }

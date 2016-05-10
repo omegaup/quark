@@ -43,6 +43,7 @@ type RunResult struct {
 	Time         float64                `json:"time"`
 	WallTime     float64                `json:"wall_time"`
 	Memory       int64                  `json:"memory"`
+	JudgedBy     string                 `json:"judged_by,omitempty"`
 	Groups       []GroupResult          `json:"groups"`
 }
 
