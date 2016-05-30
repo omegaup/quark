@@ -716,6 +716,13 @@ func Grade(
 						"out",
 						fmt.Sprintf("%s.out", caseData.Name),
 					)
+					if _, err := os.Stat(originalOutputFile); os.IsNotExist(err) {
+						ctx.Log.Info(
+							"original file did not exist, using /dev/null",
+							"case name", caseData.Name,
+						)
+						originalOutputFile = "/dev/null"
+					}
 					runMetaFile := path.Join(runRoot, fmt.Sprintf("%s.meta", caseData.Name))
 					validateMeta, err := sandbox.Run(
 						ctx,
@@ -765,16 +772,20 @@ func Grade(
 				}
 				contestantFd, err := os.Open(contestantPath)
 				if err != nil {
-					ctx.Log.Warn("Error opening file", "path", contestantPath, "err", err)
+					ctx.Log.Warn("Error opening contestant file", "path", contestantPath, "err", err)
 					continue
 				}
 				defer contestantFd.Close()
 				expectedPath := path.Join(
 					input.Path(), "out", fmt.Sprintf("%s.out", caseData.Name),
 				)
+				if input.Settings().Validator.Name == "custom" {
+					// No need to open the actual file. It might not even exist.
+					expectedPath = "/dev/null"
+				}
 				expectedFd, err := os.Open(expectedPath)
 				if err != nil {
-					ctx.Log.Warn("Error opening file", "path", expectedPath, "err", err)
+					ctx.Log.Warn("Error opening expected file", "path", expectedPath, "err", err)
 					continue
 				}
 				defer expectedFd.Close()

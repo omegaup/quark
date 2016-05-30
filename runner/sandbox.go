@@ -291,7 +291,7 @@ func (*MinijailSandbox) Run(
 			targetFile: path.Join(chdir, "data.in"),
 		})
 	}
-	if originalOutputFile != nil {
+	if originalOutputFile != nil && *originalOutputFile != "/dev/null" {
 		fileLinks = append(fileLinks, fileLink{
 			sourceFile: *originalOutputFile,
 			targetFile: path.Join(chdir, "data.out"),
