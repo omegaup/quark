@@ -720,7 +720,7 @@ func Grade(
 		correct := true
 		score := 0.0
 		for j, caseData := range group.Cases {
-			caseResults := groupResults[i].Cases[j]
+			caseResults := &groupResults[i].Cases[j]
 			if caseResults.Verdict == "OK" {
 				contestantPath := path.Join(
 					runRoot, fmt.Sprintf("%s.out", caseData.Name),
@@ -767,7 +767,7 @@ func Grade(
 							"err", err,
 						)
 					}
-					groupResults[i].Cases[j].Meta["validator"] = *validateMeta
+					caseResults.Meta["validator"] = *validateMeta
 					generatedFiles = append(
 						generatedFiles,
 						fmt.Sprintf("validator/%s.out", caseData.Name),
@@ -821,11 +821,16 @@ func Grade(
 				caseResults.ContestScore = runResult.MaxScore * caseResults.Score *
 					caseData.Weight
 				score += runScore * caseData.Weight
-				if runScore == 0 {
-					correct = false
-				}
-				if runScore != 1 {
+				if runScore == 1 {
+					caseResults.Verdict = "AC"
+				} else {
 					runResult.Verdict = worseVerdict(runResult.Verdict, "PA")
+					if runScore == 0 {
+						correct = false
+						caseResults.Verdict = "WA"
+					} else {
+						caseResults.Verdict = "PA"
+					}
 				}
 			}
 		}
