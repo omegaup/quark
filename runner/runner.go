@@ -883,17 +883,16 @@ func uploadFiles(
 	files []string,
 ) error {
 	path, err := createZipFile(runRoot, files)
-	if path != "" && !ctx.Config.Runner.PreserveFiles {
-		defer os.Remove(path)
-	}
 	if err != nil {
 		return err
 	}
+
 	fd, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer fd.Close()
+
 	_, err = io.Copy(filesWriter, fd)
 	return err
 }
@@ -903,8 +902,9 @@ func createZipFile(runRoot string, files []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	zipPath := zipFd.Name()
 	defer zipFd.Close()
+
+	zipPath := zipFd.Name()
 	zip := zip.NewWriter(zipFd)
 	for _, file := range files {
 		f, err := os.Open(path.Join(runRoot, file))
@@ -914,9 +914,11 @@ func createZipFile(runRoot string, files []string) (string, error) {
 		defer f.Close()
 		zf, err := zip.Create(file)
 		if err != nil {
+			zip.Close()
 			return zipPath, err
 		}
 		if _, err := io.Copy(zf, f); err != nil {
+			zip.Close()
 			return zipPath, err
 		}
 	}
