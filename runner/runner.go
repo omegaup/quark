@@ -119,11 +119,31 @@ func parseOutputOnlyFile(
 		ctx.Log.Warn("error reading zip", "err", err)
 		return result, err
 	}
+
+	expectedFileNames := make(map[string]struct{})
+	for _, groupSettings := range settings.Cases {
+		for _, caseSettings := range groupSettings.Cases {
+			expectedFileNames[fmt.Sprintf("%s.out", caseSettings.Name)] = struct{}{}
+		}
+	}
+
 	for _, f := range z.File {
-		if !strings.HasSuffix(f.FileHeader.Name, ".out") ||
-			strings.Contains(f.FileHeader.Name, "/") {
+		if !strings.HasSuffix(f.FileHeader.Name, ".out") {
 			ctx.Log.Info(
 				"Output-only compressed file has invalid name. Skipping",
+				"name", f.FileHeader.Name,
+			)
+			continue
+		}
+		// Some people just cannot follow instructions. Be a little bit more
+		// tolerant and skip any intermediate directories.
+		fileName := f.FileHeader.Name
+		if idx := strings.LastIndex(fileName, "/"); idx != -1 {
+			fileName = fileName[idx+1:]
+		}
+		if _, ok := expectedFileNames[fileName]; !ok {
+			ctx.Log.Info(
+				"Output-only compressed file not expected. Skipping",
 				"name", f.FileHeader.Name,
 			)
 			continue
@@ -135,7 +155,7 @@ func parseOutputOnlyFile(
 				"name", f.FileHeader.Name,
 				"size", f.FileHeader.UncompressedSize64,
 			)
-			result[f.FileHeader.Name] = ""
+			result[fileName] = ""
 			continue
 		}
 		rc, err := f.Open()
@@ -157,7 +177,7 @@ func parseOutputOnlyFile(
 			)
 			continue
 		}
-		result[f.FileHeader.Name] = buf.String()
+		result[fileName] = buf.String()
 	}
 	return result, nil
 }
