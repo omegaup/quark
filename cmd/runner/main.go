@@ -170,8 +170,13 @@ func (cb *ChannelBuffer) CloseChannel() {
 }
 
 func (cb *ChannelBuffer) Write(buf []byte) (int, error) {
-	cb.chunks <- buf
-	return len(buf), nil
+	// Copy the buffer since we cannot guarantee that the caller will not write
+	// to it again while we are waiting for the other end to read from it.
+	innerbuf := make([]byte, len(buf))
+	copy(innerbuf, buf)
+
+	cb.chunks <- innerbuf
+	return len(innerbuf), nil
 }
 
 func (cb *ChannelBuffer) WriteTo(w io.Writer) (int64, error) {
