@@ -242,8 +242,6 @@ func (input *RunnerInput) Persist() error {
 		}
 	}
 
-	hasher.Drain()
-
 	if resp.Header.Get("Content-SHA1") != fmt.Sprintf("%0x", hasher.Sum(nil)) {
 		return errors.New(fmt.Sprintf(
 			"hash mismatch: expected %s got %s",
