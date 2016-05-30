@@ -68,10 +68,13 @@ func main() {
 		runner.NewRunnerCachedInputFactory(inputPath),
 		&ioLock,
 	)
-	var client *http.Client
-	if *insecure {
-		client = http.DefaultClient
-	} else {
+	transport := &http.Transport{
+		// Only wait for 5 minutes before giving up.
+		ResponseHeaderTimeout: time.Duration(5 * time.Minute),
+		// Workaround for https://github.com/golang/go/issues/14391
+		ExpectContinueTimeout: 0,
+	}
+	if !*insecure {
 		cert, err := ioutil.ReadFile(ctx.Config.TLS.CertFile)
 		if err != nil {
 			panic(err)
@@ -82,24 +85,20 @@ func main() {
 			ctx.Config.TLS.CertFile,
 			ctx.Config.TLS.KeyFile,
 		)
+		transport.TLSClientConfig = &tls.Config{
+			Certificates: []tls.Certificate{keyPair},
+			RootCAs:      certPool,
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+		}
 		if err != nil {
 			panic(err)
-		}
-		transport := &http.Transport{
-			TLSClientConfig: &tls.Config{
-				Certificates: []tls.Certificate{keyPair},
-				RootCAs:      certPool,
-				ClientAuth:   tls.RequireAndVerifyClientCert,
-			},
-			ResponseHeaderTimeout: time.Duration(5 * time.Minute),
-			// Workaround for https://github.com/golang/go/issues/14391
-			ExpectContinueTimeout: 0,
 		}
 		if err := http2.ConfigureTransport(transport); err != nil {
 			panic(err)
 		}
-		client = &http.Client{Transport: transport}
 	}
+
+	client := &http.Client{Transport: transport}
 
 	baseURL, err := url.Parse(ctx.Config.Runner.GraderURL)
 	if err != nil {
