@@ -390,7 +390,7 @@ func (mgr *InputManager) Size() int64 {
 func (mgr *InputManager) PreloadInputs(
 	rootdir string,
 	factory CachedInputFactory,
-	ioLock *sync.Mutex,
+	ioLock sync.Locker,
 ) error {
 	// Since all the filenames in the cache directory are (or contain) the hash,
 	// it is useful to introduce 256 intermediate directories with the first two
