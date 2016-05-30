@@ -9,8 +9,48 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
+
+// isSpace returns true if the rune is either an unicode space or a Java
+// whitespace character. The only characters that seem to be Java whitespace
+// but not unicode whitespace are:
+// U+001C FILE SEPARATOR
+// U+001D GROUP SEPARATOR
+// U+001E RECORD SEPARATOR
+// U+001F UNIT SEPARATOR
+func isSpace(r rune) bool {
+	return unicode.IsSpace(r) || ('\u001c' <= r && r <= '\u001f')
+}
+
+// scanTokens is a split function for a Scanner similar to bufio.ScanWords,
+// except that it also treats some runes that Java treats as spaces as spaces.
+func scanTokens(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	// Skip leading spaces.
+	start := 0
+	for width := 0; start < len(data); start += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[start:])
+		if !isSpace(r) {
+			break
+		}
+	}
+	// Scan until space, marking end of word.
+	for width, i := 0, start; i < len(data); i += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[i:])
+		if isSpace(r) {
+			return i + width, data[start:i], nil
+		}
+	}
+	// If we're at EOF, we have a final, non-empty, non-terminated word. Return it.
+	if atEOF && len(data) > start {
+		return len(data), data[start:], nil
+	}
+	// Request more data.
+	return start, nil, nil
+}
 
 func isNumericRune(r rune) bool {
 	return r == '.' || r == '-' || ('0' <= r && r <= '9')
@@ -47,7 +87,7 @@ func CalculateScore(
 	contestantOutput, expectedOutput io.Reader,
 ) (float64, error) {
 	contestantScanner := bufio.NewScanner(contestantOutput)
-	scanFunc := bufio.ScanWords
+	scanFunc := scanTokens
 	if settings.Name == "token-numeric" {
 		scanFunc = scanNumericTokens
 	}

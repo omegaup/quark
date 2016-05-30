@@ -50,6 +50,7 @@ func TestValidator(t *testing.T) {
 		{0.0, "A", "a", VS{Name: "token"}},
 		{1.0, "A", "a", VS{Name: "token-caseless"}},
 		{0.0, "A", "b", VS{Name: "token-caseless"}},
+		{1.0, "11\x1f\n", "11\n", VS{Name: "token-caseless"}},
 		{0.0, "1", "2", VS{Name: "token-numeric", Tolerance: &t1}},
 		{1.0, "1", "1", VS{Name: "token-numeric", Tolerance: &t1}},
 		{1.0, "1", "1.1", VS{Name: "token-numeric", Tolerance: &t1}},
