@@ -38,7 +38,8 @@ loop:
 }
 
 func TestValidator(t *testing.T) {
-	t1 := 0.1
+	t1 := 1e-1
+	t6 := 1e-6
 	validatorentries := []struct {
 		expectedScore float64
 		got, expect   string
@@ -54,6 +55,8 @@ func TestValidator(t *testing.T) {
 		{1.0, "1", "1", VS{Name: "token-numeric", Tolerance: &t1}},
 		{1.0, "1", "1.1", VS{Name: "token-numeric", Tolerance: &t1}},
 		{0.0, "1", "1.2", VS{Name: "token-numeric", Tolerance: &t1}},
+		{1.0, "1.15", "1.20", VS{Name: "token-numeric", Tolerance: &t1}},
+		{1.0, "1.24", "1.20", VS{Name: "token-numeric", Tolerance: &t1}},
 		{0.0, "1", "x", VS{Name: "token-numeric", Tolerance: &t1}},
 		{0.0, "x", "1", VS{Name: "token-numeric", Tolerance: &t1}},
 		{1.0, "x 1", "x 1", VS{Name: "token-numeric", Tolerance: &t1}},
@@ -61,6 +64,7 @@ func TestValidator(t *testing.T) {
 		{0.0, "1", "-1", VS{Name: "token-numeric", Tolerance: &t1}},
 		{1.0, "0 -1", "0 -1", VS{Name: "token-numeric", Tolerance: &t1}},
 		{1.0, "1e99999999", "1e99999999", VS{Name: "token-numeric", Tolerance: &t1}},
+		{1.0, "0.000002", "0.000003", VS{Name: "token-numeric", Tolerance: &t6}},
 		{0.0, "a a", "a", VS{Name: "token"}},
 		{0.0, "a", "a a", VS{Name: "token"}},
 		{0.5, "0.5", "", VS{Name: "literal"}},

@@ -87,8 +87,20 @@ func tokenCaselessEquals(a, b string) bool {
 func tokenNumericEquals(a, b string, tolerance float64) bool {
 	af, erra := strconv.ParseFloat(a, 64)
 	bf, errb := strconv.ParseFloat(b, 64)
-	if erra == nil && errb == nil {
-		return math.Abs(af-bf) <= math.Abs(af)*tolerance
+	if erra != nil || errb != nil {
+		return erra != nil && errb != nil
 	}
-	return erra != nil && errb != nil
+
+	const SmallestNormal = 2.2250738585072014e-308 // 2**-1022
+
+	diff := math.Abs(bf - af)
+	if af == bf {
+		return true
+	} else if diff <= 1.5*tolerance {
+		return true
+	} else if af == 0 || bf == 0 || diff < SmallestNormal {
+		return diff <= tolerance*SmallestNormal
+	} else {
+		return diff/math.Max(math.Abs(af), math.Abs(bf)) <= tolerance
+	}
 }
