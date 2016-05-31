@@ -13,6 +13,11 @@ import (
 	"unicode/utf8"
 )
 
+type TokenMismatch struct {
+	Contestant string
+	Expected   string
+}
+
 // isSpace returns true if the rune is either an unicode space or a Java
 // whitespace character. The only characters that seem to be Java whitespace
 // but not unicode whitespace are:
@@ -84,8 +89,8 @@ func scanNumericTokens(data []byte, atEOF bool) (advance int, token []byte, err 
 
 func CalculateScore(
 	settings *common.ValidatorSettings,
-	contestantOutput, expectedOutput io.Reader,
-) (float64, error) {
+	expectedOutput, contestantOutput io.Reader,
+) (float64, *TokenMismatch, error) {
 	contestantScanner := bufio.NewScanner(contestantOutput)
 	scanFunc := scanTokens
 	if settings.Name == "token-numeric" {
@@ -95,44 +100,59 @@ func CalculateScore(
 	contestantScanner.Split(scanFunc)
 	if settings.Name == "literal" || settings.Name == "custom" {
 		if !contestantScanner.Scan() {
-			return 0, io.ErrUnexpectedEOF
+			return 0, nil, io.ErrUnexpectedEOF
 		}
 		value, err := strconv.ParseFloat(contestantScanner.Text(), 64)
-		return math.Max(0, math.Min(1, value)), err
+		return math.Max(0, math.Min(1, value)), nil, err
 	}
 
 	expectedScanner := bufio.NewScanner(expectedOutput)
 	expectedScanner.Split(scanFunc)
 
-	correct := true
-	for correct {
+	var mismatch *TokenMismatch = nil
+	for mismatch == nil {
 		expectedNext := expectedScanner.Scan()
 		contestantNext := contestantScanner.Scan()
 		if expectedNext != contestantNext {
-			correct = false
+			mismatch = &TokenMismatch{}
+			if expectedNext {
+				mismatch.Expected = expectedScanner.Text()
+			}
+			if contestantNext {
+				mismatch.Contestant = contestantScanner.Text()
+			}
 		}
-		if !expectedNext {
+		if !expectedNext || !contestantNext {
 			break
 		}
+		expectedToken := expectedScanner.Text()
+		contestantToken := contestantScanner.Text()
+		correct := true
 		switch settings.Name {
 		case "token":
-			correct = token(expectedScanner.Text(), contestantScanner.Text())
+			correct = token(expectedToken, contestantToken)
 		case "token-caseless":
-			correct = tokenCaseless(expectedScanner.Text(), contestantScanner.Text())
+			correct = tokenCaseless(expectedToken, contestantToken)
 		case "token-numeric":
 			correct = tokenNumeric(
-				expectedScanner.Text(),
-				contestantScanner.Text(),
+				expectedToken,
+				contestantToken,
 				*settings.Tolerance,
 			)
 		default:
-			return 0, errors.New(fmt.Sprintf("Unknown validator: %q", settings.Name))
+			return 0, nil, errors.New(fmt.Sprintf("Unknown validator: %q", settings.Name))
+		}
+		if !correct {
+			mismatch = &TokenMismatch{
+				Contestant: contestantToken,
+				Expected:   expectedToken,
+			}
 		}
 	}
-	if !correct {
-		return 0.0, nil
+	if mismatch != nil {
+		return 0.0, mismatch, nil
 	}
-	return 1.0, nil
+	return 1.0, nil, nil
 }
 
 func token(a, b string) bool {

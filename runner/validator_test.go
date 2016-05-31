@@ -67,10 +67,10 @@ func TestValidator(t *testing.T) {
 		{0.5, "0.5", "", VS{Name: "literal"}},
 	}
 	for _, vet := range validatorentries {
-		gotScore, err := CalculateScore(
+		gotScore, _, err := CalculateScore(
 			(*common.ValidatorSettings)(&vet.settings),
-			bytes.NewBufferString(vet.got),
 			bytes.NewBufferString(vet.expect),
+			bytes.NewBufferString(vet.got),
 		)
 		if err != nil {
 			t.Errorf("Error comparing values: %q", err)
@@ -96,10 +96,10 @@ func TestValidator(t *testing.T) {
 		{"", "", common.ValidatorSettings{Name: "custom"}},
 	}
 	for _, vet := range invalidvalidatorentries {
-		if _, err := CalculateScore(
+		if _, _, err := CalculateScore(
 			&vet.settings,
-			bytes.NewBufferString(vet.got),
 			bytes.NewBufferString(vet.expect),
+			bytes.NewBufferString(vet.got),
 		); err == nil {
 			t.Errorf("Expected to fail, but didn't: %v", vet)
 		}

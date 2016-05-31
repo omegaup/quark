@@ -809,10 +809,10 @@ func Grade(
 					continue
 				}
 				defer expectedFd.Close()
-				runScore, err := CalculateScore(
+				runScore, _, err := CalculateScore(
 					&input.Settings().Validator,
-					contestantFd,
 					expectedFd,
+					contestantFd,
 				)
 				if err != nil {
 					ctx.Log.Debug("error comparing values", "err", err)
