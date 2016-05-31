@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bufio"
 	"bytes"
 	"github.com/lhchavez/quark/common"
 	"testing"
@@ -12,27 +11,27 @@ type VS common.ValidatorSettings
 func TestScanNumericTokens(t *testing.T) {
 	validatorentries := []struct {
 		input  string
-		tokens []string
+		tokens []Token
 	}{
-		{"hello, world!", []string{}},
-		{"0 0\n-1", []string{"0", "0", "-1"}},
+		{"hello, world!", []Token{}},
+		{"0 0\n 0\n-1", []Token{{"0", 1, 1}, {"0", 1, 3}, {"0", 2, 2}, {"-1", 3, 1}}},
 	}
 loop:
 	for _, vet := range validatorentries {
-		scanner := bufio.NewScanner(bytes.NewBufferString(vet.input))
-		scanner.Split(scanNumericTokens)
-		for _, token := range vet.tokens {
-			if !scanner.Scan() {
-				t.Errorf("Expected %q, got EOF", token)
+		tokenizer := NewTokenizer(bytes.NewBufferString(vet.input), IsNumeric)
+		for _, expected := range vet.tokens {
+			if !tokenizer.Scan() {
+				t.Errorf("Expected %v, got EOF", expected)
 				continue loop
 			}
-			if token != scanner.Text() {
-				t.Errorf("Expected %q, got %q", token, scanner.Text())
+			got := tokenizer.Token()
+			if expected != *got {
+				t.Errorf("Expected text %v, got %v", expected, *got)
 				continue loop
 			}
 		}
-		if scanner.Scan() {
-			t.Errorf("Expected EOF, got %v", scanner.Text())
+		if tokenizer.Scan() {
+			t.Errorf("Expected EOF, got %v", tokenizer.Token())
 			continue
 		}
 	}
