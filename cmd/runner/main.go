@@ -89,10 +89,12 @@ func main() {
 		&ioLock,
 	)
 	transport := &http.Transport{
-		// Only wait for 5 minutes before giving up.
-		ResponseHeaderTimeout: time.Duration(5 * time.Minute),
-		// Workaround for https://github.com/golang/go/issues/14391
-		ExpectContinueTimeout: 0,
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
 	if !*insecure {
 		cert, err := ioutil.ReadFile(ctx.Config.TLS.CertFile)
