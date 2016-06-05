@@ -73,6 +73,11 @@ type intermediateRunResult struct {
 	binaryType binaryType
 }
 
+type outputOnlyFile struct {
+	contents string
+	ole      bool
+}
+
 func extraParentFlags(language string) []string {
 	if language == "c" || language == "cpp" || language == "cpp11" {
 		return []string{"-Wl,-e__entry"}
@@ -105,13 +110,13 @@ func parseOutputOnlyFile(
 	ctx *common.Context,
 	data string,
 	settings *common.ProblemSettings,
-) (map[string]string, error) {
+) (map[string]outputOnlyFile, error) {
 	dataURL, err := dataurl.DecodeString(data)
-	result := make(map[string]string)
+	result := make(map[string]outputOnlyFile)
 	if err != nil {
 		// |data| is not a dataurl. Try just returning the data as an Entry.
 		ctx.Log.Info("data is not a dataurl. Generating Main.out", "err", err)
-		result["Main.out"] = data
+		result["Main.out"] = outputOnlyFile{data, false}
 		return result, nil
 	}
 	z, err := zip.NewReader(bytes.NewReader(dataURL.Data), int64(len(dataURL.Data)))
@@ -149,13 +154,12 @@ func parseOutputOnlyFile(
 			continue
 		}
 		if f.FileHeader.UncompressedSize64 > uint64(settings.Limits.OutputLimit) {
-			// TODO: Make this return an OLE.
 			ctx.Log.Info(
 				"Output-only compressed file is too large. Generating empty file",
 				"name", f.FileHeader.Name,
 				"size", f.FileHeader.UncompressedSize64,
 			)
-			result[fileName] = ""
+			result[fileName] = outputOnlyFile{"", true}
 			continue
 		}
 		rc, err := f.Open()
@@ -177,7 +181,7 @@ func parseOutputOnlyFile(
 			)
 			continue
 		}
-		result[fileName] = buf.String()
+		result[fileName] = outputOnlyFile{buf.String(), false}
 	}
 	return result, nil
 }
@@ -233,7 +237,7 @@ func Grade(
 	ctx.Log.Info("Running", "run", run)
 
 	var binaries []*binary
-	var outputOnlyFiles map[string]string
+	var outputOnlyFiles map[string]outputOnlyFile
 	runResult.CompileMeta = make(map[string]RunMetadata)
 
 	settings := *input.Settings()
@@ -549,8 +553,8 @@ func Grade(
 				metaName := fmt.Sprintf("%s.meta", caseData.Name)
 				outPath := path.Join(runRoot, outName)
 				metaPath := path.Join(runRoot, metaName)
-				if contents, ok := outputOnlyFiles[outName]; ok {
-					if err := ioutil.WriteFile(outPath, []byte(contents), 0644); err != nil {
+				if file, ok := outputOnlyFiles[outName]; ok {
+					if err := ioutil.WriteFile(outPath, []byte(file.contents), 0644); err != nil {
 						ctx.Log.Error(
 							"failed to run "+caseData.Name,
 							"err", err,
@@ -558,6 +562,9 @@ func Grade(
 					}
 					runMeta = &RunMetadata{
 						Verdict: "OK",
+					}
+					if file.ole {
+						runMeta.Verdict = "OLE"
 					}
 					if err := ioutil.WriteFile(metaPath, []byte("status:0"), 0644); err != nil {
 						ctx.Log.Error(
