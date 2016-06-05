@@ -236,7 +236,8 @@ func Grade(
 	var outputOnlyFiles map[string]string
 	runResult.CompileMeta = make(map[string]RunMetadata)
 
-	interactive := input.Settings().Interactive
+	settings := *input.Settings()
+	interactive := settings.Interactive
 	if interactive != nil {
 		ctx.Log.Info("libinteractive", "version", interactive.LibinteractiveVersion)
 		binaries = []*binary{
@@ -399,7 +400,7 @@ func Grade(
 		}
 
 		if run.Language == "cat" {
-			outputOnlyFiles, err = parseOutputOnlyFile(ctx, run.Source, input.Settings())
+			outputOnlyFiles, err = parseOutputOnlyFile(ctx, run.Source, &settings)
 			if err != nil {
 				runResult.Verdict = "CE"
 				compileError := err.Error()
@@ -411,6 +412,17 @@ func Grade(
 			}
 			binaries = []*binary{}
 		} else {
+			extraFlags := []string{}
+			if run.Debug &&
+				(run.Language == "c" || run.Language == "cpp" || run.Language == "cpp11") {
+				extraFlags = []string{"-fsanitize=address"}
+				// ASan uses TONS of extra memory.
+				settings.Limits.MemoryLimit = -1
+				// ASan claims to be 2x slower.
+				settings.Limits.TimeLimit = settings.Limits.TimeLimit*2 + 1000
+				// 16kb should be enough to emit the report.
+				settings.Limits.OutputLimit += 16 * 1024
+			}
 			binaries = []*binary{
 				&binary{
 					name:             "Main",
@@ -421,7 +433,7 @@ func Grade(
 					binaryType:       binaryContestant,
 					receiveInput:     true,
 					sourceFiles:      []string{mainSourcePath},
-					extraFlags:       []string{},
+					extraFlags:       extraFlags,
 					extraMountPoints: map[string]string{},
 				},
 			}
@@ -430,11 +442,11 @@ func Grade(
 
 	validatorBinPath := path.Join(runRoot, "validator", "bin")
 	regularBinaryCount := len(binaries)
-	if input.Settings().Validator.Name == "custom" {
+	if settings.Validator.Name == "custom" {
 		if err := os.MkdirAll(validatorBinPath, 0755); err != nil {
 			return runResult, err
 		}
-		validatorLang := *input.Settings().Validator.Lang
+		validatorLang := *settings.Validator.Lang
 		validatorFileName := fmt.Sprintf("validator.%s", validatorLang)
 		validatorSourceFile := path.Join(validatorBinPath, validatorFileName)
 		err := os.Link(path.Join(input.Path(), validatorFileName), validatorSourceFile)
@@ -519,11 +531,11 @@ func Grade(
 	}
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventEnd))
 
-	groupResults := make([]GroupResult, len(input.Settings().Cases))
+	groupResults := make([]GroupResult, len(settings.Cases))
 	runResult.Verdict = "OK"
-	wallTimeLimit := (float64)(input.Settings().Limits.OverallWallTimeLimit / 1000.0)
+	wallTimeLimit := (float64)(settings.Limits.OverallWallTimeLimit / 1000.0)
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("run", common.EventBegin))
-	for i, group := range input.Settings().Cases {
+	for i, group := range settings.Cases {
 		caseResults := make([]CaseResult, len(group.Cases))
 		for j, caseData := range group.Cases {
 			var runMeta *RunMetadata
@@ -602,7 +614,7 @@ func Grade(
 						}
 						runMeta, err := sandbox.Run(
 							ctx,
-							input,
+							&settings,
 							bin.language,
 							bin.binPath,
 							inputPath,
@@ -716,7 +728,7 @@ func Grade(
 
 	// Validate outputs.
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventBegin))
-	for i, group := range input.Settings().Cases {
+	for i, group := range settings.Cases {
 		correct := true
 		score := 0.0
 		for j, caseData := range group.Cases {
@@ -725,7 +737,7 @@ func Grade(
 				contestantPath := path.Join(
 					runRoot, fmt.Sprintf("%s.out", caseData.Name),
 				)
-				if input.Settings().Validator.Name == "custom" {
+				if settings.Validator.Name == "custom" {
 					originalInputFile := path.Join(
 						input.Path(),
 						"in",
@@ -746,8 +758,8 @@ func Grade(
 					runMetaFile := path.Join(runRoot, fmt.Sprintf("%s.meta", caseData.Name))
 					validateMeta, err := sandbox.Run(
 						ctx,
-						input,
-						*input.Settings().Validator.Lang,
+						&settings,
+						*settings.Validator.Lang,
 						validatorBinPath,
 						contestantPath,
 						path.Join(runRoot, "validator", fmt.Sprintf("%s.out", caseData.Name)),
@@ -799,7 +811,7 @@ func Grade(
 				expectedPath := path.Join(
 					input.Path(), "out", fmt.Sprintf("%s.out", caseData.Name),
 				)
-				if input.Settings().Validator.Name == "custom" {
+				if settings.Validator.Name == "custom" {
 					// No need to open the actual file. It might not even exist.
 					expectedPath = "/dev/null"
 				}
@@ -810,7 +822,7 @@ func Grade(
 				}
 				defer expectedFd.Close()
 				runScore, _, err := CalculateScore(
-					&input.Settings().Validator,
+					&settings.Validator,
 					expectedFd,
 					contestantFd,
 				)

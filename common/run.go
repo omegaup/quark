@@ -23,6 +23,7 @@ type Run struct {
 	Language  string  `json:"language"`
 	InputHash string  `json:"input_hash"`
 	MaxScore  float64 `json:"max_score"`
+	Debug     bool    `json:"debug"`
 }
 
 // NewAttemptID allocates a locally-unique AttemptID. A counter is initialized

@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"expvar"
 	"flag"
@@ -13,8 +15,10 @@ import (
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
 	"html"
+	"html/template"
 	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -41,6 +45,12 @@ var (
 type processRunStatus struct {
 	status int
 	retry  bool
+}
+
+type ResponseStruct struct {
+	Results  string
+	Logs     string
+	FilesZip string
 }
 
 func loadContext() error {
@@ -219,6 +229,46 @@ func PeerName(r *http.Request) string {
 	}
 }
 
+func readGzippedFile(filename string) (string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return "", err
+	}
+	defer gz.Close()
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, gz); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func readBase64File(filename string) (string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	var buf bytes.Buffer
+	enc := base64.NewEncoder(base64.StdEncoding, &buf)
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := io.Copy(enc, f); err != nil {
+		return "", err
+	}
+	enc.Close()
+	return buf.String(), nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -271,7 +321,7 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		runCtx, err := runs.AddRun(ctx, id, ctx.InputManager)
+		runCtx, err := grader.NewRunContext(ctx, id, ctx.InputManager)
 		if err != nil {
 			ctx.Log.Error(err.Error(), "id", id)
 			if err == sql.ErrNoRows {
@@ -281,9 +331,74 @@ func main() {
 			}
 			return
 		}
-		w.Header().Set("Content-Type", "text/json; charset=utf-8")
+		if _, ok := r.URL.Query()["debug"]; ok {
+			if err := runCtx.Debug(); err != nil {
+				ctx.Log.Error("Unable to set debug mode", "err", err)
+			} else {
+				defer func() {
+					if err := os.RemoveAll(runCtx.GradeDir()); err != nil {
+						ctx.Log.Error("Error writing response", "err", err)
+					}
+				}()
+			}
+		}
+		runs.AddRun(runCtx)
 		runCtx.Log.Info("enqueued run", "run", runCtx.Run)
-		fmt.Fprintf(w, "{\"status\":\"ok\"}")
+		if _, ok := r.URL.Query()["wait"]; ok {
+			select {
+			case <-w.(http.CloseNotifier).CloseNotify():
+				return
+			case <-runCtx.Ready():
+			}
+
+			if _, ok := r.URL.Query()["multipart"]; ok {
+				multipartWriter := multipart.NewWriter(w)
+				defer multipartWriter.Close()
+
+				w.Header().Set("Content-Type", multipartWriter.FormDataContentType())
+				files := []string{"logs.txt.gz", "files.zip", "details.json", "tracing.json.gz"}
+				for _, file := range files {
+					fd, err := os.Open(path.Join(runCtx.GradeDir(), file))
+					if err != nil {
+						ctx.Log.Error("Error opening file", "file", file, "err", err)
+						continue
+					}
+					resultWriter, err := multipartWriter.CreateFormFile("file", file)
+					if err != nil {
+						ctx.Log.Error("Error sending file", "file", file, "err", err)
+						continue
+					}
+					if _, err := io.Copy(resultWriter, fd); err != nil {
+						ctx.Log.Error("Error sending file", "file", file, "err", err)
+						continue
+					}
+				}
+			} else {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+				t := template.Must(template.ParseFiles("response.html.template"))
+				jsonData, _ := json.MarshalIndent(runCtx.Result, "", "  ")
+				logData, err := readGzippedFile(path.Join(runCtx.GradeDir(), "logs.txt.gz"))
+				if err != nil {
+					ctx.Log.Error("Error reading logs", "err", err)
+				}
+				filesZip, err := readBase64File(path.Join(runCtx.GradeDir(), "files.zip"))
+				if err != nil {
+					ctx.Log.Error("Error reading logs", "err", err)
+				}
+				response := &ResponseStruct{
+					Results:  string(jsonData),
+					Logs:     logData,
+					FilesZip: filesZip,
+				}
+				if err := t.Execute(w, response); err != nil {
+					ctx.Log.Error("Error writing response", "err", err)
+				}
+			}
+		} else {
+			w.Header().Set("Content-Type", "text/json; charset=utf-8")
+			fmt.Fprintf(w, "{\"status\":\"ok\"}")
+		}
 	})
 
 	http.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {

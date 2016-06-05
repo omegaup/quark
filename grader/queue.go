@@ -40,15 +40,19 @@ type RunContext struct {
 	// still active
 	input common.Input
 
+	gradeDir     string
 	creationTime int64
 	tries        int
 	queue        *Queue
 	context      *common.Context
 	monitor      *InflightMonitor
+
+	// A channel that will be closed once the run is ready.
+	ready chan struct{}
 }
 
-// newRunContext creates a RunContext from its database id.
-func newRunContext(
+// NewRunContext creates a RunContext from its database id.
+func NewRunContext(
 	ctx *Context,
 	id int64,
 	inputManager *common.InputManager,
@@ -72,6 +76,13 @@ func newRunContext(
 	run.EventCollector = run.context.EventCollector
 	run.EventFactory = run.context.EventFactory
 
+	run.gradeDir = path.Join(
+		run.Config.Grader.RuntimePath,
+		"grade",
+		fmt.Sprintf("%02d", run.ID%100),
+		fmt.Sprintf("%d", run.ID),
+	)
+
 	return run, nil
 }
 
@@ -87,6 +98,7 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 		ID:           id,
 		creationTime: time.Now().Unix(),
 		tries:        ctx.Config.Grader.MaxGradeRetries,
+		ready:        make(chan struct{}),
 	}
 	var contestName sql.NullString
 	var contestPoints sql.NullFloat64
@@ -136,12 +148,16 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 }
 
 func (run *RunContext) GradeDir() string {
-	return path.Join(
-		run.Config.Grader.RuntimePath,
-		"grade",
-		fmt.Sprintf("%02d", run.ID%100),
-		fmt.Sprintf("%d", run.ID),
-	)
+	return run.gradeDir
+}
+
+func (run *RunContext) Debug() error {
+	var err error
+	if run.gradeDir, err = ioutil.TempDir("", "grade"); err != nil {
+		return err
+	}
+	run.Run.Debug = true
+	return nil
 }
 
 func (run *RunContext) Close() {
@@ -218,6 +234,8 @@ func (run *RunContext) Close() {
 			return
 		}
 	}
+
+	close(run.ready)
 }
 
 func (run *RunContext) AppendRunnerLogs(runnerName string, contents []byte) {
@@ -263,6 +281,10 @@ func (run *RunContext) String() string {
 	)
 }
 
+func (run *RunContext) Ready() <-chan struct{} {
+	return run.ready
+}
+
 // Queue represents a RunContext queue with three discrete priorities.
 type Queue struct {
 	Name  string
@@ -295,19 +317,10 @@ func (queue *Queue) GetRun(
 	panic("unreachable")
 }
 
-func (queue *Queue) AddRun(
-	ctx *Context,
-	id int64,
-	inputManager *common.InputManager,
-) (*RunContext, error) {
-	run, err := newRunContext(ctx, id, inputManager)
-	if err != nil {
-		return nil, err
-	}
+func (queue *Queue) AddRun(run *RunContext) {
 	// TODO(lhchavez): Add async events for queue operations.
 	// Add new runs to the normal priority by default.
 	queue.enqueueBlocking(run, 1)
-	return run, nil
 }
 
 // enqueueBlocking adds a run to the queue, waits if needed.

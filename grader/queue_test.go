@@ -30,9 +30,11 @@ func TestQueue(t *testing.T) {
 		t.Fatalf("default queue not found")
 	}
 
-	if _, err := queue.AddRun(ctx, 1, ctx.InputManager); err != nil {
+	runCtx, err := NewRunContext(ctx, 1, ctx.InputManager)
+	if err != nil {
 		t.Fatalf("AddRun failed with %q", err)
 	}
+	queue.AddRun(runCtx)
 	if len(queue.runs[1]) != 1 {
 		t.Fatalf("len(queue.runs[1]) == %d, want %d", len(queue.runs[1]), 1)
 	}
