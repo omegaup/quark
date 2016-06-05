@@ -9,6 +9,7 @@ import (
 	"github.com/vincent-petithory/dataurl"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"strconv"
@@ -17,12 +18,13 @@ import (
 )
 
 type CaseResult struct {
-	Verdict      string                 `json:"verdict"`
-	Name         string                 `json:"name"`
-	Score        float64                `json:"score"`
-	ContestScore float64                `json:"contest_score"`
-	MaxScore     float64                `json:"max_score"`
-	Meta         map[string]RunMetadata `json:"meta"`
+	Verdict        string                 `json:"verdict"`
+	Name           string                 `json:"name"`
+	Score          float64                `json:"score"`
+	ContestScore   float64                `json:"contest_score"`
+	MaxScore       float64                `json:"max_score"`
+	Meta           RunMetadata            `json:"meta"`
+	IndividualMeta map[string]RunMetadata `json:"individual_meta,omitempty"`
 }
 
 type GroupResult struct {
@@ -69,6 +71,7 @@ type binary struct {
 }
 
 type intermediateRunResult struct {
+	name       string
 	runMeta    *RunMetadata
 	binaryType binaryType
 }
@@ -543,6 +546,7 @@ func Grade(
 		caseResults := make([]CaseResult, len(group.Cases))
 		for j, caseData := range group.Cases {
 			var runMeta *RunMetadata
+			var individualMeta = make(map[string]RunMetadata)
 			if runResult.WallTime > wallTimeLimit {
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
@@ -670,7 +674,7 @@ func Grade(
 								fmt.Sprintf("%s.meta", caseData.Name),
 							),
 						)
-						metaChan <- intermediateRunResult{runMeta, bin.binaryType}
+						metaChan <- intermediateRunResult{bin.name, runMeta, bin.binaryType}
 					}(bin)
 				}
 				var parentMetadata *RunMetadata = nil
@@ -678,11 +682,16 @@ func Grade(
 					Verdict: "OK",
 				}
 				chosenMetadataEmpty := true
+				var finalVerdict = "OK"
 				var totalTime float64 = 0
 				var totalWallTime float64 = 0
 				var totalMemory int64 = 0
 				for i := 0; i < regularBinaryCount; i++ {
 					intermediateResult := <-metaChan
+					if regularBinaryCount != 1 {
+						// Only populate invidualMeta if there is more than one binary.
+						individualMeta[intermediateResult.name] = *intermediateResult.runMeta
+					}
 					if intermediateResult.binaryType == binaryProblemsetter {
 						parentMetadata = intermediateResult.runMeta
 					} else {
@@ -692,19 +701,54 @@ func Grade(
 								chosenMetadataEmpty = false
 							}
 						}
+						finalVerdict = worseVerdict(
+							finalVerdict,
+							intermediateResult.runMeta.Verdict,
+						)
 						totalTime += intermediateResult.runMeta.Time
-						totalWallTime += intermediateResult.runMeta.WallTime
+						totalWallTime = math.Max(
+							totalWallTime,
+							intermediateResult.runMeta.WallTime,
+						)
 						totalMemory += max64(totalMemory, intermediateResult.runMeta.Memory)
 					}
 				}
 				close(metaChan)
 				ctx.EventCollector.Add(singleRunEvent)
+				chosenMetadata.Verdict = finalVerdict
 				chosenMetadata.Time = totalTime
 				chosenMetadata.WallTime = totalWallTime
 				chosenMetadata.Memory = totalMemory
 
-				if parentMetadata != nil && parentMetadata.Verdict != "OK" {
-					// TODO: https://github.com/omegaup/backend/blob/master/runner/src/main/scala/com/omegaup/runner/Runner.scalaL582
+				if parentMetadata != nil && parentMetadata.Verdict != "OK" &&
+					chosenMetadata.Verdict == "OK" {
+					ctx.Log.Warn(
+						"child process finished correctly, but parent did not",
+						"parent", parentMetadata,
+					)
+					if parentMetadata.Verdict == "OLE" {
+						chosenMetadata.Verdict = "OLE"
+					} else if parentMetadata.Verdict == "TLE" {
+						chosenMetadata.Verdict = "TLE"
+					} else if parentMetadata.ExitStatus == 239 {
+						// Child died before finishing message
+						chosenMetadata.Verdict = "RTE"
+					} else if parentMetadata.ExitStatus == 240 {
+						// Child sent invalid cookie
+						chosenMetadata.Verdict = "RTE"
+					} else if parentMetadata.ExitStatus == 241 {
+						// Child sent invalid message id
+						chosenMetadata.Verdict = "RTE"
+					} else if parentMetadata.ExitStatus == 242 {
+						// Child terminated without replying call.
+						chosenMetadata.Verdict = "RTE"
+					} else if parentMetadata.Signal != nil &&
+						*parentMetadata.Signal == "SIGPIPE" {
+						// Child unexpectedly closed the pipe.
+						chosenMetadata.Verdict = "RTE"
+					} else {
+						chosenMetadata.Verdict = "JE"
+					}
 				}
 
 				runMeta = &chosenMetadata
@@ -716,12 +760,11 @@ func Grade(
 
 			// TODO: change CaseResult to split original metadatas and final metadata
 			caseResults[j] = CaseResult{
-				Name:     caseData.Name,
-				MaxScore: runResult.MaxScore * caseData.Weight,
-				Verdict:  runMeta.Verdict,
-				Meta: map[string]RunMetadata{
-					"Main": *runMeta,
-				},
+				Name:           caseData.Name,
+				MaxScore:       runResult.MaxScore * caseData.Weight,
+				Verdict:        runMeta.Verdict,
+				Meta:           *runMeta,
+				IndividualMeta: individualMeta,
 			}
 		}
 		groupResults[i] = GroupResult{
@@ -786,7 +829,7 @@ func Grade(
 							"err", err,
 						)
 					}
-					caseResults.Meta["validator"] = *validateMeta
+					caseResults.IndividualMeta["validator"] = *validateMeta
 					generatedFiles = append(
 						generatedFiles,
 						fmt.Sprintf("validator/%s.out", caseData.Name),
