@@ -76,6 +76,7 @@ type RunMetadata struct {
 	Verdict    string  `json:"verdict"`
 	ExitStatus int     `json:"exit_status,omitempty"`
 	Time       float64 `json:"time"`
+	SystemTime float64 `json:"sys_time"`
 	WallTime   float64 `json:"wall_time"`
 	Memory     int64   `json:"memory"`
 	Signal     *string `json:"signal,omitempty"`
@@ -426,6 +427,9 @@ func parseMetaFile(
 		case "time":
 			meta.Time, _ = strconv.ParseFloat(tokens[1], 64)
 			meta.Time /= 1e6
+		case "time-sys":
+			meta.SystemTime, _ = strconv.ParseFloat(tokens[1], 64)
+			meta.SystemTime /= 1e6
 		case "time-wall":
 			meta.WallTime, _ = strconv.ParseFloat(tokens[1], 64)
 			meta.WallTime /= 1e6
