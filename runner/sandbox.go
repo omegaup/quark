@@ -341,7 +341,7 @@ func (*MinijailSandbox) Run(
 			}
 		} else {
 			params = []string{
-				"-S", path.Join(minijailPath, "scripts/cpp-debug"),
+				"-S", path.Join(minijailPath, "scripts/cpp-asan"),
 			}
 		}
 		params = append(params, "--", fmt.Sprintf("./%s", target))
