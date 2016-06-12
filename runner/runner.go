@@ -548,6 +548,12 @@ func Grade(
 			var runMeta *RunMetadata
 			var individualMeta = make(map[string]RunMetadata)
 			if runResult.WallTime > wallTimeLimit {
+				ctx.Log.Debug(
+					"Not even running since the wall time limit has been exceeded",
+					"case", caseData.Name,
+					"wall time", runResult.WallTime,
+					"limit", wallTimeLimit,
+				)
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
 				}
@@ -560,7 +566,8 @@ func Grade(
 				if file, ok := outputOnlyFiles[outName]; ok {
 					if err := ioutil.WriteFile(outPath, []byte(file.contents), 0644); err != nil {
 						ctx.Log.Error(
-							"failed to run "+caseData.Name,
+							"failed to run",
+							"case", caseData.Name,
 							"err", err,
 						)
 					}
