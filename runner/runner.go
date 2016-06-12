@@ -988,6 +988,9 @@ func uploadFiles(
 	input common.Input,
 	files []string,
 ) error {
+	if filesWriter == nil {
+		return nil
+	}
 	path, err := createZipFile(runRoot, files)
 	if err != nil {
 		return err

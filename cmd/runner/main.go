@@ -129,6 +129,25 @@ func main() {
 
 	ctx.Log.Info("omegaUp runner ready to serve")
 
+	go func() {
+		for {
+			results, err := runner.RunHostBenchmark(
+				ctx,
+				client,
+				baseURL,
+				inputManager,
+				&minijail,
+				&ioLock,
+			)
+			if err != nil {
+				ctx.Log.Error("Failed to run benchmark", "err", err)
+			} else {
+				ctx.Log.Info("Benchmark successful", "results", results)
+			}
+			time.Sleep(time.Duration(1) * time.Minute)
+		}
+	}()
+
 	var sleepTime float32 = 1
 	go func() {
 		ctx.Log.Error("http listen and serve", "err", http.ListenAndServe(":6060", nil))

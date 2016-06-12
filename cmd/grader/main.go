@@ -310,6 +310,25 @@ func main() {
 		)
 	})
 
+	http.HandleFunc("/monitoring/benchmark/", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		ctx := context()
+		runnerName := PeerName(r)
+		f, err := os.OpenFile("benchmark.txt", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
+		if err != nil {
+			ctx.Log.Error("Failed to open benchmark file", "err", err)
+			return
+		}
+		defer f.Close()
+		var buf bytes.Buffer
+		buf.WriteString(fmt.Sprintf("%d %s ", time.Now().Unix(), runnerName))
+		io.Copy(&buf, r.Body)
+		buf.WriteString("\n")
+		if _, err := io.Copy(f, &buf); err != nil {
+			ctx.Log.Error("Failed to write to benchmark file", "err", err)
+		}
+	})
+
 	gradeRe := regexp.MustCompile("/run/grade/(\\d+)/?")
 	http.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := context()
