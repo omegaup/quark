@@ -83,7 +83,7 @@ var defaultConfig = Config{
 		GraderURL:           "https://omegaup.com:11302",
 		CompileTimeLimit:    30,
 		CompileOutputLimit:  10 * 1024 * 1024, // 10 MiB
-		JavaVmEstimatedSize: 14 * 1024 * 1024, // 14 MiB
+		JavaVmEstimatedSize: 30 * 1024 * 1024, // 30 MiB
 		PreserveFiles:       false,
 	},
 	TLS: TLSConfig{
