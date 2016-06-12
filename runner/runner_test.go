@@ -80,7 +80,7 @@ func (sandbox *fakeSandbox) Compile(
 
 func (sandbox *fakeSandbox) Run(
 	ctx *common.Context,
-	settings *common.ProblemSettings,
+	limits *common.LimitsSettings,
 	lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
 	originalInputFile, originalOutputFile, runMetaFile *string,
 	extraParams []string,

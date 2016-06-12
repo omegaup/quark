@@ -97,10 +97,10 @@ type Sandbox interface {
 	) (*RunMetadata, error)
 
 	// Run uses a previously compiled program and runs it against a single test
-	// case with the supplied settings.
+	// case with the supplied limits.
 	Run(
 		ctx *common.Context,
-		settings *common.ProblemSettings,
+		limits *common.LimitsSettings,
 		lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
 		originalInputFile, originalOutputFile, runMetaFile *string,
 		extraParams []string,
@@ -248,13 +248,13 @@ func (*MinijailSandbox) Compile(
 
 func (*MinijailSandbox) Run(
 	ctx *common.Context,
-	settings *common.ProblemSettings,
+	limits *common.LimitsSettings,
 	lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
 	originalInputFile, originalOutputFile, runMetaFile *string,
 	extraParams []string,
 	extraMountPoints map[string]string,
 ) (*RunMetadata, error) {
-	timeLimit := settings.Limits.TimeLimit
+	timeLimit := limits.TimeLimit
 	if lang == "java" {
 		timeLimit += 1000
 	}
@@ -269,8 +269,8 @@ func (*MinijailSandbox) Run(
 		"-2", errorFile,
 		"-M", metaFile,
 		"-t", strconv.FormatInt(timeLimit, 10),
-		"-w", strconv.FormatInt(settings.Limits.ExtraWallTime, 10),
-		"-O", strconv.FormatInt(settings.Limits.OutputLimit, 10),
+		"-w", strconv.FormatInt(limits.ExtraWallTime, 10),
+		"-O", strconv.FormatInt(limits.OutputLimit, 10),
 		"-k", "-1",
 	}
 
@@ -317,7 +317,7 @@ func (*MinijailSandbox) Run(
 	}
 
 	// 16MB + memory limit to prevent some RTE
-	memoryLimit := (16*1024 + settings.Limits.MemoryLimit) * 1024
+	memoryLimit := (16*1024 + limits.MemoryLimit) * 1024
 	// "640MB should be enough for anybody"
 	hardLimit := strconv.FormatInt(min64(640*1024*1024, memoryLimit), 10)
 
@@ -332,7 +332,7 @@ func (*MinijailSandbox) Run(
 			"--", "/usr/bin/java", fmt.Sprintf("-Xmx%d", memoryLimit), target,
 		}
 	case "c", "cpp", "cpp11":
-		if settings.Limits.MemoryLimit != -1 {
+		if limits.MemoryLimit != -1 {
 			params = []string{
 				"-S", path.Join(minijailPath, "scripts/cpp"),
 				"-m", hardLimit,
@@ -404,12 +404,12 @@ func (*MinijailSandbox) Run(
 		}, err
 	}
 	defer metaFd.Close()
-	return parseMetaFile(ctx, settings, lang, metaFd, lang == "c")
+	return parseMetaFile(ctx, limits, lang, metaFd, lang == "c")
 }
 
 func parseMetaFile(
 	ctx *common.Context,
-	settings *common.ProblemSettings,
+	limits *common.LimitsSettings,
 	lang string,
 	metaFile io.Reader,
 	allowNonZeroExitCode bool,
@@ -476,12 +476,12 @@ func parseMetaFile(
 	if lang == "java" {
 		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVmEstimatedSize)
 	}
-	if settings != nil &&
-		settings.Limits.MemoryLimit > 0 &&
-		meta.Memory > settings.Limits.MemoryLimit &&
+	if limits != nil &&
+		limits.MemoryLimit > 0 &&
+		meta.Memory > limits.MemoryLimit &&
 		(lang != "java" || meta.ExitStatus != 0) {
 		meta.Verdict = "MLE"
-		meta.Memory = settings.Limits.MemoryLimit
+		meta.Memory = limits.MemoryLimit
 	}
 
 	return meta, nil

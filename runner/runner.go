@@ -64,6 +64,7 @@ type binary struct {
 	binPath          string
 	outputPathPrefix string
 	binaryType       binaryType
+	limits           common.LimitsSettings
 	receiveInput     bool
 	sourceFiles      []string
 	extraFlags       []string
@@ -214,6 +215,15 @@ func generateMountpoint(
 	}
 }
 
+func patchTimeLimit(
+	limits *common.LimitsSettings,
+	timeLimit int64,
+) *common.LimitsSettings {
+	limitsCopy := *limits
+	limitsCopy.TimeLimit = timeLimit
+	return &limitsCopy
+}
+
 func Grade(
 	ctx *common.Context,
 	filesWriter io.Writer,
@@ -265,7 +275,11 @@ func Grade(
 				binPath:          path.Join(runRoot, interactive.Main, "bin"),
 				outputPathPrefix: "",
 				binaryType:       binaryProblemsetter,
-				receiveInput:     true,
+				limits: *patchTimeLimit(&settings.Limits, max64(
+					settings.Limits.TimeLimit,
+					settings.Limits.ValidatorTimeLimit,
+				)),
+				receiveInput: true,
 				sourceFiles: normalizedSourceFiles(
 					runRoot,
 					interactive.ParentLang,
@@ -300,6 +314,7 @@ func Grade(
 					binPath:          path.Join(runRoot, name, "bin"),
 					outputPathPrefix: name,
 					binaryType:       binaryContestant,
+					limits:           settings.Limits,
 					receiveInput:     false,
 					sourceFiles: normalizedSourceFiles(
 						runRoot,
@@ -448,6 +463,7 @@ func Grade(
 					binPath:          mainBinPath,
 					outputPathPrefix: "",
 					binaryType:       binaryContestant,
+					limits:           settings.Limits,
 					receiveInput:     true,
 					sourceFiles:      []string{mainSourcePath},
 					extraFlags:       extraFlags,
@@ -479,6 +495,10 @@ func Grade(
 				binPath:          validatorBinPath,
 				outputPathPrefix: "validator",
 				binaryType:       binaryValidator,
+				limits: *patchTimeLimit(&settings.Limits, max64(
+					settings.Limits.TimeLimit,
+					settings.Limits.ValidatorTimeLimit,
+				)),
 				receiveInput:     false,
 				sourceFiles:      []string{validatorSourceFile},
 				extraFlags:       []string{},
@@ -645,7 +665,7 @@ func Grade(
 						)
 						runMeta, err := sandbox.Run(
 							ctx,
-							&settings,
+							&bin.limits,
 							bin.language,
 							bin.binPath,
 							inputPath,
@@ -829,7 +849,10 @@ func Grade(
 					runMetaFile := path.Join(runRoot, fmt.Sprintf("%s.meta", caseData.Name))
 					validateMeta, err := sandbox.Run(
 						ctx,
-						&settings,
+						patchTimeLimit(&settings.Limits, max64(
+							settings.Limits.TimeLimit,
+							settings.Limits.ValidatorTimeLimit,
+						)),
 						*settings.Validator.Lang,
 						validatorBinPath,
 						contestantPath,

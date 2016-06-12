@@ -25,7 +25,7 @@ func TestParseMetaFile(t *testing.T) {
 
 	test := []struct {
 		contents, lang string
-		settings       *common.ProblemSettings
+		limits         *common.LimitsSettings
 		callback       func(meta *RunMetadata) bool
 	}{
 		{
@@ -131,7 +131,7 @@ func TestParseMetaFile(t *testing.T) {
 		{
 			"status:0\nmem:1000000",
 			"c",
-			&common.ProblemSettings{Limits: common.LimitsSettings{MemoryLimit: 1000}},
+			&common.LimitsSettings{MemoryLimit: 1000},
 			func(meta *RunMetadata) bool {
 				return meta.Verdict == "MLE" && meta.Memory == 1000
 			},
@@ -140,7 +140,7 @@ func TestParseMetaFile(t *testing.T) {
 	for _, te := range test {
 		meta, err := parseMetaFile(
 			ctx,
-			te.settings,
+			te.limits,
 			te.lang,
 			bytes.NewBufferString(te.contents),
 			te.lang == "c",
