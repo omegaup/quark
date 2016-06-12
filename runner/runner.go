@@ -247,11 +247,21 @@ func Grade(
 	interactive := settings.Interactive
 	if interactive != nil {
 		ctx.Log.Info("libinteractive", "version", interactive.LibinteractiveVersion)
+		lang := interactive.ParentLang
+		target := interactive.Main
+
+		if lang == "cpp" {
+			// Let's not make problemsetters be forced to use old languages.
+			lang = "cpp11"
+		} else if run.Language == "py" || run.Language == "java" {
+			target = fmt.Sprintf("%s_entry", target)
+		}
+
 		binaries = []*binary{
 			&binary{
 				name:             interactive.Main,
-				target:           interactive.Main,
-				language:         interactive.ParentLang,
+				target:           target,
+				language:         lang,
 				binPath:          path.Join(runRoot, interactive.Main, "bin"),
 				outputPathPrefix: "",
 				binaryType:       binaryProblemsetter,
