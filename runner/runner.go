@@ -540,7 +540,7 @@ func Grade(
 
 	groupResults := make([]GroupResult, len(settings.Cases))
 	runResult.Verdict = "OK"
-	wallTimeLimit := (float64)(settings.Limits.OverallWallTimeLimit / 1000.0)
+	wallTimeLimit := float64(settings.Limits.OverallWallTimeLimit) / 1000.0
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("run", common.EventBegin))
 	for i, group := range settings.Cases {
 		caseResults := make([]CaseResult, len(group.Cases))
