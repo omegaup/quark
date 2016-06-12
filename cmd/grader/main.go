@@ -51,6 +51,7 @@ type ResponseStruct struct {
 	Results  string
 	Logs     string
 	FilesZip string
+	Tracing  string
 }
 
 func loadContext() error {
@@ -145,6 +146,7 @@ func processRun(
 		if part.FileName() == "details.json" {
 			var result runner.RunResult
 			decoder := json.NewDecoder(part)
+			decoder.UseNumber()
 			if err := decoder.Decode(&result); err != nil {
 				runCtx.Log.Error("Error obtaining result", "err", err, "runner", runnerName)
 				return &processRunStatus{http.StatusBadRequest, true}
@@ -386,10 +388,15 @@ func main() {
 				if err != nil {
 					ctx.Log.Error("Error reading logs", "err", err)
 				}
+				tracing, err := readBase64File(path.Join(runCtx.GradeDir(), "tracing.json.gz"))
+				if err != nil {
+					ctx.Log.Error("Error reading logs", "err", err)
+				}
 				response := &ResponseStruct{
 					Results:  string(jsonData),
 					Logs:     logData,
 					FilesZip: filesZip,
+					Tracing:  tracing,
 				}
 				if err := t.Execute(w, response); err != nil {
 					ctx.Log.Error("Error writing response", "err", err)

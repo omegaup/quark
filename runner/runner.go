@@ -623,6 +623,9 @@ func Grade(
 						if bin.binaryType == binaryProblemsetter {
 							extraParams = append(extraParams, caseData.Name, run.Language)
 						}
+						singleBinary := ctx.EventFactory.NewCompleteEvent(
+							fmt.Sprintf("%s - %s", caseData.Name, bin.name),
+						)
 						runMeta, err := sandbox.Run(
 							ctx,
 							&settings,
@@ -674,6 +677,7 @@ func Grade(
 								fmt.Sprintf("%s.meta", caseData.Name),
 							),
 						)
+						ctx.EventCollector.Add(singleBinary)
 						metaChan <- intermediateRunResult{bin.name, runMeta, bin.binaryType}
 					}(bin)
 				}

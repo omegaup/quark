@@ -5,6 +5,7 @@ import (
 	"hash/fnv"
 	"io"
 	"math/rand"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -24,7 +25,7 @@ var (
 
 func init() {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	syncID = uint64(r.Int63())
+	syncID = uint64(r.Uint32())
 }
 
 // NewSyncID allocates a locally-unique SyncID. A counter is initialized
@@ -50,9 +51,11 @@ type NormalEvent struct {
 	PID       int                    `json:"pid"`
 	TID       int                    `json:"tid"`
 	Args      map[string]interface{} `json:"args,omitempty"`
+	finalized bool                   `json:"-"`
 }
 
 func (e *NormalEvent) Finalize() {
+	e.finalized = true
 }
 
 type CompleteEvent struct {
@@ -61,6 +64,9 @@ type CompleteEvent struct {
 }
 
 func (e *CompleteEvent) Finalize() {
+	if e.NormalEvent.finalized {
+		return
+	}
 	e.Duration = time.Now().UnixNano()/1000 - e.Timestamp
 	e.NormalEvent.Finalize()
 }
@@ -71,6 +77,9 @@ type IssuerClockSyncEvent struct {
 }
 
 func (e *IssuerClockSyncEvent) Finalize() {
+	if e.NormalEvent.finalized {
+		return
+	}
 	e.Args["sync_id"] = e.SyncID
 	e.Args["issue_ts"] = e.Timestamp
 	e.Timestamp = time.Now().UnixNano() / 1000
@@ -83,6 +92,7 @@ type EventCollector interface {
 
 type WriterEventCollector struct {
 	output io.Writer
+	lock   sync.Mutex
 }
 
 func NewWriterEventCollector(
@@ -105,6 +115,8 @@ func (collector *WriterEventCollector) Add(e Event) error {
 	if err != nil {
 		return err
 	}
+	collector.lock.Lock()
+	defer collector.lock.Unlock()
 	if _, err = collector.output.Write(b); err != nil {
 		return err
 	}
@@ -116,6 +128,7 @@ func (collector *WriterEventCollector) Add(e Event) error {
 
 type MemoryEventCollector struct {
 	Events []Event
+	lock   sync.Mutex
 }
 
 func NewMemoryEventCollector() *MemoryEventCollector {
@@ -126,11 +139,15 @@ func NewMemoryEventCollector() *MemoryEventCollector {
 
 func (collector *MemoryEventCollector) Add(e Event) error {
 	e.Finalize()
+	collector.lock.Lock()
+	defer collector.lock.Unlock()
 	collector.Events = append(collector.Events, e)
 	return nil
 }
 
 func (collector *MemoryEventCollector) MarshalJSON() ([]byte, error) {
+	collector.lock.Lock()
+	defer collector.lock.Unlock()
 	return json.Marshal(collector.Events)
 }
 
@@ -149,6 +166,8 @@ func (collector *MemoryEventCollector) UnmarshalJSON(buf []byte) error {
 		return err
 	}
 
+	collector.lock.Lock()
+	defer collector.lock.Unlock()
 	for _, rawEvent := range rawEvents {
 		normalEvent := NormalEvent{
 			Name:      rawEvent.Name,
@@ -157,6 +176,7 @@ func (collector *MemoryEventCollector) UnmarshalJSON(buf []byte) error {
 			PID:       rawEvent.PID,
 			TID:       rawEvent.TID,
 			Args:      rawEvent.Args,
+			finalized: true,
 		}
 		if rawEvent.Type == EventComplete {
 			event := CompleteEvent{
@@ -165,11 +185,17 @@ func (collector *MemoryEventCollector) UnmarshalJSON(buf []byte) error {
 			}
 			collector.Events = append(collector.Events, &event)
 		} else if rawEvent.Type == EventClockSync {
-			event := IssuerClockSyncEvent{
-				NormalEvent: normalEvent,
-				SyncID:      (uint64)(rawEvent.Args["sync_id"].(float64)),
+			syncID := (uint64)(rawEvent.Args["sync_id"].(float64))
+			if _, ok := rawEvent.Args["issue_ts"]; ok {
+				event := IssuerClockSyncEvent{
+					NormalEvent: normalEvent,
+					SyncID:      syncID,
+				}
+				collector.Events = append(collector.Events, &event)
+			} else {
+				normalEvent.Args["sync_id"] = syncID
+				collector.Events = append(collector.Events, &normalEvent)
 			}
-			collector.Events = append(collector.Events, &event)
 		} else {
 			collector.Events = append(collector.Events, &normalEvent)
 		}
