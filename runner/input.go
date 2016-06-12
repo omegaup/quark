@@ -3,6 +3,7 @@ package runner
 import (
 	"archive/tar"
 	"bufio"
+	"compress/bzip2"
 	"compress/gzip"
 	"crypto/sha1"
 	"encoding/json"
@@ -155,43 +156,37 @@ func (input *runnerBaseInput) getStoredHashes() (map[string]string, error) {
 	return result, nil
 }
 
-// RunnerInput is an Input that can fetch the test case data from the grader.
-type RunnerInput struct {
-	runnerBaseInput
-	requestURL string
-	client     *http.Client
-}
-
-func (input *RunnerInput) Persist() error {
+func (input *runnerBaseInput) persistFromTarStream(
+	r io.Reader,
+	compressionFormat string,
+	uncompressedSize int64,
+	streamHash string,
+) error {
 	tmpPath := fmt.Sprintf("%s.tmp", input.path)
 	if err := os.MkdirAll(tmpPath, 0755); err != nil {
 		return err
 	}
 	defer os.RemoveAll(tmpPath)
 
-	resp, err := input.client.Get(input.requestURL)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	uncompressedSize, err := strconv.ParseInt(
-		resp.Header.Get("X-Content-Uncompressed-Size"), 10, 64,
-	)
-	if err != nil {
-		return err
-	}
 	input.Reserve(uncompressedSize)
 
-	hasher := common.NewHashReader(resp.Body, sha1.New())
+	hasher := common.NewHashReader(r, sha1.New())
+	var uncompressedReader io.Reader
 
-	gz, err := gzip.NewReader(hasher)
-	if err != nil {
-		return err
+	if compressionFormat == "gzip" {
+		gz, err := gzip.NewReader(hasher)
+		if err != nil {
+			return err
+		}
+		defer gz.Close()
+		uncompressedReader = gz
+	} else if compressionFormat == "bzip2" {
+		uncompressedReader = bzip2.NewReader(hasher)
+	} else {
+		uncompressedReader = hasher
 	}
-	defer gz.Close()
 
-	archive := tar.NewReader(gz)
+	archive := tar.NewReader(uncompressedReader)
 
 	sha1sumFile, err := os.Create(fmt.Sprintf("%s.sha1", input.path))
 	if err != nil {
@@ -242,10 +237,10 @@ func (input *RunnerInput) Persist() error {
 		}
 	}
 
-	if resp.Header.Get("Content-SHA1") != fmt.Sprintf("%0x", hasher.Sum(nil)) {
+	if streamHash != fmt.Sprintf("%0x", hasher.Sum(nil)) {
 		return errors.New(fmt.Sprintf(
 			"hash mismatch: expected %s got %s",
-			resp.Header.Get("Content-SHA1"),
+			streamHash,
 			fmt.Sprintf("%0x", hasher.Sum(nil)),
 		))
 	}
@@ -265,7 +260,37 @@ func (input *RunnerInput) Persist() error {
 	}
 
 	input.Commit(size)
+
 	return nil
+}
+
+// RunnerInput is an Input that can fetch the test case data from the grader.
+type RunnerInput struct {
+	runnerBaseInput
+	requestURL string
+	client     *http.Client
+}
+
+func (input *RunnerInput) Persist() error {
+	resp, err := input.client.Get(input.requestURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	uncompressedSize, err := strconv.ParseInt(
+		resp.Header.Get("X-Content-Uncompressed-Size"), 10, 64,
+	)
+	if err != nil {
+		return err
+	}
+
+	return input.persistFromTarStream(
+		resp.Body,
+		"gzip",
+		uncompressedSize,
+		resp.Header.Get("Content-SHA1"),
+	)
 }
 
 // RunnerCachedInputFactory restores Inputs from a directory in the filesystem.
@@ -297,4 +322,85 @@ func (factory *RunnerCachedInputFactory) GetInputHash(
 	info os.FileInfo,
 ) (hash string, ok bool) {
 	return fmt.Sprintf("%s%s", path.Base(dirname), info.Name()), info.IsDir()
+}
+
+type LazyReadCloser interface {
+	Open() (io.ReadCloser, error)
+}
+
+// runnerTarInputFactory creates Inputs from a compressed .tar file.
+type runnerTarInputFactory struct {
+	inputPath string
+	hash      string
+	inputData LazyReadCloser
+}
+
+type runnerTarInput struct {
+	runnerBaseInput
+	factory *runnerTarInputFactory
+}
+
+func NewRunnerTarInputFactory(
+	config *common.Config,
+	hash string,
+	inputData LazyReadCloser,
+) common.InputFactory {
+	return &runnerTarInputFactory{
+		inputPath: path.Join(
+			config.Runner.RuntimePath,
+			"input",
+		),
+		hash:      hash,
+		inputData: inputData,
+	}
+}
+
+func (factory *runnerTarInputFactory) NewInput(
+	hash string,
+	mgr *common.InputManager,
+) common.Input {
+	return &runnerTarInput{
+		runnerBaseInput: runnerBaseInput{
+			BaseInput: *common.NewBaseInput(
+				hash,
+				mgr,
+			),
+			path: path.Join(
+				factory.inputPath,
+				fmt.Sprintf("%s/%s", hash[:2], hash[2:]),
+			),
+		},
+		factory: factory,
+	}
+}
+
+func (factory *runnerTarInputFactory) GetInputHash(
+	dirname string,
+	info os.FileInfo,
+) (hash string, ok bool) {
+	return factory.hash, info.IsDir()
+}
+
+func (input *runnerTarInput) Persist() error {
+	f, err := input.factory.inputData.Open()
+	if err != nil {
+		return err
+	}
+	hasher := common.NewHashReader(f, sha1.New())
+	streamHash := fmt.Sprintf("%0x", hasher.Sum(nil))
+	uncompressedSize := hasher.Length()
+	f.Close()
+
+	f, err = input.factory.inputData.Open()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return input.persistFromTarStream(
+		f,
+		"",
+		uncompressedSize,
+		streamHash,
+	)
 }

@@ -446,6 +446,7 @@ func (mgr *InputManager) MarshalJSON() ([]byte, error) {
 type HashReader struct {
 	hasher hash.Hash
 	reader io.Reader
+	length int64
 }
 
 // NewHashReader returns a new HashReader for a given Reader and Hash.
@@ -460,6 +461,7 @@ func NewHashReader(r io.Reader, h hash.Hash) *HashReader {
 // the read bytes.
 func (r *HashReader) Read(b []byte) (int, error) {
 	n, err := r.reader.Read(b)
+	r.length += int64(n)
 	r.hasher.Write(b[:n])
 	return n, err
 }
@@ -469,7 +471,9 @@ func (r *HashReader) drain() {
 	buf := make([]byte, 256)
 	for {
 		// Read until an error occurs.
-		if _, err := r.Read(buf); err != nil {
+		n, err := r.Read(buf)
+		r.length += int64(n)
+		if err != nil {
 			return
 		}
 	}
@@ -480,6 +484,11 @@ func (r *HashReader) drain() {
 func (r *HashReader) Sum(b []byte) []byte {
 	r.drain()
 	return r.hasher.Sum(b)
+}
+
+// Length returns the number of bytes involved in the hash computation so far.
+func (r *HashReader) Length() int64 {
+	return r.length
 }
 
 // Sha1sum is an utility function that obtains the SHA1 hash of a file (as
