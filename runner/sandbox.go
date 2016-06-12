@@ -124,6 +124,7 @@ func (*MinijailSandbox) Compile(
 ) (*RunMetadata, error) {
 	commonParams := []string{
 		path.Join(minijailPath, "bin/minijail0"),
+		"-q",
 		"-C", path.Join(minijailPath, "root-compilers"),
 		"-d", "/home",
 		"-b", chdir + ",/home,1",
@@ -261,6 +262,7 @@ func (*MinijailSandbox) Run(
 
 	commonParams := []string{
 		path.Join(minijailPath, "bin/minijail0"),
+		"-q",
 		"-C", path.Join(minijailPath, "root"),
 		"-d", "/home",
 		"-b", chdir + ",/home",
