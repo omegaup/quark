@@ -620,7 +620,7 @@ func Grade(
 				generatedFiles = append(generatedFiles, outName, errName, metaName)
 			} else {
 				singleRunEvent := ctx.EventFactory.NewCompleteEvent(caseData.Name)
-				metaChan := make(chan intermediateRunResult, 1)
+				metaChan := make(chan intermediateRunResult, regularBinaryCount)
 				for _, bin := range binaries {
 					if bin.binaryType == binaryValidator {
 						continue
