@@ -56,7 +56,6 @@ type LiteralInteractiveSettings struct {
 var (
 	DefaultLiteralLimitSettings = LimitsSettings{
 		TimeLimit:            1000,     // 1s
-		StackLimit:           8388608,  // 8MB
 		MemoryLimit:          67108864, // 64MB
 		OverallWallTimeLimit: 5000,     // 5s
 		ExtraWallTime:        0,        // 0s
@@ -179,10 +178,6 @@ func NewLiteralInputFactory(
 		factory.settings.Limits.TimeLimit = min(
 			input.Limits.TimeLimit,
 			DefaultLiteralLimitSettings.TimeLimit,
-		)
-		factory.settings.Limits.StackLimit = min(
-			input.Limits.StackLimit,
-			DefaultLiteralLimitSettings.StackLimit,
 		)
 		factory.settings.Limits.MemoryLimit = min(
 			input.Limits.MemoryLimit,

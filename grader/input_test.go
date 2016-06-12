@@ -19,7 +19,9 @@ func TestPreloadInputs(t *testing.T) {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
 
 	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
 	files := []struct {
@@ -130,10 +132,12 @@ func TestTransmitInput(t *testing.T) {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
 
 	input, err := ctx.InputManager.Add(
-		"4bba61b5499a7a511eb515594f3293a8741516ad",
+		"2af3227d22470f4d9730937b6b47fd79622fdb32",
 		NewGraderInputFactory("test", &ctx.Config),
 	)
 	if err != nil {
@@ -155,7 +159,7 @@ func TestTransmitInput(t *testing.T) {
 		name, value string
 	}{
 		{"Content-Type", "application/x-gzip"},
-		{"Content-Sha1", "b6937bc3ca2789cbd2f7c558707e9e674469daaf"},
+		{"Content-Sha1", "7bab42377510c74a21e3985cab758b39ac14fefd"},
 	}
 	for _, het := range headerentries {
 		if !reflect.DeepEqual(headers[het.name], []string{het.value}) {

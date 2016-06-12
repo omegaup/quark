@@ -31,6 +31,7 @@ func newGraderContext() (*Context, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx.Config.Runner.PreserveFiles = os.Getenv("PRESERVE") != ""
 
 	// Setting up the database.
 	statements := []string{
@@ -70,10 +71,10 @@ func newGraderContext() (*Context, error) {
 		);`,
 		`INSERT INTO Problems VALUES(1, 'test', 2);`,
 		`INSERT INTO Problem_Versions VALUES(
-			1, 1, '4bba61b5499a7a511eb515594f3293a8741516ad'
+			1, 1, '6b70f47f4f4d57fcac0ac91ed0c6320218764236'
 		);`,
 		`INSERT INTO Problem_Versions VALUES(
-			2, 1, '3e15ff91dc230c3c30bd3054c2cb2f17203d4f23'
+			2, 1, '2af3227d22470f4d9730937b6b47fd79622fdb32'
 		);`,
 		`INSERT INTO Contests VALUES(1, 'test');`,
 		`INSERT INTO Contest_Problems VALUES(1, 1, 100.0);`,
@@ -174,7 +175,7 @@ func newGraderContext() (*Context, error) {
 	}{
 		{
 			"first commit\n",
-			"4bba61b5499a7a511eb515594f3293a8741516ad",
+			"6b70f47f4f4d57fcac0ac91ed0c6320218764236",
 			[]filecontents{
 				{"cases/in/0.in", "1 2"},
 				{"cases/out/0.out", "3"},
@@ -187,7 +188,6 @@ func newGraderContext() (*Context, error) {
     "MemoryLimit": 67108864, 
     "OutputLimit": 16384, 
     "OverallWallTimeLimit": 60000, 
-    "StackLimit": 10485760, 
     "TimeLimit": 3000, 
     "ValidatorTimeLimit": 3000
   }, 
@@ -198,7 +198,7 @@ func newGraderContext() (*Context, error) {
 		},
 		{
 			"second commit\n",
-			"3e15ff91dc230c3c30bd3054c2cb2f17203d4f23",
+			"2af3227d22470f4d9730937b6b47fd79622fdb32",
 			[]filecontents{
 				{"cases/in/0.in", "1 2"},
 				{"cases/out/0.out", "3"},
@@ -214,7 +214,6 @@ func newGraderContext() (*Context, error) {
     "MemoryLimit": 67108864, 
     "OutputLimit": 16384, 
     "OverallWallTimeLimit": 60000, 
-    "StackLimit": 10485760, 
     "TimeLimit": 3000, 
     "ValidatorTimeLimit": 3000
   }, 

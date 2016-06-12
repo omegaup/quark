@@ -271,7 +271,7 @@ func (*MinijailSandbox) Run(
 		"-t", strconv.FormatInt(timeLimit, 10),
 		"-w", strconv.FormatInt(settings.Limits.ExtraWallTime, 10),
 		"-O", strconv.FormatInt(settings.Limits.OutputLimit, 10),
-		"-k", strconv.FormatInt(settings.Limits.StackLimit, 10),
+		"-k", "-1",
 	}
 
 	extraMinijailFlags := make([]string, 2*len(extraMountPoints))

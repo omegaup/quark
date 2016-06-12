@@ -110,7 +110,6 @@ func TestPreloadInputs(t *testing.T) {
     "MemoryLimit": 67108864, 
     "OutputLimit": 16384, 
     "OverallWallTimeLimit": 60000, 
-    "StackLimit": 10485760, 
     "TimeLimit": 3000, 
     "ValidatorTimeLimit": 3000
   }, 
@@ -120,7 +119,7 @@ func TestPreloadInputs(t *testing.T) {
 		},
 		{
 			"4b/ba61b5499a7a511eb515594f3293a8741516ad.sha1",
-			`f8a4f917fb08056e2381512640ba855935c8e16e *ba61b5499a7a511eb515594f3293a8741516ad/settings.json
+			`0849b07a45865a148f85f3ef389d6b6fa8e2d1fb *ba61b5499a7a511eb515594f3293a8741516ad/settings.json
 			3c28d037e32cd30eefd8183a83153083cced6cb7 *ba61b5499a7a511eb515594f3293a8741516ad/in/0.in
 			77de68daecd823babbb58edb1c8e14d7106e83bb *ba61b5499a7a511eb515594f3293a8741516ad/out/0.out`,
 		},

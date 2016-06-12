@@ -11,7 +11,9 @@ func TestMonitorSerializability(t *testing.T) {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
 	ctx.InputManager.MarshalJSON()
 	ctx.InflightMonitor.MarshalJSON()
 	ctx.QueueManager.MarshalJSON()
@@ -23,7 +25,9 @@ func TestQueue(t *testing.T) {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
 
 	queue, err := ctx.QueueManager.Get("default")
 	if err != nil {

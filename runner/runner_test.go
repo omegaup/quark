@@ -139,9 +139,7 @@ func newRunnerContext() (*common.Context, error) {
 	if err != nil {
 		return nil, err
 	}
-	if os.Getenv("PRESERVE") != "" {
-		ctx.Config.Runner.PreserveFiles = true
-	}
+	ctx.Config.Runner.PreserveFiles = os.Getenv("PRESERVE") != ""
 
 	return ctx, nil
 }
@@ -167,7 +165,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	if os.Getenv("PRESERVE") == "" {
+	if !ctx.Config.Runner.PreserveFiles {
 		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
 	}
 
@@ -383,7 +381,7 @@ func TestLibinteractive(t *testing.T) {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	if os.Getenv("PRESERVE") == "" {
+	if !ctx.Config.Runner.PreserveFiles {
 		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
 	}
 

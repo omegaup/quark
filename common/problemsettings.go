@@ -13,7 +13,6 @@ type LimitsSettings struct {
 	MemoryLimit          int64
 	OutputLimit          int64
 	OverallWallTimeLimit int64
-	StackLimit           int64
 	TimeLimit            int64
 	ValidatorTimeLimit   int64
 }
