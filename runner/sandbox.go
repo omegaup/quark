@@ -16,9 +16,21 @@ import (
 	"syscall"
 )
 
-var (
+const (
 	minijailPath string = "/var/lib/minijail"
 )
+
+var (
+	haskellCompiler string = "/usr/lib/ghc/bin/ghc"
+)
+
+func init() {
+	// ghc was moved from lib/ghc to bin/ghc recently. Try to detect that.
+	_, err := os.Stat(path.Join(minijailPath, "root-hs/lib/ghc"))
+	if !os.IsNotExist(err) {
+		haskellCompiler = "/usr/lib/ghc/lib/ghc"
+	}
+}
 
 // Preloads an input so that the contestant's program has to wait less time.
 type inputPreloader struct {
@@ -217,7 +229,7 @@ func (*MinijailSandbox) Compile(
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/ghc"),
 			"-b", path.Join(minijailPath, "root-hs") + ",/usr/lib/ghc",
-			"--", "/usr/lib/ghc/lib/ghc", "-B/usr/lib/ghc", "-O2", "-o", target,
+			"--", haskellCompiler, "-B/usr/lib/ghc", "-O2", "-o", target,
 		}
 	}
 
