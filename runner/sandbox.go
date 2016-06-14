@@ -403,11 +403,26 @@ func (*MinijailSandbox) Run(
 		preloader.release()
 	}
 
-	if err := exec.Command("/usr/bin/sudo", finalParams...).Run(); err != nil {
+	cmd := exec.Command("/usr/bin/sudo", finalParams...)
+	minijailErrorFile := errorFile + ".minijail"
+	minijailErrorFd, err := os.Create(minijailErrorFile)
+	if err != nil {
+		ctx.Log.Error("Failed to redirect minijail stderr", "err", err)
+	} else {
+		defer os.Remove(minijailErrorFile)
+		cmd.Stderr = minijailErrorFd
+	}
+	if err := cmd.Run(); err != nil {
 		ctx.Log.Error(
 			"Minijail execution failed",
 			"err", err,
 		)
+	}
+	if minijailErrorFd != nil {
+		minijailErrorFd.Close()
+		if err := appendFile(errorFile, minijailErrorFile); err != nil {
+			ctx.Log.Error("Failed to append minijail stderr", "err", err)
+		}
 	}
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
@@ -418,6 +433,29 @@ func (*MinijailSandbox) Run(
 	}
 	defer metaFd.Close()
 	return parseMetaFile(ctx, limits, lang, metaFd, lang == "c")
+}
+
+func appendFile(dest, src string) error {
+	srcFd, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFd.Close()
+	stat, err := srcFd.Stat()
+	if err != nil {
+		return err
+	}
+	if stat.Size() == 0 {
+		return nil
+	}
+	destFd, err := os.OpenFile(dest, os.O_APPEND|os.O_WRONLY, 0666)
+	if err != nil {
+		return err
+	}
+	defer destFd.Close()
+	destFd.WriteString("\n")
+	_, err = io.Copy(destFd, srcFd)
+	return err
 }
 
 func parseMetaFile(
