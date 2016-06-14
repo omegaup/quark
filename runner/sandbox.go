@@ -352,9 +352,8 @@ func (*MinijailSandbox) Run(
 				"-m", hardLimit,
 			}
 		} else {
-			params = []string{
-				"-S", path.Join(minijailPath, "scripts/cpp-asan"),
-			}
+			// It's dangerous to go without seccomp-bpf, but this is only for testing.
+			params = []string{}
 		}
 		params = append(params, "--", fmt.Sprintf("./%s", target))
 	case "pas":

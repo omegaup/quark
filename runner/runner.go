@@ -447,7 +447,9 @@ func Grade(
 			extraFlags := []string{}
 			if run.Debug &&
 				(run.Language == "c" || run.Language == "cpp" || run.Language == "cpp11") {
-				extraFlags = []string{"-fsanitize=address"}
+				// ASan does not like not being the first dynamic library in the load
+				// chain, so link it dynamically so it can run with minijail.
+				extraFlags = []string{"-static-libasan", "-fsanitize=address"}
 				// ASan uses TONS of extra memory.
 				settings.Limits.MemoryLimit = -1
 				// ASan claims to be 2x slower.
