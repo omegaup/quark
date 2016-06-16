@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	git "gopkg.in/libgit2/git2go.v22"
+	git "github.com/libgit2/git2go"
 	"io/ioutil"
 	"os"
 	"path"

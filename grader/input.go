@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/lhchavez/quark/common"
-	git "gopkg.in/libgit2/git2go.v22"
+	git "github.com/libgit2/git2go"
 	"io"
 	"net/http"
 	"os"
