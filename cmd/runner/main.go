@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/runner"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
@@ -133,8 +134,6 @@ func main() {
 		for {
 			results, err := runner.RunHostBenchmark(
 				ctx,
-				client,
-				baseURL,
 				inputManager,
 				&minijail,
 				&ioLock,
@@ -144,9 +143,12 @@ func main() {
 			} else {
 				ctx.Log.Info("Benchmark successful", "results", results)
 			}
+			updateGauges(results)
 			time.Sleep(time.Duration(1) * time.Minute)
 		}
 	}()
+
+	http.Handle("/metrics", prometheus.Handler())
 
 	var sleepTime float32 = 1
 	go func() {
