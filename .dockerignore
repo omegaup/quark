@@ -1,5 +1,6 @@
 .git
 .gitignore
+Dockerfile.prebuild
 Dockerfile.build
 Dockerfile.grader
 Makefile

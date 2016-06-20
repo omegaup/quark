@@ -10,8 +10,12 @@ bin/.stamp:
 	mkdir -p $@
 	touch $@
 
-bin/.binary-stamp: $(SOURCES) bin/.stamp Dockerfile.build
-	docker build -t omegaup/quark-build -f ./Dockerfile.build .
+bin/.prebuild-stamp: Dockerfile.prebuild bin/.stamp
+	docker build --force-rm --rm=true -t omegaup/quark-prebuild -f ./Dockerfile.prebuild .
+	touch $@
+
+bin/.binary-stamp: $(SOURCES) bin/.prebuild-stamp Dockerfile.build
+	docker build --force-rm --rm=true -t omegaup/quark-build -f ./Dockerfile.build .
 	$(eval CONTAINER=$(shell docker create omegaup/quark-build))
 	docker cp $(CONTAINER):/go/bin/grader bin/grader
 	docker cp $(CONTAINER):/go/bin/runner bin/runner
@@ -20,7 +24,7 @@ bin/.binary-stamp: $(SOURCES) bin/.stamp Dockerfile.build
 	touch $@
 
 bin/.grader-stamp: $(BINARIES) Dockerfile.grader root/grader
-	docker build --rm=true -t omegaup/grader -f ./Dockerfile.grader .
+	docker build --force-rm --rm=true -t omegaup/grader -f ./Dockerfile.grader .
 	touch $@
 
 .PHONY: grader
