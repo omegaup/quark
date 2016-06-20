@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Quark</title>
+		<link rel="shortcut icon" href="favicon.ico" type="image/png" />
+		<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.4.0/styles/default.min.css" />
+		<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.4.0/highlight.min.js"></script>
+		<script type="text/javascript" src="//nathancahill.github.io/Split.js/split.js"></script>
+		<script type="text/javascript">
+function onTraceViewerImportFail() {
+	console.error('failed to load trace viewer');
+}
+		</script>
+		<link rel="import" href="https://lhchavez.com/tracing/trace_viewer_full.html" onerror="onTraceViewerImportFail(event)" />
+		<style type="text/css">
+			body {
+				padding: 0;
+				margin: 0;
+			}
+			pre {
+				margin: 0;
+			}
+
+			form {
+				height: 2em;
+				line-height: 2em;
+				padding-left: 1em;
+			}
+			#root {
+				position:fixed !important;
+				position:absolute;
+				top:2em;
+				right:0;
+				bottom:0;
+				left:0;
+			}
+			#logs {
+				padding: 0 10px 10px 0;
+				margin: 0;
+			}
+			#logs code {
+				margin: 0;
+				width: 100%;
+				height: 100%;
+			}
+			#results code, #contents {
+				margin: 0;
+				padding: 0;
+			}
+			#trace-viewer {
+				width: 100%;
+				height: 100%;
+			}
+			#trace-viewer:focus {
+				outline: none;
+			}
+
+			.split p {
+				padding: 20px;
+			}
+
+			.split {
+				-webkit-box-sizing: border-box;
+					 -moz-box-sizing: border-box;
+								box-sizing: border-box;
+
+				overflow-y: auto;
+				overflow-x: hidden;
+			}
+
+			.gutter {
+				background-color: #eee;
+
+				background-repeat: no-repeat;
+				background-position: 50%;
+			}
+
+			.gutter.gutter-horizontal {
+				cursor: ew-resize;
+			}
+
+			.gutter.gutter-vertical {
+				cursor: ns-resize;
+			}
+
+			.split.split-horizontal, .gutter.gutter-horizontal {
+				height: 100%;
+				float: left;
+			}
+		</style>
+	</head>
+	<body>
+		<form>
+			<label for="run-id">Run ID</label> <input type="text" name="run-id" id="run-id" />
+			<label for="debug">Address Sanitizer</label> <input type="checkbox" name="debug" id="debug" />
+			<input type="submit" />
+		</form>
+		<div id="root">
+			<pre id="logs"><code></code></pre>
+			<div id="bottom">
+				<pre class="split split-horizontal" id="results"><code class="json"></code></pre>
+				<div class="split split-horizontal" id="contents"></div>
+			</div>
+			<div id="trace-container">
+				<tr-ui-timeline-view id="trace-viewer">
+					<track-view-container id="track_view_container">
+					</track-view-container>
+				</tr-ui-timeline-view>
+			</div>
+		</div>
+		<script>
+			document.addEventListener("DOMContentLoaded", function(event) { 
+				hljs.initHighlightingOnLoad();
+				Split(['#results', '#contents'], {
+					sizes: [50, 50],
+				});
+				Split(['#logs', '#bottom', '#trace-container'], {
+					sizes: [30, 40, 30],
+					direction: 'vertical',
+				});
+
+				var viewer = document.getElementById('trace-viewer');
+				viewer.track_view_container = document.getElementById('track_view_container');
+				var model = new tr.Model();
+				document.getElementsByTagName("form")[0].addEventListener("submit", function (event) {
+					event.preventDefault();
+					event.stopPropagation();
+					
+					var xhr = new XMLHttpRequest();
+					var url = '/run/grade/' + document.getElementById('run-id').value + '/?wait=1';
+					if (document.getElementById('debug').checked) {
+						url += '&debug=1';
+					}
+					xhr.open('GET', url);
+					xhr.responseType = 'text';
+					xhr.onload = function(e) {
+						if (this.readyState != 4 || this.status != 200) {
+							console.error(e);
+							return;
+						}
+						var response = JSON.parse(this.responseText);
+
+						document.querySelector('#logs code').innerText = response.Logs;
+						document.querySelector('#results code').innerText = response.Results;
+
+						var gz = new tr.e.importer.GzipImporter(model, atob(response.Tracing));
+						var events = gz.extractSubtraces()[0];
+						var i = new tr.importer.Import(model);
+						var p = i.importTracesWithProgressDialog([events]);
+						p.then(function () {
+							viewer.model = model;
+						}, function(err) {
+						});
+
+						var contents = document.getElementById("contents");
+						var zip = new JSZip(atob(response.FilesZip));
+						for (var file in zip.files) {
+							if (!zip.files.hasOwnProperty(file)) continue;
+							var div = document.createElement("div");
+							var h1 = document.createElement("h1");
+							h1.appendChild(document.createTextNode(file));
+							div.appendChild(h1);
+							var pre = document.createElement("pre");
+							var code = document.createElement("code");
+							code.appendChild(document.createTextNode(zip.files[file].asText()));
+							pre.appendChild(code);
+							div.appendChild(pre);
+							contents.appendChild(div);
+						}
+
+						for (var code of document.querySelectorAll('pre code')) {
+							hljs.highlightBlock(code);
+						}
+					};
+					xhr.send();
+				});
+			});
+		</script>
+	</body>
+</html>

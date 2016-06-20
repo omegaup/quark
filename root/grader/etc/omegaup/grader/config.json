@@ -1,0 +1,25 @@
+{
+	"DB": {
+		"Driver": "sqlite3",
+		"DataSourceName": "file:/var/lib/omegaup/omegaup.db?cache=shared&mode=rwc"
+	},
+	"Logging": {
+		"File": "stderr",
+		"Level": "debug"
+	},
+	"Tracing": {
+		"File": "/var/log/omegaup/tracing.json"
+	},
+	"Grader": {
+		"ChannelLength": 64,
+		"Port": 11302,
+		"RuntimePath": "/var/lib/omegaup"
+	},
+	"InputManager": {
+		"CacheSize": 268435456
+	},
+	"TLS": {
+		"CertFile": "/etc/omegaup/grader/quark.pem",
+		"KeyFile": "/etc/omegaup/grader/quark-key.pem"
+	}
+}

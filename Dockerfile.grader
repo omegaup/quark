@@ -1,0 +1,11 @@
+FROM scratch
+MAINTAINER lhchavez "lhchavez@omegaup.com"
+EXPOSE 11302
+
+ADD root/grader /
+ADD cmd/grader/data /data
+ADD bin/grader /bin
+
+VOLUME ["/var/lib/omegaup", "/etc/omegaup/grader", "/var/log/omegaup", "/data"]
+
+CMD ["/bin/grader"]

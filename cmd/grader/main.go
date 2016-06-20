@@ -1,5 +1,7 @@
 package main
 
+//go:generate go-bindata -nomemcopy data/...
+
 import (
 	"bytes"
 	"compress/gzip"
@@ -11,11 +13,10 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
+	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
-	"html"
-	"html/template"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -23,6 +24,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"sync"
@@ -32,7 +34,7 @@ import (
 
 var (
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
-	standalone = flag.Bool("standalone", false, "Standalone mode")
+	skipAssets = flag.Bool("skip-assets", false, "Do not use pre-packaged assets")
 	configPath = flag.String(
 		"config",
 		"/etc/omegaup/grader/config.json",
@@ -271,6 +273,21 @@ func readBase64File(filename string) (string, error) {
 	return buf.String(), nil
 }
 
+type wrappedFileSystem struct {
+	fileSystem http.FileSystem
+}
+
+func (fs *wrappedFileSystem) Open(name string) (http.File, error) {
+	if *skipAssets {
+		path := "/data" + filepath.Clean(filepath.Join("/", name))
+		return os.Open(path)
+	}
+	if file, err := fs.fileSystem.Open(name); err == nil {
+		return file, nil
+	}
+	return nil, os.ErrNotExist
+}
+
 func main() {
 	flag.Parse()
 
@@ -301,14 +318,26 @@ func main() {
 		&sync.Mutex{},
 	)
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(
-			w,
-			"Hello, %q %q",
-			html.EscapeString(r.URL.Path),
-			PeerName(r),
-		)
-	})
+	http.Handle("/", http.FileServer(&wrappedFileSystem{
+		fileSystem: &assetfs.AssetFS{
+			Asset: func (path string) ([]byte, error) {
+				data, err := Asset(path)
+				ctx.Log.Info("Asset", "path", path, "error", err)
+				return data, err
+			},
+			AssetDir: func (path string) ([]string, error) {
+				data, err := AssetDir(path)
+				ctx.Log.Info("AssetDir", "path", path, "error", err)
+				return data, err
+			},
+			AssetInfo: func (path string) (os.FileInfo, error) {
+				data, err := AssetInfo(path)
+				ctx.Log.Info("AssetInfo", "path", path, "error", err)
+				return data, err
+			},
+			Prefix: "data",
+		},
+	}))
 
 	http.HandleFunc("/monitoring/benchmark/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -395,9 +424,8 @@ func main() {
 					}
 				}
 			} else {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Header().Set("Content-Type", "text/json; charset=utf-8")
 
-				t := template.Must(template.ParseFiles("response.html.template"))
 				jsonData, _ := json.MarshalIndent(runCtx.Result, "", "  ")
 				logData, err := readGzippedFile(path.Join(runCtx.GradeDir(), "logs.txt.gz"))
 				if err != nil {
@@ -417,7 +445,8 @@ func main() {
 					FilesZip: filesZip,
 					Tracing:  tracing,
 				}
-				if err := t.Execute(w, response); err != nil {
+				encoder := json.NewEncoder(w)
+				if err := encoder.Encode(response); err != nil {
 					ctx.Log.Error("Error writing response", "err", err)
 				}
 			}
