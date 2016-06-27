@@ -320,22 +320,10 @@ func main() {
 
 	http.Handle("/", http.FileServer(&wrappedFileSystem{
 		fileSystem: &assetfs.AssetFS{
-			Asset: func (path string) ([]byte, error) {
-				data, err := Asset(path)
-				ctx.Log.Info("Asset", "path", path, "error", err)
-				return data, err
-			},
-			AssetDir: func (path string) ([]string, error) {
-				data, err := AssetDir(path)
-				ctx.Log.Info("AssetDir", "path", path, "error", err)
-				return data, err
-			},
-			AssetInfo: func (path string) (os.FileInfo, error) {
-				data, err := AssetInfo(path)
-				ctx.Log.Info("AssetInfo", "path", path, "error", err)
-				return data, err
-			},
-			Prefix: "data",
+			Asset:     Asset,
+			AssetDir:  AssetDir,
+			AssetInfo: AssetInfo,
+			Prefix:    "data",
 		},
 	}))
 

@@ -240,14 +240,7 @@ func (*MinijailSandbox) Compile(
 	finalParams = append(finalParams, inputFlags...)
 	finalParams = append(finalParams, linkerFlags...)
 
-	ctx.Log.Debug("invoking minijail", "params", finalParams)
-
-	if err := exec.Command("/usr/bin/sudo", finalParams...).Run(); err != nil {
-		ctx.Log.Error(
-			"Minijail execution failed",
-			"err", err,
-		)
-	}
+	invokeMinijail(ctx, finalParams, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -393,8 +386,6 @@ func (*MinijailSandbox) Run(
 	finalParams = append(finalParams, params...)
 	finalParams = append(finalParams, extraParams...)
 
-	ctx.Log.Debug("invoking minijail", "params", finalParams)
-
 	preloader, err := newInputPreloader(inputFile)
 	if err != nil {
 		ctx.Log.Error("Failed to preload input", "file", inputFile, "err", err)
@@ -403,7 +394,21 @@ func (*MinijailSandbox) Run(
 		preloader.release()
 	}
 
-	cmd := exec.Command("/usr/bin/sudo", finalParams...)
+	invokeMinijail(ctx, finalParams, errorFile)
+	metaFd, err := os.Open(metaFile)
+	if err != nil {
+		return &RunMetadata{
+			Verdict:    "JE",
+			ExitStatus: -1,
+		}, err
+	}
+	defer metaFd.Close()
+	return parseMetaFile(ctx, limits, lang, metaFd, lang == "c")
+}
+
+func invokeMinijail(ctx *common.Context, minijailParams []string, errorFile string) {
+	ctx.Log.Debug("invoking", "params", minijailParams)
+	cmd := exec.Command("/usr/bin/sudo", minijailParams...)
 	minijailErrorFile := errorFile + ".minijail"
 	minijailErrorFd, err := os.Create(minijailErrorFile)
 	if err != nil {
@@ -424,15 +429,6 @@ func (*MinijailSandbox) Run(
 			ctx.Log.Error("Failed to append minijail stderr", "err", err)
 		}
 	}
-	metaFd, err := os.Open(metaFile)
-	if err != nil {
-		return &RunMetadata{
-			Verdict:    "JE",
-			ExitStatus: -1,
-		}, err
-	}
-	defer metaFd.Close()
-	return parseMetaFile(ctx, limits, lang, metaFd, lang == "c")
 }
 
 func appendFile(dest, src string) error {
@@ -448,7 +444,7 @@ func appendFile(dest, src string) error {
 	if stat.Size() == 0 {
 		return nil
 	}
-	destFd, err := os.OpenFile(dest, os.O_APPEND|os.O_WRONLY, 0666)
+	destFd, err := os.OpenFile(dest, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
 		return err
 	}

@@ -195,7 +195,7 @@ func RunHostBenchmark(
 	ctx.Log.Info("Running benchmark")
 
 	benchmarkResults := make(BenchmarkResults)
-	for _, benchmarkCase := range cases {
+	for idx, benchmarkCase := range cases {
 		input, err := inputManager.Add(
 			benchmarkCase.hash,
 			NewRunnerTarInputFactory(
@@ -210,6 +210,7 @@ func RunHostBenchmark(
 		defer input.Release(input)
 
 		run := common.Run{
+			AttemptID: uint64(idx),
 			Source:    benchmarkCase.source,
 			Language:  benchmarkCase.language,
 			InputHash: benchmarkCase.hash,
