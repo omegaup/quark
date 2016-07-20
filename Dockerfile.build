@@ -8,6 +8,13 @@ RUN go generate github.com/lhchavez/quark/cmd/...
 ENV GOOS linux
 RUN go build --ldflags '-extldflags "-static -lgcrypt -lgpg-error"' -o bin/grader github.com/lhchavez/quark/cmd/grader
 RUN go build --ldflags '-extldflags "-static"' -o bin/validator github.com/lhchavez/quark/cmd/validator
+RUN go build --ldflags '-extldflags "-static"' -o bin/sudo github.com/lhchavez/quark/cmd/sudo
 
 ENV CGO_ENABLED 0
 RUN go build  --ldflags '-extldflags "-static -libc -lpthread"' -o bin/runner github.com/lhchavez/quark/cmd/runner
+
+ENV GOARCH arm
+ENV GOARM 7
+
+ENV CGO_ENABLED 0
+RUN go build -o bin/runner-armhf github.com/lhchavez/quark/cmd/runner

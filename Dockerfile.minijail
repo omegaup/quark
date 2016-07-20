@@ -1,0 +1,4 @@
+FROM scratch
+MAINTAINER lhchavez "lhchavez@omegaup.com"
+
+ADD bin/minijail-xenial-distrib-x86_64.tar.bz2 /

@@ -4,8 +4,8 @@ EXPOSE 11302
 
 ADD root/grader /
 ADD cmd/grader/data /data
-ADD bin/grader /bin
+ADD bin/x86_64/grader /usr/bin
 
 VOLUME ["/var/lib/omegaup", "/etc/omegaup/grader", "/var/log/omegaup", "/data"]
 
-CMD ["/bin/grader"]
+ENTRYPOINT ["/usr/bin/grader"]
