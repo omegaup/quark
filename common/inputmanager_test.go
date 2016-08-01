@@ -15,16 +15,12 @@ import (
 )
 
 func newTestInputManager(sizeLimit int64) *InputManager {
-	ctx, err := NewContext(bytes.NewBufferString(
-		fmt.Sprintf(
-			"{"+
-				"\"Logging\": {\"File\": \"stderr\"}, "+
-				"\"Tracing\": {\"Enabled\": false}, "+
-				"\"InputManager\": {\"CacheSize\": %d}"+
-				"}",
-			sizeLimit,
-		),
-	))
+	config := DefaultConfig()
+	config.Logging.File = "stderr"
+	config.Tracing.Enabled = false
+	config.InputManager.CacheSize = sizeLimit
+
+	ctx, err := NewContext(&config)
 	if err != nil {
 		panic(err)
 	}

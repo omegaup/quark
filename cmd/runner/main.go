@@ -22,37 +22,17 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// fairMutex is similar to a sync.Mutex but has an outer mutex protecting the
-// real (inner) one. This attempts to reduce the unfairness by allowing other
-// threads to "barge in" and block the next acquisition of the mutex until they
-// have had their chance. See https://github.com/golang/go/issues/13086 for
-// details.
-type fairMutex struct {
-	outer sync.Mutex
-	inner sync.Mutex
-}
-
-func (m *fairMutex) Lock() {
-	m.outer.Lock()
-	m.inner.Lock()
-	m.outer.Unlock()
-}
-
-func (m *fairMutex) Unlock() {
-	m.inner.Unlock()
-}
-
 var (
+	benchmark  = flag.Bool("benchmark", false, "Only run benchmark")
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
 	configPath = flag.String("config", "/etc/omegaup/runner/config.json",
 		"Runner configuration file")
 	globalContext atomic.Value
-	ioLock        fairMutex
+	ioLock        common.FairMutex
 	inputManager  *common.InputManager
 	minijail      runner.MinijailSandbox
 )
@@ -64,7 +44,7 @@ func loadContext() error {
 	}
 	defer f.Close()
 
-	ctx, err := common.NewContext(f)
+	ctx, err := common.NewContextFromReader(f)
 	if err != nil {
 		return err
 	}

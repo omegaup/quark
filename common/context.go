@@ -116,17 +116,28 @@ type Context struct {
 	memoryCollector *MemoryEventCollector
 }
 
-// NewContext creates a new Context from the specified reader. This also
-// creates a Logger.
-func NewContext(reader io.Reader) (*Context, error) {
-	var context = Context{
-		Config: defaultConfig,
-	}
+func DefaultConfig() Config {
+	return defaultConfig
+}
+
+// NewConfig creates a new Config from the specified reader.
+func NewConfig(reader io.Reader) (*Config, error) {
+	config := defaultConfig
 
 	// Read basic config
 	decoder := json.NewDecoder(reader)
-	if err := decoder.Decode(&context.Config); err != nil {
+	if err := decoder.Decode(&config); err != nil {
 		return nil, err
+	}
+
+	return &config, nil
+}
+
+// NewContext creates a new Context from the specified Config. This also
+// creates a Logger.
+func NewContext(config *Config) (*Context, error) {
+	var context = Context{
+		Config: *config,
 	}
 
 	// Logging
@@ -195,6 +206,16 @@ func NewContext(reader io.Reader) (*Context, error) {
 	context.EventFactory.Register(context.EventCollector)
 
 	return &context, nil
+}
+
+// NewContextFromReader creates a new Context from the specified reader. This
+// also creates a Logger.
+func NewContextFromReader(reader io.Reader) (*Context, error) {
+	config, err := NewConfig(reader)
+	if err != nil {
+		return nil, err
+	}
+	return NewContext(config)
 }
 
 // Close releases all resources owned by the context.

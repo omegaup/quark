@@ -7,7 +7,7 @@ import (
 )
 
 func newTestingContext() *Context {
-	ctx, err := NewContext(bytes.NewBufferString(
+	ctx, err := NewContextFromReader(bytes.NewBufferString(
 		"{\"Logging\": {\"File\": \"stderr\"}, \"Tracing\": {\"Enabled\": false}}",
 	))
 	if err != nil {

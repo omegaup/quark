@@ -231,7 +231,7 @@ func newGraderContext() (*Context, error) {
 			}
 			if err := idx.Add(&git.IndexEntry{
 				Mode: git.FilemodeBlob,
-				Size: uint(len(gft.contents)),
+				Size: uint32(len(gft.contents)),
 				Id:   oid,
 				Path: gft.path,
 			}); err != nil {

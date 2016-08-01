@@ -3,7 +3,7 @@ PWD := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 SOURCES := $(shell find -name '*.go')
 GRADER_FILES = $(shell find root/grader -type f)
 RUNNER_FILES = $(shell find root/runner -type f)
-BINARIES := bin/x86_64/grader bin/x86_64/runner bin/x86_64/validator bin/armhf/runner
+BINARIES := bin/x86_64/grader bin/x86_64/benchmark bin/x86_64/runner bin/x86_64/validator bin/armhf/benchmark bin/armhf/runner
 GRADER_VOLUMES ?= --volume=$(PWD)/run/grader/log:/var/log/omegaup --volume=$(PWD)/run/grader/runtime:/var/lib/omegaup --volume=$(PWD)/run/grader/conf:/etc/omegaup/grader --volume=$(PWD)/cmd/grader/data:/data
 RUNNER_VOLUMES ?= --volume=$(PWD)/run/runner/log:/var/log/omegaup --volume=$(PWD)/run/runner/runtime:/var/lib/omegaup --volume=$(PWD)/run/runner/conf:/etc/omegaup/runner
 
@@ -38,10 +38,17 @@ bin/.binary-stamp: $(SOURCES) bin/.prebuild-stamp Dockerfile.build
 	mkdir -p bin/x86_64 bin/armhf
 	docker build --force-rm --rm=true -t omegaup/quark-build -f ./Dockerfile.build .
 	$(eval CONTAINER=$(shell docker create omegaup/quark-build))
-	docker cp $(CONTAINER):/go/bin/grader bin/x86_64/grader
+	docker cp $(CONTAINER):/go/bin/common_test bin/x86_64/common_test
+	docker cp $(CONTAINER):/go/bin/runner_test bin/x86_64/runner_test
+	docker cp $(CONTAINER):/go/bin/grader_test bin/x86_64/grader_test
+	docker cp $(CONTAINER):/go/bin/benchmark bin/x86_64/benchmark
 	docker cp $(CONTAINER):/go/bin/runner bin/x86_64/runner
+	docker cp $(CONTAINER):/go/bin/grader bin/x86_64/grader
 	docker cp $(CONTAINER):/go/bin/sudo bin/x86_64/sudo
-	docker cp $(CONTAINER):/go/bin/runner bin/x86_64/validator
+	docker cp $(CONTAINER):/go/bin/validator bin/x86_64/validator
+	docker cp $(CONTAINER):/go/bin/common_test-armhf bin/armhf/common_test
+	docker cp $(CONTAINER):/go/bin/runner_test-armhf bin/armhf/runner_test
+	docker cp $(CONTAINER):/go/bin/benchmark-armhf bin/armhf/benchmark
 	docker cp $(CONTAINER):/go/bin/runner-armhf bin/armhf/runner
 	docker rm -v $(CONTAINER)
 	touch $@

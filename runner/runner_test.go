@@ -119,23 +119,16 @@ func newRunnerContext() (*common.Context, error) {
 	if err != nil {
 		return nil, err
 	}
-	loggingConfig := "\"Logging\": {\"File\": \"stderr\"}"
+	config := common.DefaultConfig()
+	config.Logging.File = "stderr"
 	if testing.Verbose() {
-		loggingConfig = "\"Logging\": {\"File\": \"stderr\", \"Level\": \"debug\"}"
+		config.Logging.Level = "debug"
 	}
-	ctx, err := common.NewContext(bytes.NewBufferString(
-		fmt.Sprintf(
-			"{"+
-				loggingConfig+", "+
-				"\"Tracing\": {\"Enabled\": false}, "+
-				"\"InputManager\": {\"CacheSize\": 1024}, "+
-				"\"Runner\": {\"RuntimePath\": %q},"+
-				"\"Grader\": {\"RuntimePath\": %q}"+
-				"}",
-			dirname,
-			dirname,
-		),
-	))
+	config.Tracing.Enabled = false
+	config.InputManager.CacheSize = 1024
+	config.Runner.RuntimePath = dirname
+	config.Grader.RuntimePath = dirname
+	ctx, err := common.NewContext(&config)
 	if err != nil {
 		return nil, err
 	}

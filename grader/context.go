@@ -17,7 +17,7 @@ type Context struct {
 }
 
 func NewContext(reader io.Reader) (*Context, error) {
-	ctx, err := common.NewContext(reader)
+	ctx, err := common.NewContextFromReader(reader)
 	if err != nil {
 		return nil, err
 	}
