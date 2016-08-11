@@ -5,8 +5,6 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
-	"crypto/tls"
-	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -18,7 +16,6 @@ import (
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	_ "net/http/pprof"
@@ -73,36 +70,6 @@ func loadContext() error {
 
 func context() *grader.Context {
 	return globalContext.Load().(*grader.Context)
-}
-
-func startServer(ctx *grader.Context) error {
-	server := &http.Server{
-		Addr: fmt.Sprintf(":%d", ctx.Config.Grader.Port),
-	}
-
-	ctx.Log.Info("omegaUp grader started")
-	if *insecure {
-		return server.ListenAndServe()
-	} else {
-		cert, err := ioutil.ReadFile(ctx.Config.TLS.CertFile)
-		if err != nil {
-			return err
-		}
-		certPool := x509.NewCertPool()
-		certPool.AppendCertsFromPEM(cert)
-
-		tlsConfig := &tls.Config{
-			ClientCAs:  certPool,
-			ClientAuth: tls.RequireAndVerifyClientCert,
-		}
-		tlsConfig.BuildNameToCertificate()
-		server.TLSConfig = tlsConfig
-
-		return server.ListenAndServeTLS(
-			ctx.Config.TLS.CertFile,
-			ctx.Config.TLS.KeyFile,
-		)
-	}
 }
 
 func processRun(
@@ -522,7 +489,6 @@ func main() {
 		}
 	})
 
-	if err := startServer(ctx); err != nil {
-		panic(err)
-	}
+	ctx.Log.Info("omegaUp grader started")
+	common.RunServer(&ctx.Config.TLS, nil, ctx.Config.Grader.Port, *insecure)
 }

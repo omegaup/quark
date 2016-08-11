@@ -7,9 +7,21 @@ import (
 	"github.com/inconshreveable/log15"
 	"io"
 	"os"
+	"time"
 )
 
 // Configuration
+type BroadcasterConfig struct {
+	ChannelLength int
+	EventsPort    uint16
+	FrontendURL   string
+	Port          uint16
+	Proxied       bool
+	PingPeriod    int64
+	TLS           TLSConfig // only used if Proxied == false
+	WriteDeadline time.Duration
+}
+
 type InputManagerConfig struct {
 	CacheSize int64
 }
@@ -19,6 +31,7 @@ type GraderConfig struct {
 	Port            uint16
 	RuntimePath     string
 	MaxGradeRetries int
+	BroadcasterURL  string
 }
 
 type TLSConfig struct {
@@ -51,6 +64,7 @@ type LoggingConfig struct {
 }
 
 type Config struct {
+	Broadcaster  BroadcasterConfig
 	InputManager InputManagerConfig
 	Grader       GraderConfig
 	Db           DbConfig
@@ -61,6 +75,19 @@ type Config struct {
 }
 
 var defaultConfig = Config{
+	Broadcaster: BroadcasterConfig{
+		ChannelLength: 10,
+		EventsPort:    22291,
+		FrontendURL:   "https://omegaup.com",
+		PingPeriod:    30,
+		Port:          32672,
+		Proxied:       true,
+		TLS: TLSConfig{
+			CertFile: "/etc/omegaup/broadcaster/certificate.pem",
+			KeyFile:  "/etc/omegaup/broadcaster/key.pem",
+		},
+		WriteDeadline: time.Duration(5) * time.Second,
+	},
 	Db: DbConfig{
 		Driver:         "sqlite3",
 		DataSourceName: "./omegaup.db",
@@ -73,6 +100,7 @@ var defaultConfig = Config{
 		Level: "info",
 	},
 	Grader: GraderConfig{
+		BroadcasterURL:  "https://omegaup.com:32672",
 		ChannelLength:   1024,
 		Port:            11302,
 		RuntimePath:     "/var/lib/omegaup/",
