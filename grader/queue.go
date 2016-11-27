@@ -369,6 +369,18 @@ type InflightMonitor struct {
 	readyTimeout   time.Duration
 }
 
+// RunData represents the data of a single run.
+type RunData struct {
+	AttemptID    uint64
+	ID           int64
+	GUID         string
+	Queue        string
+	AttemptsLeft int
+	Runner       string
+	Time         int64
+	Elapsed      int64
+}
+
 func NewInflightMonitor() *InflightMonitor {
 	return &InflightMonitor{
 		mapping:        make(map[uint64]*InflightRun),
@@ -462,26 +474,15 @@ func (monitor *InflightMonitor) Remove(attemptID uint64) {
 	delete(monitor.mapping, attemptID)
 }
 
-func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
+func (monitor *InflightMonitor) GetRunData() []*RunData {
 	monitor.Lock()
 	defer monitor.Unlock()
 
-	type runData struct {
-		AttemptID    uint64
-		ID           int64
-		GUID         string
-		Queue        string
-		AttemptsLeft int
-		Runner       string
-		Time         int64
-		Elapsed      int64
-	}
-
-	data := make([]*runData, len(monitor.mapping))
+	data := make([]*RunData, len(monitor.mapping))
 	idx := 0
 	now := time.Now()
 	for attemptId, inflight := range monitor.mapping {
-		data[idx] = &runData{
+		data[idx] = &RunData{
 			AttemptID:    attemptId,
 			ID:           inflight.run.ID,
 			GUID:         inflight.run.GUID,
@@ -494,7 +495,11 @@ func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
 		idx += 1
 	}
 
-	return json.MarshalIndent(data, "", "  ")
+	return data
+}
+
+func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
+	return json.MarshalIndent(monitor.GetRunData(), "", "  ")
 }
 
 // QueueManager is an expvar-friendly manager for Queues.
@@ -502,6 +507,11 @@ type QueueManager struct {
 	sync.Mutex
 	mapping       map[string]*Queue
 	channelLength int
+}
+
+// QueueInfo has information about one queue.
+type QueueInfo struct {
+	Lengths [3]int
 }
 
 func NewQueueManager(channelLength int) *QueueManager {
@@ -538,19 +548,23 @@ func (manager *QueueManager) Get(name string) (*Queue, error) {
 	return queue, nil
 }
 
-func (manager *QueueManager) MarshalJSON() ([]byte, error) {
+func (manager *QueueManager) GetQueueInfo() map[string]QueueInfo {
 	manager.Lock()
 	defer manager.Unlock()
 
-	type queueInfo [3]int
-	queues := make(map[string]queueInfo)
+	queues := make(map[string]QueueInfo)
 	for name, queue := range manager.mapping {
-		queues[name] = [3]int{
-			len(queue.runs[0]),
-			len(queue.runs[1]),
-			len(queue.runs[2]),
+		queues[name] = QueueInfo{
+			Lengths: [3]int{
+				len(queue.runs[0]),
+				len(queue.runs[1]),
+				len(queue.runs[2]),
+			},
 		}
 	}
+	return queues
+}
 
-	return json.MarshalIndent(queues, "", "  ")
+func (manager *QueueManager) MarshalJSON() ([]byte, error) {
+	return json.MarshalIndent(manager.GetQueueInfo(), "", "  ")
 }

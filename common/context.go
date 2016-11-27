@@ -26,12 +26,19 @@ type InputManagerConfig struct {
 	CacheSize int64
 }
 
+type V1Config struct {
+	Enabled     bool
+	Port        uint16
+	RuntimePath string
+}
+
 type GraderConfig struct {
 	ChannelLength   int
 	Port            uint16
 	RuntimePath     string
 	MaxGradeRetries int
 	BroadcasterURL  string
+	V1              V1Config
 }
 
 type TLSConfig struct {
@@ -105,6 +112,11 @@ var defaultConfig = Config{
 		Port:            11302,
 		RuntimePath:     "/var/lib/omegaup/",
 		MaxGradeRetries: 3,
+		V1: V1Config{
+			Enabled:     false,
+			Port:        21680,
+			RuntimePath: "/var/lib/omegaup/",
+		},
 	},
 	Runner: RunnerConfig{
 		RuntimePath:         "/var/lib/omegaup/runner",
