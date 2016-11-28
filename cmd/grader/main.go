@@ -5,11 +5,14 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"database/sql"
 	"encoding/base64"
 	"expvar"
 	"flag"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/grader"
+	_ "github.com/mattn/go-sqlite3"
 	"io"
 	"net/http"
 	"os"
@@ -151,14 +154,26 @@ func main() {
 		&sync.Mutex{},
 	)
 
+	// Database
+	db, err := sql.Open(
+		ctx.Config.Db.Driver,
+		ctx.Config.Db.DataSourceName,
+	)
+	if err != nil {
+		panic(err)
+	}
+	if err := db.Ping(); err != nil {
+		panic(err)
+	}
+
 	ctx.Log.Info("omegaUp grader started")
 	mux := http.DefaultServeMux
 	if ctx.Config.Grader.V1.Enabled {
-		registerV1CompatHandlers(mux)
+		registerV1CompatHandlers(mux, db)
 		go common.RunServer(&ctx.Config.TLS, mux, ctx.Config.Grader.V1.Port, *insecure)
 		mux = http.NewServeMux()
 	}
 
-	registerHandlers(mux)
+	registerHandlers(mux, db)
 	common.RunServer(&ctx.Config.TLS, mux, ctx.Config.Grader.Port, *insecure)
 }

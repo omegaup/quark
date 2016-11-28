@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/elazarl/go-bindata-assetfs"
@@ -41,7 +42,7 @@ type broadcastRequest struct {
 	UserOnly     bool   `json:"userOnly"`
 }
 
-func registerV1CompatHandlers(mux *http.ServeMux) {
+func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	mux.Handle("/", http.FileServer(&wrappedFileSystem{
 		fileSystem: &assetfs.AssetFS{
 			Asset:     Asset,

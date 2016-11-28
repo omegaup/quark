@@ -2,7 +2,6 @@ package grader
 
 import (
 	"compress/gzip"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,62 +80,6 @@ func NewEmptyRunContext(ctx *Context) *RunContext {
 		tries:        ctx.Config.Grader.MaxGradeRetries,
 		ready:        make(chan struct{}),
 	}
-}
-
-func NewRunContext(ctx *Context, id int64) (*RunContext, error) {
-	runCtx := NewEmptyRunContext(ctx)
-	runCtx.ID = id
-	runCtx.GradeDir = path.Join(
-		ctx.Config.Grader.RuntimePath,
-		"grade",
-		fmt.Sprintf("%02d", id%100),
-		fmt.Sprintf("%d", id),
-	)
-	var contestName sql.NullString
-	var contestPoints sql.NullFloat64
-	err := ctx.DB.QueryRow(
-		`SELECT
-			s.guid, c.alias, s.language, p.alias, pv.hash, cp.points
-		FROM
-			Runs r
-		INNER JOIN
-			Submissions s ON r.submission_id = s.submission_id
-		INNER JOIN
-			Problems p ON p.problem_id = s.problem_id
-		INNER JOIN
-			Problem_Versions pv ON pv.version_id = r.version_id
-		LEFT JOIN
-			Contests c ON c.contest_id = s.contest_id
-		LEFT JOIN
-			Contest_Problems cp ON cp.problem_id = s.problem_id AND
-			cp.contest_id = s.contest_id
-		WHERE
-			r.run_id = ?;`, id).Scan(
-		&runCtx.GUID, &contestName, &runCtx.Run.Language, &runCtx.ProblemName,
-		&runCtx.Run.InputHash, &contestPoints)
-	if err != nil {
-		return nil, err
-	}
-	if contestName.Valid {
-		runCtx.Contest = &contestName.String
-	}
-	if contestPoints.Valid {
-		runCtx.Run.MaxScore = contestPoints.Float64
-	}
-	runCtx.Result.MaxScore = runCtx.Run.MaxScore
-	contents, err := ioutil.ReadFile(
-		path.Join(
-			ctx.Config.Grader.RuntimePath,
-			"submissions",
-			runCtx.GUID[:2],
-			runCtx.GUID[2:],
-		),
-	)
-	if err != nil {
-		return nil, err
-	}
-	runCtx.Run.Source = string(contents)
-	return runCtx, nil
 }
 
 func (run *RunContext) Debug() error {

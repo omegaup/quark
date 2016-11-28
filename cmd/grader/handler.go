@@ -10,6 +10,7 @@ import (
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	_ "net/http/pprof"
@@ -19,6 +20,62 @@ import (
 	"strconv"
 	"time"
 )
+
+func newRunContext(ctx *grader.Context, db *sql.DB, id int64) (*grader.RunContext, error) {
+	runCtx := grader.NewEmptyRunContext(ctx)
+	runCtx.ID = id
+	runCtx.GradeDir = path.Join(
+		ctx.Config.Grader.RuntimePath,
+		"grade",
+		fmt.Sprintf("%02d", id%100),
+		fmt.Sprintf("%d", id),
+	)
+	var contestName sql.NullString
+	var contestPoints sql.NullFloat64
+	err := db.QueryRow(
+		`SELECT
+			s.guid, c.alias, s.language, p.alias, pv.hash, cp.points
+		FROM
+			Runs r
+		INNER JOIN
+			Submissions s ON r.submission_id = s.submission_id
+		INNER JOIN
+			Problems p ON p.problem_id = s.problem_id
+		INNER JOIN
+			Problem_Versions pv ON pv.version_id = r.version_id
+		LEFT JOIN
+			Contests c ON c.contest_id = s.contest_id
+		LEFT JOIN
+			Contest_Problems cp ON cp.problem_id = s.problem_id AND
+			cp.contest_id = s.contest_id
+		WHERE
+			r.run_id = ?;`, id).Scan(
+		&runCtx.GUID, &contestName, &runCtx.Run.Language, &runCtx.ProblemName,
+		&runCtx.Run.InputHash, &contestPoints)
+	if err != nil {
+		return nil, err
+	}
+	if contestName.Valid {
+		runCtx.Contest = &contestName.String
+	}
+	if contestPoints.Valid {
+		runCtx.Run.MaxScore = contestPoints.Float64
+	}
+	runCtx.Result.MaxScore = runCtx.Run.MaxScore
+	contents, err := ioutil.ReadFile(
+		path.Join(
+			ctx.Config.Grader.RuntimePath,
+			"submissions",
+			runCtx.GUID[:2],
+			runCtx.GUID[2:],
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+	runCtx.Run.Source = string(contents)
+	return runCtx, nil
+}
 
 func processRun(
 	r *http.Request,
@@ -140,7 +197,7 @@ func processRun(
 	return &processRunStatus{http.StatusOK, false}
 }
 
-func registerHandlers(mux *http.ServeMux) {
+func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 	runs, err := context().QueueManager.Get("default")
 	if err != nil {
 		panic(err)
@@ -187,7 +244,7 @@ func registerHandlers(mux *http.ServeMux) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		runCtx, err := grader.NewRunContext(ctx, id)
+		runCtx, err := newRunContext(ctx, db, id)
 		if err != nil {
 			ctx.Log.Error("Error getting run context", "err", err, "id", id)
 			if err == sql.ErrNoRows {
