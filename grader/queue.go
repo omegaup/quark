@@ -40,7 +40,7 @@ type RunContext struct {
 	// still active
 	input common.Input
 
-	gradeDir     string
+	GradeDir     string
 	creationTime int64
 	tries        int
 	queue        *Queue
@@ -51,43 +51,25 @@ type RunContext struct {
 	ready chan struct{}
 }
 
-// NewRunContext creates a RunContext from its database id.
-func NewRunContext(
+// AddRunContext registers a RunContext into the grader.
+func AddRunContext(
 	ctx *Context,
-	id int64,
-	inputManager *common.InputManager,
-) (*RunContext, error) {
-	run, err := newRun(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	input, err := inputManager.Add(
-		run.Run.InputHash,
-		NewGraderInputFactory(run.ProblemName, &ctx.Config),
-	)
-	if err != nil {
-		return nil, err
-	}
+	run *RunContext,
+	input common.Input,
+) error {
 	run.input = input
-	run.context = ctx.Context.DebugContext("id", id)
+	run.context = ctx.Context.DebugContext("id", run.ID)
 
 	run.Config = &run.context.Config
 	run.Log = run.context.Log
 	run.EventCollector = run.context.EventCollector
 	run.EventFactory = run.context.EventFactory
 
-	run.gradeDir = path.Join(
-		run.Config.Grader.RuntimePath,
-		"grade",
-		fmt.Sprintf("%02d", run.ID%100),
-		fmt.Sprintf("%d", run.ID),
-	)
-
-	return run, nil
+	return nil
 }
 
-func newRun(ctx *Context, id int64) (*RunContext, error) {
-	runCtx := &RunContext{
+func NewEmptyRunContext(ctx *Context) *RunContext {
+	return &RunContext{
 		Run: &common.Run{
 			AttemptID: common.NewAttemptID(),
 			MaxScore:  1.0,
@@ -95,11 +77,21 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 		Result: runner.RunResult{
 			Verdict: "JE",
 		},
-		ID:           id,
 		creationTime: time.Now().Unix(),
 		tries:        ctx.Config.Grader.MaxGradeRetries,
 		ready:        make(chan struct{}),
 	}
+}
+
+func NewRunContext(ctx *Context, id int64) (*RunContext, error) {
+	runCtx := NewEmptyRunContext(ctx)
+	runCtx.ID = id
+	runCtx.GradeDir = path.Join(
+		ctx.Config.Grader.RuntimePath,
+		"grade",
+		fmt.Sprintf("%02d", id%100),
+		fmt.Sprintf("%d", id),
+	)
 	var contestName sql.NullString
 	var contestPoints sql.NullFloat64
 	err := ctx.DB.QueryRow(
@@ -147,13 +139,9 @@ func newRun(ctx *Context, id int64) (*RunContext, error) {
 	return runCtx, nil
 }
 
-func (run *RunContext) GradeDir() string {
-	return run.gradeDir
-}
-
 func (run *RunContext) Debug() error {
 	var err error
-	if run.gradeDir, err = ioutil.TempDir("", "grade"); err != nil {
+	if run.GradeDir, err = ioutil.TempDir("", "grade"); err != nil {
 		return err
 	}
 	run.Run.Debug = true
@@ -172,15 +160,14 @@ func (run *RunContext) Close() {
 		run.input.Release(run.input)
 		run.input = nil
 	}
-	gradeDir := run.GradeDir()
-	if err := os.MkdirAll(gradeDir, 0755); err != nil {
+	if err := os.MkdirAll(run.GradeDir, 0755); err != nil {
 		run.Log.Error("Unable to create grade dir", "err", err)
 		return
 	}
 
 	// Results
 	{
-		fd, err := os.Create(path.Join(gradeDir, "details.json"))
+		fd, err := os.Create(path.Join(run.GradeDir, "details.json"))
 		if err != nil {
 			run.Log.Error("Unable to create details.json file", "err", err)
 			return
@@ -199,7 +186,7 @@ func (run *RunContext) Close() {
 
 	// Persist logs
 	{
-		fd, err := os.Create(path.Join(gradeDir, "logs.txt.gz"))
+		fd, err := os.Create(path.Join(run.GradeDir, "logs.txt.gz"))
 		if err != nil {
 			run.Log.Error("Unable to create log file", "err", err)
 			return
@@ -218,7 +205,7 @@ func (run *RunContext) Close() {
 
 	// Persist tracing info
 	{
-		fd, err := os.Create(path.Join(gradeDir, "tracing.json.gz"))
+		fd, err := os.Create(path.Join(run.GradeDir, "tracing.json.gz"))
 		if err != nil {
 			run.Log.Error("Unable to create tracing file", "err", err)
 			return

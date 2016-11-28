@@ -120,21 +120,21 @@ func validateInterface(interfaceName string) error {
 // LiteralInputFactory is an InputFactory that will return an Input version of
 // the specified LiteralInput when asked for an input.
 type LiteralInputFactory struct {
-	settings ProblemSettings
-	config   *Config
-	files    map[string][]byte
-	hash     string
-	tarfile  bytes.Buffer
+	settings    ProblemSettings
+	runtimePath string
+	files       map[string][]byte
+	hash        string
+	tarfile     bytes.Buffer
 }
 
 // NewLiteralInputFactory validates the LiteralInput and stores it so it can be
 // returned when NewInput is called.
 func NewLiteralInputFactory(
 	input *LiteralInput,
-	config *Config,
+	runtimePath string,
 ) (*LiteralInputFactory, error) {
 	factory := &LiteralInputFactory{
-		config: config,
+		runtimePath: runtimePath,
 		settings: ProblemSettings{
 			Slow: true,
 		},
@@ -334,12 +334,12 @@ func (factory *LiteralInputFactory) NewInput(hash string, mgr *InputManager) Inp
 			mgr,
 		),
 		archivePath: path.Join(
-			factory.config.Grader.RuntimePath,
+			factory.runtimePath,
 			"cache",
 			fmt.Sprintf("%s.tar.gz", hash),
 		),
 		path: path.Join(
-			factory.config.Runner.RuntimePath,
+			factory.runtimePath,
 			"input",
 			hash,
 		),

@@ -28,7 +28,7 @@ func processRun(
 	runnerName := PeerName(r)
 	// TODO: make this a per-attempt directory so we can only commit directories
 	// that will be not retried.
-	gradeDir := runCtx.GradeDir()
+	gradeDir := runCtx.GradeDir
 	// Best-effort deletion of the grade dir.
 	os.RemoveAll(gradeDir)
 	if err := os.MkdirAll(gradeDir, 0755); err != nil {
@@ -187,9 +187,9 @@ func registerHandlers(mux *http.ServeMux) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		runCtx, err := grader.NewRunContext(ctx, id, ctx.InputManager)
+		runCtx, err := grader.NewRunContext(ctx, id)
 		if err != nil {
-			ctx.Log.Error(err.Error(), "id", id)
+			ctx.Log.Error("Error getting run context", "err", err, "id", id)
 			if err == sql.ErrNoRows {
 				w.WriteHeader(http.StatusNotFound)
 			} else {
@@ -197,12 +197,26 @@ func registerHandlers(mux *http.ServeMux) {
 			}
 			return
 		}
+		input, err := ctx.InputManager.Add(
+			runCtx.Run.InputHash,
+			grader.NewGraderInputFactory(runCtx.ProblemName, &ctx.Config),
+		)
+		if err != nil {
+			ctx.Log.Error("Error getting input", "err", err, "run", runCtx)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if err = grader.AddRunContext(ctx, runCtx, input); err != nil {
+			ctx.Log.Error("Error adding run context", "err", err, "id", id)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		if _, ok := r.URL.Query()["debug"]; ok {
 			if err := runCtx.Debug(); err != nil {
 				ctx.Log.Error("Unable to set debug mode", "err", err)
 			} else {
 				defer func() {
-					if err := os.RemoveAll(runCtx.GradeDir()); err != nil {
+					if err := os.RemoveAll(runCtx.GradeDir); err != nil {
 						ctx.Log.Error("Error writing response", "err", err)
 					}
 				}()
@@ -224,7 +238,7 @@ func registerHandlers(mux *http.ServeMux) {
 				w.Header().Set("Content-Type", multipartWriter.FormDataContentType())
 				files := []string{"logs.txt.gz", "files.zip", "details.json", "tracing.json.gz"}
 				for _, file := range files {
-					fd, err := os.Open(path.Join(runCtx.GradeDir(), file))
+					fd, err := os.Open(path.Join(runCtx.GradeDir, file))
 					if err != nil {
 						ctx.Log.Error("Error opening file", "file", file, "err", err)
 						continue
@@ -243,15 +257,15 @@ func registerHandlers(mux *http.ServeMux) {
 				w.Header().Set("Content-Type", "text/json; charset=utf-8")
 
 				jsonData, _ := json.MarshalIndent(runCtx.Result, "", "  ")
-				logData, err := readGzippedFile(path.Join(runCtx.GradeDir(), "logs.txt.gz"))
+				logData, err := readGzippedFile(path.Join(runCtx.GradeDir, "logs.txt.gz"))
 				if err != nil {
 					ctx.Log.Error("Error reading logs", "err", err)
 				}
-				filesZip, err := readBase64File(path.Join(runCtx.GradeDir(), "files.zip"))
+				filesZip, err := readBase64File(path.Join(runCtx.GradeDir, "files.zip"))
 				if err != nil {
 					ctx.Log.Error("Error reading logs", "err", err)
 				}
-				tracing, err := readBase64File(path.Join(runCtx.GradeDir(), "tracing.json.gz"))
+				tracing, err := readBase64File(path.Join(runCtx.GradeDir, "tracing.json.gz"))
 				if err != nil {
 					ctx.Log.Error("Error reading logs", "err", err)
 				}

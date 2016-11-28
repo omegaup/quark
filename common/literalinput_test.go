@@ -14,8 +14,6 @@ func TestLiteralInput(t *testing.T) {
 		t.Fatalf("Failed to create temp directory: %q", err)
 	}
 	defer os.RemoveAll(dirname)
-	ctx.Config.Runner.RuntimePath = dirname
-	ctx.Config.Grader.RuntimePath = dirname
 
 	inputManager := NewInputManager(ctx)
 	AplusB, err := NewLiteralInputFactory(
@@ -28,7 +26,7 @@ func TestLiteralInput(t *testing.T) {
 				Name: "token-numeric",
 			},
 		},
-		&ctx.Config,
+		dirname,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)

@@ -1,6 +1,7 @@
 package grader
 
 import (
+	"github.com/lhchavez/quark/common"
 	"os"
 	"testing"
 )
@@ -34,9 +35,31 @@ func TestQueue(t *testing.T) {
 		t.Fatalf("default queue not found")
 	}
 
-	runCtx, err := NewRunContext(ctx, 1, ctx.InputManager)
+	AplusB, err := common.NewLiteralInputFactory(
+		&common.LiteralInput{
+			Cases: map[string]common.LiteralCaseSettings{
+				"0": {Input: "1 2", ExpectedOutput: "3"},
+				"1": {Input: "2 3", ExpectedOutput: "5"},
+			},
+			Validator: &common.LiteralValidatorSettings{
+				Name: "token-numeric",
+			},
+		},
+		ctx.Config.Grader.RuntimePath,
+	)
 	if err != nil {
-		t.Fatalf("AddRun failed with %q", err)
+		t.Fatalf("Failed to create Input: %q", err)
+	}
+	ctx.InputManager.Add(AplusB.Hash(), AplusB)
+	input, err := ctx.InputManager.Get(AplusB.Hash())
+	if err != nil {
+		t.Fatalf("Failed to get input back: %q", err)
+	}
+	runCtx := NewEmptyRunContext(ctx)
+	runCtx.Run.InputHash = AplusB.Hash()
+	runCtx.Run.Source = "print 3"
+	if err = AddRunContext(ctx, runCtx, input); err != nil {
+		t.Fatalf("AddRunContext failed with %q", err)
 	}
 	queue.AddRun(runCtx)
 	if len(queue.runs[1]) != 1 {

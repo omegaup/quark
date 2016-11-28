@@ -127,7 +127,6 @@ func newRunnerContext() (*common.Context, error) {
 	config.Tracing.Enabled = false
 	config.InputManager.CacheSize = 1024
 	config.Runner.RuntimePath = dirname
-	config.Grader.RuntimePath = dirname
 	ctx, err := common.NewContext(&config)
 	if err != nil {
 		return nil, err
@@ -173,7 +172,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				Name: "token-numeric",
 			},
 		},
-		&ctx.Config,
+		ctx.Config.Runner.RuntimePath,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
@@ -412,7 +411,7 @@ func TestLibinteractive(t *testing.T) {
 				ParentLang: "cpp",
 			},
 		},
-		&ctx.Config,
+		ctx.Config.Runner.RuntimePath,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
