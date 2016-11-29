@@ -354,20 +354,22 @@ func (input *v1CompatGraderInput) createArchiveFromGit(
 	cases := make(map[string][]common.CaseSettings)
 	groupWeights := make(map[string]float64)
 	totalWeight := 0.0
+	for _, weight := range rawCaseWeights {
+		totalWeight += weight
+	}
 	for caseName, weight := range rawCaseWeights {
 		components := strings.SplitN(caseName, ".", 2)
 		groupName := components[0]
 		if _, ok := groupWeights[groupName]; !ok {
 			groupWeights[groupName] = 0
 		}
-		groupWeights[groupName] += weight
-		totalWeight += weight
+		groupWeights[groupName] += weight / totalWeight
 		if _, ok := cases[groupName]; !ok {
 			cases[groupName] = make([]common.CaseSettings, 0)
 		}
 		cases[groupName] = append(cases[groupName], common.CaseSettings{
 			Name:   caseName,
-			Weight: weight,
+			Weight: weight / totalWeight,
 		})
 	}
 	input.Settings().Cases = make([]common.GroupSettings, 0)
@@ -376,7 +378,7 @@ func (input *v1CompatGraderInput) createArchiveFromGit(
 		input.Settings().Cases = append(input.Settings().Cases, common.GroupSettings{
 			Cases:  cases,
 			Name:   groupName,
-			Weight: groupWeights[groupName] / totalWeight,
+			Weight: groupWeights[groupName],
 		})
 	}
 	sort.Sort(common.ByGroupName(input.Settings().Cases))

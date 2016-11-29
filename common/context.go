@@ -27,9 +27,11 @@ type InputManagerConfig struct {
 }
 
 type V1Config struct {
-	Enabled     bool
-	Port        uint16
-	RuntimePath string
+	Enabled        bool
+	Port           uint16
+	RuntimePath    string
+	UpdateDatabase bool
+	WriteResults   bool
 }
 
 type GraderConfig struct {
@@ -113,9 +115,11 @@ var defaultConfig = Config{
 		RuntimePath:     "/var/lib/omegaup/",
 		MaxGradeRetries: 3,
 		V1: V1Config{
-			Enabled:     false,
-			Port:        21680,
-			RuntimePath: "/var/lib/omegaup/",
+			Enabled:        false,
+			Port:           21680,
+			RuntimePath:    "/var/lib/omegaup/",
+			UpdateDatabase: false,
+			WriteResults:   true,
 		},
 	},
 	Runner: RunnerConfig{

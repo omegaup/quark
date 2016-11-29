@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/lhchavez/quark/grader"
+	"github.com/lhchavez/quark/runner"
 	git "github.com/libgit2/git2go"
 	"github.com/prometheus/client_golang/prometheus"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"path"
 )
 
@@ -55,25 +57,56 @@ func v1CompatUpdateReadyRun(
 	case <-runCtx.Ready():
 	}
 
-	_, err := db.Exec(
-		`UPDATE
+	if ctx.Config.Grader.V1.UpdateDatabase {
+		_, err := db.Exec(
+			`UPDATE
 			Runs
 		SET
 			status = 'ready', verdict = ?, runtime = ?, penalty = ?, memory = ?,
 			score = ?, contest_score = ?, judged_by = ?
 		WHERE
 			run_id = ?;`,
-		runCtx.Result.Verdict,
-		runCtx.Result.Time,
-		0, // TODO(lhchavez): Implement penalty,
-		runCtx.Result.Memory,
-		runCtx.Result.Score/100,
-		runCtx.Result.ContestScore,
-		runCtx.Result.JudgedBy,
-		runCtx.ID,
-	)
-	if err != nil {
-		ctx.Log.Error("Error updating the database", "err", err, "runCtx", runCtx)
+			runCtx.Result.Verdict,
+			runCtx.Result.Time,
+			runCtx.Result.Penalty,
+			runCtx.Result.Memory,
+			runCtx.Result.Score,
+			runCtx.Result.ContestScore,
+			runCtx.Result.JudgedBy,
+			runCtx.ID,
+		)
+		if err != nil {
+			ctx.Log.Error("Error updating the database", "err", err, "runCtx", runCtx)
+		}
+	}
+	if ctx.Config.Grader.V1.WriteResults {
+		f, err := os.Create(path.Join(runCtx.GradeDir, "results.json"))
+		if err != nil {
+			ctx.Log.Error("Error creating results.json", "err", err, "runCtx", runCtx)
+			return
+		}
+		defer f.Close()
+		result := struct {
+			ID          int64
+			GUID        string
+			Contest     *string
+			ProblemName string
+			Result      *runner.RunResult
+		}{
+			ID:          runCtx.ID,
+			GUID:        runCtx.GUID,
+			Contest:     runCtx.Contest,
+			ProblemName: runCtx.ProblemName,
+			Result:      &runCtx.Result,
+		}
+		bytes, err := json.MarshalIndent(&result, "", " ")
+		if err != nil {
+			ctx.Log.Error("Error marshaling results", "err", err, "runCtx", runCtx)
+			return
+		}
+		if _, err = f.Write(bytes); err != nil {
+			ctx.Log.Error("Error writing results.json", "err", err, "runCtx", runCtx)
+		}
 	}
 }
 
@@ -133,7 +166,7 @@ func v1CompatNewRunContext(
 	runCtx := grader.NewEmptyRunContext(ctx)
 	runCtx.GUID = guid
 	runCtx.GradeDir = path.Join(
-		ctx.Config.Grader.RuntimePath,
+		ctx.Config.Grader.V1.RuntimePath,
 		"grade",
 		guid[:2],
 		guid[2:],
@@ -174,6 +207,8 @@ func v1CompatNewRunContext(
 	}
 	if contestPoints.Valid {
 		runCtx.Run.MaxScore = contestPoints.Float64
+	} else {
+		runCtx.Run.MaxScore = 1.0
 	}
 	runCtx.Result.MaxScore = runCtx.Run.MaxScore
 	contents, err := ioutil.ReadFile(

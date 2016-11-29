@@ -44,6 +44,7 @@ type RunResult struct {
 	MaxScore     float64                `json:"max_score"`
 	Time         float64                `json:"time"`
 	WallTime     float64                `json:"wall_time"`
+	Penalty      float64                `json:"penalty"` // TODO(lhchavez): Implement
 	Memory       int64                  `json:"memory"`
 	JudgedBy     string                 `json:"judged_by,omitempty"`
 	Groups       []GroupResult          `json:"groups"`
