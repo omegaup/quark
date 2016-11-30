@@ -62,13 +62,12 @@ func v1CompatUpdateReadyRun(
 			`UPDATE
 			Runs
 		SET
-			status = 'ready', verdict = ?, runtime = ?, penalty = ?, memory = ?,
-			score = ?, contest_score = ?, judged_by = ?
+			status = 'ready', verdict = ?, runtime = ?, memory = ?, score = ?,
+			contest_score = ?, judged_by = ?
 		WHERE
 			run_id = ?;`,
 			runCtx.Result.Verdict,
 			runCtx.Result.Time,
-			runCtx.Result.Penalty,
 			runCtx.Result.Memory,
 			runCtx.Result.Score,
 			runCtx.Result.ContestScore,
