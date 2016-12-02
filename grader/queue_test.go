@@ -106,3 +106,57 @@ func TestQueue(t *testing.T) {
 		t.Fatalf("Expected closeNotifier to cause no run to be available")
 	}
 }
+
+type listener struct {
+	c         chan *RunInfo
+	done      chan struct{}
+	processed int
+}
+
+func newListener() *listener {
+	l := &listener{
+		c:         make(chan *RunInfo, 0),
+		done:      make(chan struct{}, 0),
+		processed: 0,
+	}
+	go func() {
+		for _ = range l.c {
+			l.processed += 1
+		}
+		close(l.done)
+	}()
+	return l
+}
+
+func TestPostProcessor(t *testing.T) {
+	ctx, err := newGraderContext()
+	if err != nil {
+		t.Fatalf("GraderContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+
+	pp := NewRunPostProcessor()
+	go pp.run()
+	listeners := make([]*listener, 10)
+
+	for i, _ := range listeners {
+		listeners[i] = newListener()
+		pp.AddListener(listeners[i].c)
+	}
+
+	kProcessed := 10
+	for i := 0; i < kProcessed; i++ {
+		pp.PostProcess(&RunInfo{})
+	}
+
+	pp.Close()
+
+	for i, _ := range listeners {
+		select {
+		case <-listeners[i].done:
+		}
+		if listeners[i].processed != kProcessed {
+			t.Fatalf("listeners[%d].processed == %d, want %d", i, listeners[i].processed, kProcessed)
+		}
+	}
+}

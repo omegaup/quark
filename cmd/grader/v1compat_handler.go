@@ -48,63 +48,76 @@ type broadcastRequest struct {
 	UserOnly     bool   `json:"userOnly"`
 }
 
-func v1CompatUpdateReadyRun(
+func v1CompatUpdateDatabase(
 	ctx *grader.Context,
 	db *sql.DB,
-	runCtx *grader.RunContext,
+	run *grader.RunInfo,
 ) {
-	select {
-	case <-runCtx.Ready():
-	}
-
-	if ctx.Config.Grader.V1.UpdateDatabase {
-		_, err := db.Exec(
-			`UPDATE
+	_, err := db.Exec(
+		`UPDATE
 			Runs
 		SET
 			status = 'ready', verdict = ?, runtime = ?, memory = ?, score = ?,
 			contest_score = ?, judged_by = ?
 		WHERE
 			run_id = ?;`,
-			runCtx.Result.Verdict,
-			runCtx.Result.Time,
-			runCtx.Result.Memory,
-			runCtx.Result.Score,
-			runCtx.Result.ContestScore,
-			runCtx.Result.JudgedBy,
-			runCtx.ID,
-		)
-		if err != nil {
-			ctx.Log.Error("Error updating the database", "err", err, "runCtx", runCtx)
-		}
+		run.Result.Verdict,
+		run.Result.Time,
+		run.Result.Memory,
+		run.Result.Score,
+		run.Result.ContestScore,
+		run.Result.JudgedBy,
+		run.ID,
+	)
+	if err != nil {
+		ctx.Log.Error("Error updating the database", "err", err, "run", run)
 	}
-	if ctx.Config.Grader.V1.WriteResults {
-		f, err := os.Create(path.Join(runCtx.GradeDir, "results.json"))
-		if err != nil {
-			ctx.Log.Error("Error creating results.json", "err", err, "runCtx", runCtx)
-			return
+}
+
+func v1CompatWriteResults(
+	ctx *grader.Context,
+	run *grader.RunInfo,
+) {
+	f, err := os.Create(path.Join(run.GradeDir, "results.json"))
+	if err != nil {
+		ctx.Log.Error("Error creating results.json", "err", err, "run", run)
+		return
+	}
+	defer f.Close()
+	result := struct {
+		ID          int64
+		GUID        string
+		Contest     *string
+		ProblemName string
+		Result      *runner.RunResult
+	}{
+		ID:          run.ID,
+		GUID:        run.GUID,
+		Contest:     run.Contest,
+		ProblemName: run.ProblemName,
+		Result:      &run.Result,
+	}
+	bytes, err := json.MarshalIndent(&result, "", " ")
+	if err != nil {
+		ctx.Log.Error("Error marshaling results", "err", err, "run", run)
+		return
+	}
+	if _, err = f.Write(bytes); err != nil {
+		ctx.Log.Error("Error writing results.json", "err", err, "run", run)
+	}
+}
+
+func v1CompatRunPostProcessor(
+	db *sql.DB,
+	finishedRuns <-chan *grader.RunInfo,
+) {
+	ctx := context()
+	for run := range finishedRuns {
+		if ctx.Config.Grader.V1.UpdateDatabase {
+			v1CompatUpdateDatabase(ctx, db, run)
 		}
-		defer f.Close()
-		result := struct {
-			ID          int64
-			GUID        string
-			Contest     *string
-			ProblemName string
-			Result      *runner.RunResult
-		}{
-			ID:          runCtx.ID,
-			GUID:        runCtx.GUID,
-			Contest:     runCtx.Contest,
-			ProblemName: runCtx.ProblemName,
-			Result:      &runCtx.Result,
-		}
-		bytes, err := json.MarshalIndent(&result, "", " ")
-		if err != nil {
-			ctx.Log.Error("Error marshaling results", "err", err, "runCtx", runCtx)
-			return
-		}
-		if _, err = f.Write(bytes); err != nil {
-			ctx.Log.Error("Error writing results.json", "err", err, "runCtx", runCtx)
+		if ctx.Config.Grader.V1.WriteResults {
+			v1CompatWriteResults(ctx, run)
 		}
 	}
 }
@@ -222,7 +235,6 @@ func v1CompatNewRunContext(
 		return nil, err
 	}
 	runCtx.Run.Source = string(contents)
-	go v1CompatUpdateReadyRun(ctx, db, runCtx)
 	return runCtx, nil
 }
 
@@ -273,6 +285,10 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		panic(err)
 	}
 	context().Log.Info("Injected pending runs", "count", len(guids))
+
+	finishedRunsChan := make(chan *grader.RunInfo, 1)
+	context().InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
+	go v1CompatRunPostProcessor(db, finishedRunsChan)
 
 	mux.Handle("/", http.FileServer(&wrappedFileSystem{
 		fileSystem: &assetfs.AssetFS{

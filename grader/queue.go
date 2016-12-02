@@ -16,15 +16,22 @@ import (
 	"time"
 )
 
-// RunContext is a wrapper around a Run. This is used when a Run is sitting on
-// a Queue on the grader.
-type RunContext struct {
+// RunInfo holds the necessary data of a Run, even after the RunContext is
+// gone.
+type RunInfo struct {
 	ID          int64
 	GUID        string
 	Contest     *string
 	ProblemName string
 	Run         *common.Run
 	Result      runner.RunResult
+	GradeDir    string
+}
+
+// RunContext is a wrapper around a RunInfo. This is used when a Run is sitting
+// on a Queue on the grader.
+type RunContext struct {
+	RunInfo
 
 	// These fields are there so that the RunContext can be used as a normal
 	// Context.
@@ -39,7 +46,6 @@ type RunContext struct {
 	// still active
 	input common.Input
 
-	GradeDir     string
 	creationTime int64
 	tries        int
 	queue        *Queue
@@ -69,12 +75,14 @@ func AddRunContext(
 
 func NewEmptyRunContext(ctx *Context) *RunContext {
 	return &RunContext{
-		Run: &common.Run{
-			AttemptID: common.NewAttemptID(),
-			MaxScore:  1.0,
-		},
-		Result: runner.RunResult{
-			Verdict: "JE",
+		RunInfo: RunInfo{
+			Run: &common.Run{
+				AttemptID: common.NewAttemptID(),
+				MaxScore:  1.0,
+			},
+			Result: runner.RunResult{
+				Verdict: "JE",
+			},
 		},
 		creationTime: time.Now().Unix(),
 		tries:        ctx.Config.Grader.MaxGradeRetries,
@@ -96,7 +104,9 @@ func (run *RunContext) Close() {
 		run.Log.Warn("Attempting to close an already closed run")
 		return
 	}
+	var postProcessor *RunPostProcessor = nil
 	if run.monitor != nil {
+		postProcessor = run.monitor.PostProcessor
 		run.monitor.Remove(run.Run.AttemptID)
 	}
 	if run.input != nil {
@@ -166,6 +176,9 @@ func (run *RunContext) Close() {
 	}
 
 	close(run.ready)
+	if postProcessor != nil {
+		postProcessor.PostProcess(&run.RunInfo)
+	}
 }
 
 func (run *RunContext) AppendRunnerLogs(runnerName string, contents []byte) {
@@ -294,6 +307,7 @@ type InflightRun struct {
 // a runner) and tracks their state in case the runner becomes unresponsive.
 type InflightMonitor struct {
 	sync.Mutex
+	PostProcessor  *RunPostProcessor
 	mapping        map[uint64]*InflightRun
 	connectTimeout time.Duration
 	readyTimeout   time.Duration
@@ -312,11 +326,14 @@ type RunData struct {
 }
 
 func NewInflightMonitor() *InflightMonitor {
-	return &InflightMonitor{
+	monitor := &InflightMonitor{
+		PostProcessor:  NewRunPostProcessor(),
 		mapping:        make(map[uint64]*InflightRun),
 		connectTimeout: time.Duration(10) * time.Minute,
 		readyTimeout:   time.Duration(10) * time.Minute,
 	}
+	go monitor.PostProcessor.run()
+	return monitor
 }
 
 // Add creates an InflightRun wrapper for the specified RunContext, adds it to
@@ -430,6 +447,67 @@ func (monitor *InflightMonitor) GetRunData() []*RunData {
 
 func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
 	return json.MarshalIndent(monitor.GetRunData(), "", "  ")
+}
+
+type runPostProcessorListener struct {
+	listener *chan<- *RunInfo
+	added    *chan struct{}
+}
+
+type RunPostProcessor struct {
+	finishedRuns chan *RunInfo
+	listenerChan chan runPostProcessorListener
+	listeners    []chan<- *RunInfo
+}
+
+func NewRunPostProcessor() *RunPostProcessor {
+	return &RunPostProcessor{
+		finishedRuns: make(chan *RunInfo, 1),
+		listenerChan: make(chan runPostProcessorListener, 1),
+		listeners:    make([]chan<- *RunInfo, 0),
+	}
+}
+
+func (postProcessor *RunPostProcessor) AddListener(c chan<- *RunInfo) {
+	added := make(chan struct{}, 0)
+	postProcessor.listenerChan <- runPostProcessorListener{
+		listener: &c,
+		added:    &added,
+	}
+	select {
+	case <-added:
+	}
+}
+
+func (postProcessor *RunPostProcessor) PostProcess(run *RunInfo) {
+	postProcessor.finishedRuns <- run
+}
+
+func (postProcessor *RunPostProcessor) run() {
+	for {
+		select {
+		case wrappedListener := <-postProcessor.listenerChan:
+			postProcessor.listeners = append(
+				postProcessor.listeners,
+				*wrappedListener.listener,
+			)
+			close(*wrappedListener.added)
+		case run, ok := <-postProcessor.finishedRuns:
+			if !ok {
+				for _, listener := range postProcessor.listeners {
+					close(listener)
+				}
+				return
+			}
+			for _, listener := range postProcessor.listeners {
+				listener <- run
+			}
+		}
+	}
+}
+
+func (postProcessor *RunPostProcessor) Close() {
+	close(postProcessor.finishedRuns)
 }
 
 // QueueManager is an expvar-friendly manager for Queues.
