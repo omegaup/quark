@@ -97,7 +97,7 @@ func main() {
 	})
 
 	eventsMux := http.NewServeMux()
-	eventsMux.HandleFunc("/events/", func(w http.ResponseWriter, r *http.Request) {
+	eventsMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := context()
 
 		authToken := ""
@@ -145,7 +145,7 @@ func main() {
 
 		subscriber.Run()
 	})
-	ctx.Log.Info("omegaUp broadcaster started")
+	ctx.Log.Info("omegaUp broadcaster started", "port", ctx.Config.Broadcaster.EventsPort)
 	go b.Run()
 	go common.RunServer(
 		&ctx.Config.Broadcaster.TLS,
