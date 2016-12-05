@@ -1,18 +1,25 @@
 package main
 
 import (
+	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/elazarl/go-bindata-assetfs"
+	"github.com/lhchavez/quark/broadcaster"
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
 	git "github.com/libgit2/git2go"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/net/http2"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"path"
+	"time"
 )
 
 type graderRunningStatus struct {
@@ -38,14 +45,6 @@ type runGradeRequest struct {
 	GUIDs   []string `json:"id"`
 	Rejudge bool     `json:"rejudge"`
 	Debug   bool     `json:"debug"`
-}
-
-type broadcastRequest struct {
-	ContestAlias string `json:"contest"`
-	Message      string `json:"message"`
-	Broadcast    bool   `json:"broadcast"`
-	TargetUserId int    `json:"targetUser"`
-	UserOnly     bool   `json:"userOnly"`
 }
 
 func v1CompatUpdateDatabase(
@@ -97,19 +96,101 @@ func v1CompatWriteResults(
 		ProblemName: run.ProblemName,
 		Result:      &run.Result,
 	}
-	bytes, err := json.MarshalIndent(&result, "", " ")
+	marshaled, err := json.MarshalIndent(&result, "", " ")
 	if err != nil {
 		ctx.Log.Error("Error marshaling results", "err", err, "run", run)
 		return
 	}
-	if _, err = f.Write(bytes); err != nil {
+	if _, err = f.Write(marshaled); err != nil {
 		ctx.Log.Error("Error writing results.json", "err", err, "run", run)
 	}
+}
+
+func v1CompatBroadcastRun(
+	ctx *grader.Context,
+	db *sql.DB,
+	client *http.Client,
+	run *grader.RunInfo,
+) error {
+	message := broadcaster.Message{
+		Problem: run.ProblemName,
+		Public:  false,
+	}
+	if run.Contest != nil {
+		message.Contest = *run.Contest
+	}
+	type serializedRun struct {
+		User         string  `json:"username"`
+		Contest      *string `json:"contest_alias,omitempty"`
+		Problem      string  `json:"alias"`
+		GUID         string  `json:"guid"`
+		Runtime      float64 `json:"runtime"`
+		Penalty      float64 `json:"penalty"`
+		Memory       int64   `json:"memory"`
+		Score        float64 `json:"score"`
+		ContestScore float64 `json:"contest_score"`
+		Status       string  `json:"status"`
+		Verdict      string  `json:"verdict"`
+		SubmitDelay  float64 `json:"submit_delay"`
+		Time         float64 `json:"time"`
+		Language     string  `json:"language"`
+	}
+	type runFinishedMessage struct {
+		Message string        `json:"message"`
+		Run     serializedRun `json:"run"`
+	}
+	msg := runFinishedMessage{
+		Message: "/run/update/",
+		Run: serializedRun{
+			Contest:      run.Contest,
+			Problem:      message.Problem,
+			GUID:         run.GUID,
+			Runtime:      run.Result.Time,
+			Memory:       run.Result.Memory,
+			Score:        run.Result.Score,
+			ContestScore: run.Result.ContestScore,
+			Status:       "ready",
+			Verdict:      run.Result.Verdict,
+			Language:     run.Run.Language,
+			Time:         -1,
+			SubmitDelay:  -1,
+			Penalty:      -1,
+		},
+	}
+	err := db.QueryRow(
+		`SELECT
+			u.username, r.penalty, r.submit_delay, UNIX_TIMESTAMP(r.time)
+		FROM
+			Runs r
+		INNER JOIN
+			Users u ON u.user_id = r.user_id
+		WHERE
+			r.run_id = ?;`, run.ID).Scan(
+		&msg.Run.User,
+		&msg.Run.Penalty,
+		&msg.Run.SubmitDelay,
+		&msg.Run.Time,
+	)
+	if err != nil {
+		return err
+	}
+	message.User = msg.Run.User
+
+	marshaled, err := json.Marshal(&msg)
+	if err != nil {
+		return err
+	}
+
+	message.Message = string(marshaled)
+
+	v1CompatBroadcast(ctx, client, &message)
+	return nil
 }
 
 func v1CompatRunPostProcessor(
 	db *sql.DB,
 	finishedRuns <-chan *grader.RunInfo,
+	client *http.Client,
 ) {
 	ctx := context()
 	for run := range finishedRuns {
@@ -118,6 +199,9 @@ func v1CompatRunPostProcessor(
 		}
 		if ctx.Config.Grader.V1.WriteResults {
 			v1CompatWriteResults(ctx, run)
+		}
+		if err := v1CompatBroadcastRun(ctx, db, client, run); err != nil {
+			ctx.Log.Error("Error sending run broadcast", "err", err)
 		}
 	}
 }
@@ -272,6 +356,33 @@ func v1CompatInjectRuns(
 	return nil
 }
 
+func v1CompatBroadcast(
+	ctx *grader.Context,
+	client *http.Client,
+	message *broadcaster.Message,
+) error {
+	marshaled, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Post(
+		"https://localhost:32672/broadcast/",
+		"text/json",
+		bytes.NewReader(marshaled),
+	)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf(
+			"Request to broadcast failed with error code %d",
+			resp.StatusCode,
+		)
+	}
+	return nil
+}
+
 func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	runs, err := context().QueueManager.Get("default")
 	if err != nil {
@@ -286,9 +397,43 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	}
 	context().Log.Info("Injected pending runs", "count", len(guids))
 
+	transport := &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	if !*insecure {
+		cert, err := ioutil.ReadFile(context().Config.TLS.CertFile)
+		if err != nil {
+			panic(err)
+		}
+		certPool := x509.NewCertPool()
+		certPool.AppendCertsFromPEM(cert)
+		keyPair, err := tls.LoadX509KeyPair(
+			context().Config.TLS.CertFile,
+			context().Config.TLS.KeyFile,
+		)
+		transport.TLSClientConfig = &tls.Config{
+			Certificates: []tls.Certificate{keyPair},
+			RootCAs:      certPool,
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+		}
+		if err != nil {
+			panic(err)
+		}
+		if err := http2.ConfigureTransport(transport); err != nil {
+			panic(err)
+		}
+	}
+
+	client := &http.Client{Transport: transport}
+
 	finishedRunsChan := make(chan *grader.RunInfo, 1)
 	context().InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
-	go v1CompatRunPostProcessor(db, finishedRunsChan)
+	go v1CompatRunPostProcessor(db, finishedRunsChan, client)
 
 	mux.Handle("/", http.FileServer(&wrappedFileSystem{
 		fileSystem: &assetfs.AssetFS{
@@ -353,13 +498,16 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 
-		var request broadcastRequest
-		if err := decoder.Decode(&request); err != nil {
+		var message broadcaster.Message
+		if err := decoder.Decode(&message); err != nil {
 			ctx.Log.Error("Error receiving broadcast request", "err", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		ctx.Log.Info("/broadcast/", "request", request)
+		ctx.Log.Info("/broadcast/", "message", message)
+		if err := v1CompatBroadcast(ctx, client, &message); err != nil {
+			ctx.Log.Error("Error sending broadcast message", "err", err)
+		}
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})
