@@ -1,7 +1,6 @@
 package broadcaster
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"net/http"
@@ -70,7 +69,10 @@ func (t *WebSocketTransport) ReadLoop() {
 func (t *WebSocketTransport) Send(message *QueuedMessage) error {
 	defer message.Dispatched()
 	t.sock.SetWriteDeadline(t.writeDeadline())
-	return t.sock.WriteJSON(*message)
+	return t.sock.WriteMessage(
+		websocket.TextMessage,
+		[]byte(message.message.Message),
+	)
 }
 
 func (t *WebSocketTransport) writeDeadline() time.Time {
@@ -127,11 +129,7 @@ func (t *SSETransport) ReadLoop() {
 
 func (t *SSETransport) Send(message *QueuedMessage) error {
 	defer message.Dispatched()
-	msg, err := json.Marshal(*message)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(t.w, "data: %s\n\n", string(msg))
+	_, err := fmt.Fprintf(t.w, "data: %s\n\n", message.message.Message)
 	if err != nil {
 		return err
 	}
