@@ -30,6 +30,7 @@ type V1Config struct {
 	Enabled        bool
 	Port           uint16
 	RuntimePath    string
+	SendBroadcast  bool
 	UpdateDatabase bool
 	WriteResults   bool
 }
@@ -72,12 +73,17 @@ type LoggingConfig struct {
 	Level string
 }
 
+type MetricsConfig struct {
+	Port uint16
+}
+
 type Config struct {
 	Broadcaster  BroadcasterConfig
 	InputManager InputManagerConfig
 	Grader       GraderConfig
 	Db           DbConfig
 	Logging      LoggingConfig
+	Metrics      MetricsConfig
 	Tracing      TracingConfig
 	Runner       RunnerConfig
 	TLS          TLSConfig
@@ -108,6 +114,9 @@ var defaultConfig = Config{
 		File:  "/var/log/omegaup/service.log",
 		Level: "info",
 	},
+	Metrics: MetricsConfig{
+		Port: 6060,
+	},
 	Grader: GraderConfig{
 		BroadcasterURL:  "https://omegaup.com:32672",
 		ChannelLength:   1024,
@@ -118,6 +127,7 @@ var defaultConfig = Config{
 			Enabled:        false,
 			Port:           21680,
 			RuntimePath:    "/var/lib/omegaup/",
+			SendBroadcast:  false,
 			UpdateDatabase: false,
 			WriteResults:   true,
 		},

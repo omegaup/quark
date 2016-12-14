@@ -194,14 +194,24 @@ func v1CompatRunPostProcessor(
 ) {
 	ctx := context()
 	for run := range finishedRuns {
+		gaugeAdd("grader_queue_total_length", -1)
+		summaryObserve(
+			"grader_queue_delay_seconds",
+			time.Now().Sub(run.CreationTime).Seconds(),
+		)
+		if run.Result.Verdict == "JE" {
+			counterAdd("grader_runs_je", 1)
+		}
 		if ctx.Config.Grader.V1.UpdateDatabase {
 			v1CompatUpdateDatabase(ctx, db, run)
 		}
 		if ctx.Config.Grader.V1.WriteResults {
 			v1CompatWriteResults(ctx, run)
 		}
-		if err := v1CompatBroadcastRun(ctx, db, client, run); err != nil {
-			ctx.Log.Error("Error sending run broadcast", "err", err)
+		if ctx.Config.Grader.V1.SendBroadcast {
+			if err := v1CompatBroadcastRun(ctx, db, client, run); err != nil {
+				ctx.Log.Error("Error sending run broadcast", "err", err)
+			}
 		}
 	}
 }
@@ -339,6 +349,8 @@ func v1CompatInjectRuns(
 			return err
 		}
 		ctx.Log.Info("RunContext", "runCtx", runCtx)
+		gaugeAdd("grader_queue_total_length", 1)
+		counterAdd("grader_runs_total", 1)
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
 			v1CompatNewGraderInputFactory(runCtx.ProblemName, &ctx.Config, db),

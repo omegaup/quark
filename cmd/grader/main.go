@@ -166,7 +166,9 @@ func main() {
 		panic(err)
 	}
 
+	setupMetrics(ctx)
 	ctx.Log.Info("omegaUp grader started")
+
 	mux := http.DefaultServeMux
 	if ctx.Config.Grader.V1.Enabled {
 		registerV1CompatHandlers(mux, db)

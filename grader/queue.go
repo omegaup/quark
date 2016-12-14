@@ -26,6 +26,8 @@ type RunInfo struct {
 	Run         *common.Run
 	Result      runner.RunResult
 	GradeDir    string
+
+	CreationTime time.Time
 }
 
 // RunContext is a wrapper around a RunInfo. This is used when a Run is sitting
@@ -46,11 +48,10 @@ type RunContext struct {
 	// still active
 	input common.Input
 
-	creationTime int64
-	tries        int
-	queue        *Queue
-	context      *common.Context
-	monitor      *InflightMonitor
+	tries   int
+	queue   *Queue
+	context *common.Context
+	monitor *InflightMonitor
 
 	// A channel that will be closed once the run is ready.
 	ready chan struct{}
@@ -83,10 +84,10 @@ func NewEmptyRunContext(ctx *Context) *RunContext {
 			Result: runner.RunResult{
 				Verdict: "JE",
 			},
+			CreationTime: time.Now(),
 		},
-		creationTime: time.Now().Unix(),
-		tries:        ctx.Config.Grader.MaxGradeRetries,
-		ready:        make(chan struct{}),
+		tries: ctx.Config.Grader.MaxGradeRetries,
+		ready: make(chan struct{}),
 	}
 }
 
@@ -297,7 +298,7 @@ func (queue *Queue) enqueue(run *RunContext, idx int) bool {
 type InflightRun struct {
 	run          *RunContext
 	runner       string
-	creationTime int64
+	creationTime time.Time
 	connected    chan struct{}
 	ready        chan struct{}
 	timeout      chan struct{}
@@ -348,7 +349,7 @@ func (monitor *InflightMonitor) Add(
 	inflight := &InflightRun{
 		run:          run,
 		runner:       runner,
-		creationTime: time.Now().Unix(),
+		creationTime: time.Now(),
 		connected:    make(chan struct{}, 1),
 		ready:        make(chan struct{}, 1),
 		timeout:      make(chan struct{}, 1),
@@ -436,8 +437,8 @@ func (monitor *InflightMonitor) GetRunData() []*RunData {
 			Queue:        inflight.run.queue.Name,
 			AttemptsLeft: inflight.run.tries,
 			Runner:       inflight.runner,
-			Time:         inflight.creationTime,
-			Elapsed:      now.Sub(time.Unix(inflight.creationTime, 0)).Nanoseconds(),
+			Time:         inflight.creationTime.Unix(),
+			Elapsed:      now.Sub(inflight.creationTime).Nanoseconds(),
 		}
 		idx += 1
 	}

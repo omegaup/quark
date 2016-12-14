@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/runner"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
@@ -108,6 +107,7 @@ func main() {
 		panic(err)
 	}
 
+	setupMetrics(ctx)
 	ctx.Log.Info("omegaUp runner ready to serve")
 
 	go func() {
@@ -123,17 +123,12 @@ func main() {
 			} else {
 				ctx.Log.Info("Benchmark successful", "results", results)
 			}
-			updateGauges(results)
+			gaugesUpdate(results)
 			time.Sleep(time.Duration(1) * time.Minute)
 		}
 	}()
 
-	http.Handle("/metrics", prometheus.Handler())
-
 	var sleepTime float32 = 1
-	go func() {
-		ctx.Log.Error("http listen and serve", "err", http.ListenAndServe(":6060", nil))
-	}()
 
 	for {
 		if err := processRun(ctx, client, baseURL); err != nil {

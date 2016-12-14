@@ -1,11 +1,14 @@
 package main
 
 import (
+	"fmt"
+	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/runner"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/load"
 	"github.com/shirou/gopsutil/mem"
+	"net/http"
 )
 
 var (
@@ -37,12 +40,12 @@ var (
 		}),
 		"disk_total": prometheus.NewGauge(prometheus.GaugeOpts{
 			Subsystem: "os",
-			Help:      "Total amount of RAM",
+			Help:      "Total disk space",
 			Name:      "disk_total",
 		}),
 		"disk_used": prometheus.NewGauge(prometheus.GaugeOpts{
 			Subsystem: "os",
-			Help:      "RAM used by programs",
+			Help:      "Used disk space",
 			Name:      "disk_used",
 		}),
 		"io_time": prometheus.NewGauge(prometheus.GaugeOpts{
@@ -93,13 +96,23 @@ var (
 	}
 )
 
-func init() {
+func setupMetrics(ctx *common.Context) {
 	for _, gauge := range gauges {
 		prometheus.MustRegister(gauge)
 	}
+
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", prometheus.Handler())
+	go func() {
+		addr := fmt.Sprintf(":%d", ctx.Config.Metrics.Port)
+		ctx.Log.Error(
+			"http listen and serve",
+			"err", http.ListenAndServe(addr, metricsMux),
+		)
+	}()
 }
 
-func updateGauges(results runner.BenchmarkResults) {
+func gaugesUpdate(results runner.BenchmarkResults) {
 	if s, err := load.Avg(); err == nil {
 		gauges["cpu_load1"].Set(s.Load1)
 		gauges["cpu_load5"].Set(s.Load5)
