@@ -1,6 +1,6 @@
 PWD := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-SOURCES := $(shell find -name '*.go')
+SOURCES := $(shell git ls-tree -r HEAD --name-only | grep '\.go$$')
 GRADER_FILES = $(shell find root/grader -type f)
 RUNNER_FILES = $(shell find root/runner -type f)
 BINARIES := bin/x86_64/grader bin/x86_64/benchmark bin/x86_64/runner bin/x86_64/validator bin/armhf/benchmark bin/armhf/runner
@@ -70,6 +70,19 @@ bin/.runner-stamp: $(BINARIES) bin/.minijail-stamp Dockerfile.runner $(RUNNER_FI
 	cp -L /lib64/ld-linux-x86-64.so.2 root/runner/lib64/ld-linux-x86-64.so.2
 	docker build --force-rm --rm=true -t omegaup/runner -f ./Dockerfile.runner .
 	touch $@
+
+bin/.coverage-stamp: $(SOURCES)
+	mkdir -p bin/coverage
+	go test -coverprofile=bin/coverage/common.out github.com/lhchavez/quark/common
+	go tool cover -html=bin/coverage/common.out -o bin/coverage/common.html
+	go test -coverprofile=bin/coverage/runner.out github.com/lhchavez/quark/runner
+	go tool cover -html=bin/coverage/runner.out -o bin/coverage/runner.html
+	go test -coverprofile=bin/coverage/grader.out github.com/lhchavez/quark/grader
+	go tool cover -html=bin/coverage/grader.out -o bin/coverage/grader.html
+	touch $@
+
+.PHONY: cover
+cover: bin/.coverage-stamp
 
 .PHONY: grader
 grader: bin/.grader-stamp bin/.network-stamp
