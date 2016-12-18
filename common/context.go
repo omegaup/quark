@@ -27,12 +27,13 @@ type InputManagerConfig struct {
 }
 
 type V1Config struct {
-	Enabled        bool
-	Port           uint16
-	RuntimePath    string
-	SendBroadcast  bool
-	UpdateDatabase bool
-	WriteResults   bool
+	Enabled          bool
+	Port             uint16
+	RuntimeGradePath string
+	RuntimePath      string
+	SendBroadcast    bool
+	UpdateDatabase   bool
+	WriteResults     bool
 }
 
 type GraderConfig struct {
@@ -42,6 +43,7 @@ type GraderConfig struct {
 	MaxGradeRetries int
 	BroadcasterURL  string
 	V1              V1Config
+	WriteGradeFiles bool // TODO(lhchavez): Remove once migration is done.
 }
 
 type TLSConfig struct {
@@ -124,13 +126,15 @@ var defaultConfig = Config{
 		RuntimePath:     "/var/lib/omegaup/",
 		MaxGradeRetries: 3,
 		V1: V1Config{
-			Enabled:        false,
-			Port:           21680,
-			RuntimePath:    "/var/lib/omegaup/",
-			SendBroadcast:  false,
-			UpdateDatabase: false,
-			WriteResults:   true,
+			Enabled:          false,
+			Port:             21680,
+			RuntimeGradePath: "/var/lib/omegaup/grade",
+			RuntimePath:      "/var/lib/omegaup/",
+			SendBroadcast:    false,
+			UpdateDatabase:   false,
+			WriteResults:     true,
 		},
+		WriteGradeFiles: true,
 	},
 	Runner: RunnerConfig{
 		RuntimePath:         "/var/lib/omegaup/runner",

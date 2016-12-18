@@ -272,8 +272,7 @@ func v1CompatNewRunContext(
 	runCtx := grader.NewEmptyRunContext(ctx)
 	runCtx.GUID = guid
 	runCtx.GradeDir = path.Join(
-		ctx.Config.Grader.V1.RuntimePath,
-		"grade",
+		ctx.Config.Grader.V1.RuntimeGradePath,
 		guid[:2],
 		guid[2:],
 	)

@@ -157,17 +157,23 @@ func processRun(
 			}
 		} else {
 			filePath := path.Join(gradeDir, part.FileName())
-			fd, err := os.Create(filePath)
-			if err != nil {
-				runCtx.Log.Error(
-					"Unable to create results file",
-					"err", err,
-					"runner", runnerName,
-				)
-				return &processRunStatus{http.StatusInternalServerError, false}
+			var w io.Writer
+			if runCtx.Config.Grader.WriteGradeFiles {
+				fd, err := os.Create(filePath)
+				if err != nil {
+					runCtx.Log.Error(
+						"Unable to create results file",
+						"err", err,
+						"runner", runnerName,
+					)
+					return &processRunStatus{http.StatusInternalServerError, false}
+				}
+				defer fd.Close()
+				w = fd
+			} else {
+				w = ioutil.Discard
 			}
-			defer fd.Close()
-			if _, err := io.Copy(fd, part); err != nil {
+			if _, err := io.Copy(w, part); err != nil {
 				runCtx.Log.Error(
 					"Unable to upload results",
 					"err", err,
