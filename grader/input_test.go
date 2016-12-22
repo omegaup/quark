@@ -159,7 +159,7 @@ func TestTransmitInput(t *testing.T) {
 		name, value string
 	}{
 		{"Content-Type", "application/x-gzip"},
-		{"Content-Sha1", "827c025faa618daa9779cdd9b3d0e7bd4eace970"},
+		{"Content-Sha1", "2c8b5ee63c0c86f102660912004c55ca12caa3b5"},
 	}
 	for _, het := range headerentries {
 		if !reflect.DeepEqual(headers[het.name], []string{het.value}) {
