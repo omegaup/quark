@@ -270,7 +270,7 @@ func (input *v1CompatGraderInput) createArchiveFromGit(
 		if strings.HasPrefix(untrimmedPath, "validator.") &&
 			input.Settings().Validator.Name == "custom" &&
 			entry.Type == git.ObjectBlob {
-			lang := filepath.Ext(untrimmedPath)
+			lang := strings.Trim(filepath.Ext(untrimmedPath), ".")
 			input.Settings().Validator.Lang = &lang
 			blob, walkErr := repository.LookupBlob(entry.Id)
 			if walkErr != nil {
