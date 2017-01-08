@@ -1,10 +1,9 @@
-package main
+package v1compat
 
 import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,49 +20,18 @@ import (
 	"strings"
 )
 
-type v1CompatSettingsLoader interface {
+type SettingsLoader interface {
 	Load(problemName string) (*common.ProblemSettings, error)
 }
 
-type v1CompatDatabaseSettingsLoader struct {
-	db *sql.DB
-}
-
-func (loader *v1CompatDatabaseSettingsLoader) Load(
-	problemName string,
-) (*common.ProblemSettings, error) {
-	settings := common.ProblemSettings{}
-	err := loader.db.QueryRow(
-		`SELECT
-			extra_wall_time, memory_limit, output_limit, overall_wall_time_limit,
-			time_limit, validator_time_limit, slow, validator
-		FROM
-			Problems
-		WHERE
-			alias = ?;`, problemName).Scan(
-		&settings.Limits.ExtraWallTime,
-		&settings.Limits.MemoryLimit,
-		&settings.Limits.OutputLimit,
-		&settings.Limits.OverallWallTimeLimit,
-		&settings.Limits.TimeLimit,
-		&settings.Limits.ValidatorTimeLimit,
-		&settings.Slow,
-		&settings.Validator.Name,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &settings, nil
-}
-
-type v1CompatGraderBaseInput struct {
+type graderBaseInput struct {
 	common.BaseInput
 	archivePath      string
 	storedHash       string
 	uncompressedSize int64
 }
 
-func (input *v1CompatGraderBaseInput) Verify() error {
+func (input *graderBaseInput) Verify() error {
 	stat, err := os.Stat(input.archivePath)
 	if err != nil {
 		return err
@@ -90,7 +58,7 @@ func (input *v1CompatGraderBaseInput) Verify() error {
 	return nil
 }
 
-func (input *v1CompatGraderBaseInput) getStoredHash() (string, error) {
+func (input *graderBaseInput) getStoredHash() (string, error) {
 	hashFd, err := os.Open(fmt.Sprintf("%s.sha1", input.archivePath))
 	if err != nil {
 		return "", err
@@ -107,7 +75,7 @@ func (input *v1CompatGraderBaseInput) getStoredHash() (string, error) {
 	return scanner.Text(), nil
 }
 
-func (input *v1CompatGraderBaseInput) getStoredLength() (int64, error) {
+func (input *graderBaseInput) getStoredLength() (int64, error) {
 	lenFd, err := os.Open(fmt.Sprintf("%s.len", input.archivePath))
 	if err != nil {
 		return 0, err
@@ -124,7 +92,7 @@ func (input *v1CompatGraderBaseInput) getStoredLength() (int64, error) {
 	return strconv.ParseInt(scanner.Text(), 10, 64)
 }
 
-func (input *v1CompatGraderBaseInput) Delete() error {
+func (input *graderBaseInput) Delete() error {
 	os.Remove(fmt.Sprintf("%s.tmp", input.archivePath))
 	os.Remove(fmt.Sprintf("%s.sha1", input.archivePath))
 	os.Remove(fmt.Sprintf("%s.len", input.archivePath))
@@ -134,7 +102,7 @@ func (input *v1CompatGraderBaseInput) Delete() error {
 // Transmit sends a serialized version of the Input to the runner. It sends a
 // .tar.gz file with the Content-SHA1 header with the hexadecimal
 // representation of its SHA-1 hash.
-func (input *v1CompatGraderBaseInput) Transmit(w http.ResponseWriter) error {
+func (input *graderBaseInput) Transmit(w http.ResponseWriter) error {
 	fd, err := os.Open(input.archivePath)
 	if err != nil {
 		return err
@@ -150,16 +118,16 @@ func (input *v1CompatGraderBaseInput) Transmit(w http.ResponseWriter) error {
 	return err
 }
 
-// v1CompatGraderInput is an Input generated from a git repository that is then stored
+// graderInput is an Input generated from a git repository that is then stored
 // in a .tar.gz file that can be sent to a runner.
-type v1CompatGraderInput struct {
-	v1CompatGraderBaseInput
+type graderInput struct {
+	graderBaseInput
 	repositoryPath string
 	problemName    string
-	loader         v1CompatSettingsLoader
+	loader         SettingsLoader
 }
 
-func (input *v1CompatGraderInput) Persist() error {
+func (input *graderInput) Persist() error {
 	if err := os.MkdirAll(path.Dir(input.archivePath), 0755); err != nil {
 		return err
 	}
@@ -227,13 +195,12 @@ func createArchiveFromGit(
 	archivePath string,
 	repositoryPath string,
 	inputHash string,
-	loader v1CompatSettingsLoader,
+	loader SettingsLoader,
 ) (*common.ProblemSettings, int64, error) {
 	settings, err := loader.Load(problemName)
 	if err != nil {
 		return nil, 0, err
 	}
-	settings.Limits.MemoryLimit *= 1024
 	if settings.Validator.Name == "token-numeric" {
 		tolerance := 1e-6
 		settings.Validator.Tolerance = &tolerance
@@ -435,34 +402,33 @@ func createArchiveFromGit(
 	return settings, uncompressedSize, nil
 }
 
-// v1CompatGraderInputFactory is an InputFactory that can store specific versions of a
+// graderInputFactory is an InputFactory that can store specific versions of a
 // problem's git repository into a .tar.gz file that can be easily shipped to
 // runners.
-type v1CompatGraderInputFactory struct {
+type graderInputFactory struct {
 	problemName string
 	config      *common.Config
-	loader      v1CompatSettingsLoader
-	db          *sql.DB
+	loader      SettingsLoader
 }
 
-func v1CompatNewGraderInputFactory(
+func NewGraderInputFactory(
 	problemName string,
 	config *common.Config,
-	loader v1CompatSettingsLoader,
+	loader SettingsLoader,
 ) common.InputFactory {
-	return &v1CompatGraderInputFactory{
+	return &graderInputFactory{
 		problemName: problemName,
 		config:      config,
 		loader:      loader,
 	}
 }
 
-func (factory *v1CompatGraderInputFactory) NewInput(
+func (factory *graderInputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
-	return &v1CompatGraderInput{
-		v1CompatGraderBaseInput: v1CompatGraderBaseInput{
+	return &graderInput{
+		graderBaseInput: graderBaseInput{
 			BaseInput: *common.NewBaseInput(
 				hash,
 				mgr,
@@ -481,47 +447,4 @@ func (factory *v1CompatGraderInputFactory) NewInput(
 		loader:      factory.loader,
 		problemName: factory.problemName,
 	}
-}
-
-// v1CompatGraderCachedInputFactory is a grader-specific CachedInputFactory.
-type v1CompatGraderCachedInputFactory struct {
-	inputPath string
-}
-
-func NewGraderCachedInputFactory(inputPath string) common.CachedInputFactory {
-	return &v1CompatGraderCachedInputFactory{
-		inputPath: inputPath,
-	}
-}
-
-func (factory *v1CompatGraderCachedInputFactory) NewInput(
-	hash string,
-	mgr *common.InputManager,
-) common.Input {
-	return &v1CompatGraderBaseInput{
-		BaseInput: *common.NewBaseInput(
-			hash,
-			mgr,
-		),
-		archivePath: path.Join(
-			factory.inputPath,
-			fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
-		),
-	}
-}
-
-func (factory *v1CompatGraderCachedInputFactory) GetInputHash(
-	dirname string,
-	info os.FileInfo,
-) (hash string, ok bool) {
-	const extension = ".tar.gz"
-	filename := path.Base(info.Name())
-	if !strings.HasSuffix(filename, extension) {
-		return "", false
-	}
-	return fmt.Sprintf(
-		"%s%s",
-		path.Base(dirname),
-		strings.TrimSuffix(filename, extension),
-	), true
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/lhchavez/quark/broadcaster"
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/grader"
+	"github.com/lhchavez/quark/grader/v1compat"
 	"github.com/lhchavez/quark/runner"
 	git "github.com/libgit2/git2go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,6 +47,38 @@ type runGradeRequest struct {
 	GUIDs   []string `json:"id"`
 	Rejudge bool     `json:"rejudge"`
 	Debug   bool     `json:"debug"`
+}
+
+type v1CompatDatabaseSettingsLoader struct {
+	db *sql.DB
+}
+
+func (loader *v1CompatDatabaseSettingsLoader) Load(
+	problemName string,
+) (*common.ProblemSettings, error) {
+	settings := common.ProblemSettings{}
+	err := loader.db.QueryRow(
+		`SELECT
+			extra_wall_time, memory_limit, output_limit, overall_wall_time_limit,
+			time_limit, validator_time_limit, slow, validator
+		FROM
+			Problems
+		WHERE
+			alias = ?;`, problemName).Scan(
+		&settings.Limits.ExtraWallTime,
+		&settings.Limits.MemoryLimit,
+		&settings.Limits.OutputLimit,
+		&settings.Limits.OverallWallTimeLimit,
+		&settings.Limits.TimeLimit,
+		&settings.Limits.ValidatorTimeLimit,
+		&settings.Slow,
+		&settings.Validator.Name,
+	)
+	settings.Limits.MemoryLimit *= 1024
+	if err != nil {
+		return nil, err
+	}
+	return &settings, nil
 }
 
 func v1CompatUpdateDatabase(
@@ -353,7 +386,7 @@ func v1CompatInjectRuns(
 		counterAdd("grader_runs_total", 1)
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
-			v1CompatNewGraderInputFactory(
+			v1compat.NewGraderInputFactory(
 				runCtx.ProblemName,
 				&ctx.Config,
 				&v1CompatDatabaseSettingsLoader{db: db},
