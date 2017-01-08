@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -133,7 +134,7 @@ func (input *graderInput) Persist() error {
 	}
 	tmpPath := fmt.Sprintf("%s.tmp", input.archivePath)
 	defer os.Remove(tmpPath)
-	settings, uncompressedSize, err := createArchiveFromGit(
+	settings, uncompressedSize, err := CreateArchiveFromGit(
 		input.problemName,
 		tmpPath,
 		input.repositoryPath,
@@ -190,7 +191,45 @@ func (input *graderInput) Persist() error {
 	return nil
 }
 
-func createArchiveFromGit(
+func getLibinteractiveSettings(
+	contents []byte,
+	moduleName string,
+	parentLang string,
+) (*common.InteractiveSettings, error) {
+	cmd := exec.Command(
+		"/usr/bin/java",
+		"-jar", "/usr/share/java/libinteractive.jar",
+		"json",
+		"--module-name", moduleName,
+		"--parent-lang", parentLang,
+		"--omit-debug-targets",
+	)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	go (func() {
+		stdin.Write(contents)
+		stdin.Close()
+	})()
+	settings := common.InteractiveSettings{}
+	if err := json.NewDecoder(stdout).Decode(&settings); err != nil {
+		return nil, err
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, err
+	}
+	return &settings, nil
+}
+
+func CreateArchiveFromGit(
 	problemName string,
 	archivePath string,
 	repositoryPath string,
@@ -240,14 +279,67 @@ func createArchiveFromGit(
 	archive := tar.NewWriter(gz)
 	defer archive.Close()
 
-	// TODO(lhchavez): Support libinteractive.
 	var walkErr error = nil
 	var uncompressedSize int64 = 0
 	rawCaseWeights := make(map[string]float64)
+	var libinteractiveIdlContents []byte
+	var libinteractiveModuleName string
+	var libinteractiveParentLang string
 	tree.Walk(func(parent string, entry *git.TreeEntry) int {
 		untrimmedPath := path.Join(parent, entry.Name)
+		if strings.HasPrefix(untrimmedPath, "interactive/") {
+			if strings.HasSuffix(untrimmedPath, ".idl") &&
+				entry.Type == git.ObjectBlob {
+				var blob *git.Blob
+				blob, walkErr = repository.LookupBlob(entry.Id)
+				if walkErr != nil {
+					return -1
+				}
+				defer blob.Free()
+				libinteractiveIdlContents = blob.Contents()
+				libinteractiveModuleName = strings.TrimSuffix(entry.Name, ".idl")
+				hdr := &tar.Header{
+					Name:     untrimmedPath,
+					Typeflag: tar.TypeReg,
+					Mode:     0644,
+					Size:     blob.Size(),
+				}
+				uncompressedSize += blob.Size()
+				if walkErr = archive.WriteHeader(hdr); walkErr != nil {
+					return -1
+				}
+				if _, walkErr = archive.Write(libinteractiveIdlContents); walkErr != nil {
+					return -1
+				}
+			} else if strings.HasPrefix(entry.Name, "Main.") &&
+				!strings.HasPrefix(entry.Name, "Main.distrib.") &&
+				entry.Type == git.ObjectBlob {
+				var blob *git.Blob
+				blob, walkErr = repository.LookupBlob(entry.Id)
+				if walkErr != nil {
+					return -1
+				}
+				defer blob.Free()
+				libinteractiveParentLang = strings.TrimPrefix(entry.Name, "Main.")
+				hdr := &tar.Header{
+					Name:     untrimmedPath,
+					Typeflag: tar.TypeReg,
+					Mode:     0644,
+					Size:     blob.Size(),
+				}
+				uncompressedSize += blob.Size()
+				if walkErr = archive.WriteHeader(hdr); walkErr != nil {
+					return -1
+				}
+				if _, walkErr = archive.Write(blob.Contents()); walkErr != nil {
+					return -1
+				}
+			}
+			return 0
+		}
 		if untrimmedPath == "testplan" && entry.Type == git.ObjectBlob {
-			blob, walkErr := repository.LookupBlob(entry.Id)
+			var blob *git.Blob
+			blob, walkErr = repository.LookupBlob(entry.Id)
 			if walkErr != nil {
 				return -1
 			}
@@ -269,7 +361,8 @@ func createArchiveFromGit(
 			entry.Type == git.ObjectBlob {
 			lang := strings.Trim(filepath.Ext(untrimmedPath), ".")
 			settings.Validator.Lang = &lang
-			blob, walkErr := repository.LookupBlob(entry.Id)
+			var blob *git.Blob
+			blob, walkErr = repository.LookupBlob(entry.Id)
 			if walkErr != nil {
 				return -1
 			}
@@ -284,7 +377,7 @@ func createArchiveFromGit(
 			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
 				return -1
 			}
-			if _, walkErr := archive.Write(blob.Contents()); walkErr != nil {
+			if _, walkErr = archive.Write(blob.Contents()); walkErr != nil {
 				return -1
 			}
 		}
@@ -310,7 +403,8 @@ func createArchiveFromGit(
 				return -1
 			}
 		case git.ObjectBlob:
-			blob, walkErr := repository.LookupBlob(entry.Id)
+			var blob *git.Blob
+			blob, walkErr = repository.LookupBlob(entry.Id)
 			if walkErr != nil {
 				return -1
 			}
@@ -330,13 +424,13 @@ func createArchiveFromGit(
 			stream, err := odb.NewReadStream(entry.Id)
 			if err == nil {
 				defer stream.Free()
-				if _, walkErr := io.Copy(archive, stream); walkErr != nil {
+				if _, walkErr = io.Copy(archive, stream); walkErr != nil {
 					return -1
 				}
 			} else {
 				// That particular object cannot be streamed. Allocate the blob in
 				// memory and write it to the archive.
-				if _, walkErr := archive.Write(blob.Contents()); walkErr != nil {
+				if _, walkErr = archive.Write(blob.Contents()); walkErr != nil {
 					return -1
 				}
 			}
@@ -379,6 +473,17 @@ func createArchiveFromGit(
 		})
 	}
 	sort.Sort(common.ByGroupName(settings.Cases))
+
+	if libinteractiveIdlContents != nil && libinteractiveParentLang != "" {
+		settings.Interactive, err = getLibinteractiveSettings(
+			libinteractiveIdlContents,
+			libinteractiveModuleName,
+			libinteractiveParentLang,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
 
 	// Finally, write settings.json.
 	settingsBlob, err := json.MarshalIndent(settings, "", "  ")
