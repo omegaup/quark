@@ -21,6 +21,41 @@ import (
 	"strings"
 )
 
+type v1CompatSettingsLoader interface {
+	Load(problemName string) (*common.ProblemSettings, error)
+}
+
+type v1CompatDatabaseSettingsLoader struct {
+	db *sql.DB
+}
+
+func (loader *v1CompatDatabaseSettingsLoader) Load(
+	problemName string,
+) (*common.ProblemSettings, error) {
+	settings := common.ProblemSettings{}
+	err := loader.db.QueryRow(
+		`SELECT
+			extra_wall_time, memory_limit, output_limit, overall_wall_time_limit,
+			time_limit, validator_time_limit, slow, validator
+		FROM
+			Problems
+		WHERE
+			alias = ?;`, problemName).Scan(
+		&settings.Limits.ExtraWallTime,
+		&settings.Limits.MemoryLimit,
+		&settings.Limits.OutputLimit,
+		&settings.Limits.OverallWallTimeLimit,
+		&settings.Limits.TimeLimit,
+		&settings.Limits.ValidatorTimeLimit,
+		&settings.Slow,
+		&settings.Validator.Name,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &settings, nil
+}
+
 type v1CompatGraderBaseInput struct {
 	common.BaseInput
 	archivePath      string
@@ -120,8 +155,8 @@ func (input *v1CompatGraderBaseInput) Transmit(w http.ResponseWriter) error {
 type v1CompatGraderInput struct {
 	v1CompatGraderBaseInput
 	repositoryPath string
-	db             *sql.DB
 	problemName    string
+	loader         v1CompatSettingsLoader
 }
 
 func (input *v1CompatGraderInput) Persist() error {
@@ -130,7 +165,13 @@ func (input *v1CompatGraderInput) Persist() error {
 	}
 	tmpPath := fmt.Sprintf("%s.tmp", input.archivePath)
 	defer os.Remove(tmpPath)
-	uncompressedSize, err := input.createArchiveFromGit(tmpPath)
+	settings, uncompressedSize, err := createArchiveFromGit(
+		input.problemName,
+		tmpPath,
+		input.repositoryPath,
+		input.Hash(),
+		input.loader,
+	)
 	if err != nil {
 		return err
 	}
@@ -174,66 +215,55 @@ func (input *v1CompatGraderInput) Persist() error {
 		return err
 	}
 
+	*input.Settings() = *settings
 	input.storedHash = fmt.Sprintf("%0x", hash)
 	input.uncompressedSize = uncompressedSize
 	input.Commit(stat.Size())
 	return nil
 }
 
-func (input *v1CompatGraderInput) createArchiveFromGit(
+func createArchiveFromGit(
+	problemName string,
 	archivePath string,
-) (int64, error) {
-	err := input.db.QueryRow(
-		`SELECT
-			extra_wall_time, memory_limit, output_limit, overall_wall_time_limit,
-			time_limit, validator_time_limit, slow, validator
-		FROM
-			Problems
-		WHERE
-			alias = ?;`, input.problemName).Scan(
-		&input.Settings().Limits.ExtraWallTime,
-		&input.Settings().Limits.MemoryLimit,
-		&input.Settings().Limits.OutputLimit,
-		&input.Settings().Limits.OverallWallTimeLimit,
-		&input.Settings().Limits.TimeLimit,
-		&input.Settings().Limits.ValidatorTimeLimit,
-		&input.Settings().Slow,
-		&input.Settings().Validator.Name,
-	)
+	repositoryPath string,
+	inputHash string,
+	loader v1CompatSettingsLoader,
+) (*common.ProblemSettings, int64, error) {
+	settings, err := loader.Load(problemName)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
-	input.Settings().Limits.MemoryLimit *= 1024
-	if input.Settings().Validator.Name == "token-numeric" {
+	settings.Limits.MemoryLimit *= 1024
+	if settings.Validator.Name == "token-numeric" {
 		tolerance := 1e-6
-		input.Settings().Validator.Tolerance = &tolerance
+		settings.Validator.Tolerance = &tolerance
 	}
 
-	repository, err := git.OpenRepository(input.repositoryPath)
+	repository, err := git.OpenRepository(repositoryPath)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	defer repository.Free()
 
-	treeOid, err := git.NewOid(input.Hash())
+	treeOid, err := git.NewOid(inputHash)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	tree, err := repository.LookupTree(treeOid)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	defer tree.Free()
 	odb, err := repository.Odb()
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	defer odb.Free()
 
 	tmpFd, err := os.Create(archivePath)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	defer tmpFd.Close()
 
@@ -268,10 +298,10 @@ func (input *v1CompatGraderInput) createArchiveFromGit(
 			}
 		}
 		if strings.HasPrefix(untrimmedPath, "validator.") &&
-			input.Settings().Validator.Name == "custom" &&
+			settings.Validator.Name == "custom" &&
 			entry.Type == git.ObjectBlob {
 			lang := strings.Trim(filepath.Ext(untrimmedPath), ".")
-			input.Settings().Validator.Lang = &lang
+			settings.Validator.Lang = &lang
 			blob, walkErr := repository.LookupBlob(entry.Id)
 			if walkErr != nil {
 				return -1
@@ -347,7 +377,7 @@ func (input *v1CompatGraderInput) createArchiveFromGit(
 		return 0
 	})
 	if walkErr != nil {
-		return 0, walkErr
+		return nil, 0, walkErr
 	}
 
 	// Generate the group/case settings.
@@ -372,21 +402,21 @@ func (input *v1CompatGraderInput) createArchiveFromGit(
 			Weight: weight / totalWeight,
 		})
 	}
-	input.Settings().Cases = make([]common.GroupSettings, 0)
+	settings.Cases = make([]common.GroupSettings, 0)
 	for groupName, cases := range cases {
 		sort.Sort(common.ByCaseName(cases))
-		input.Settings().Cases = append(input.Settings().Cases, common.GroupSettings{
+		settings.Cases = append(settings.Cases, common.GroupSettings{
 			Cases:  cases,
 			Name:   groupName,
 			Weight: groupWeights[groupName],
 		})
 	}
-	sort.Sort(common.ByGroupName(input.Settings().Cases))
+	sort.Sort(common.ByGroupName(settings.Cases))
 
 	// Finally, write settings.json.
-	settingsBlob, err := json.MarshalIndent(input.Settings(), "", "  ")
+	settingsBlob, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	hdr := &tar.Header{
 		Name:     "settings.json",
@@ -396,13 +426,13 @@ func (input *v1CompatGraderInput) createArchiveFromGit(
 	}
 	uncompressedSize += int64(len(settingsBlob))
 	if err = archive.WriteHeader(hdr); err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	if _, err = archive.Write(settingsBlob); err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
-	return uncompressedSize, nil
+	return settings, uncompressedSize, nil
 }
 
 // v1CompatGraderInputFactory is an InputFactory that can store specific versions of a
@@ -411,18 +441,19 @@ func (input *v1CompatGraderInput) createArchiveFromGit(
 type v1CompatGraderInputFactory struct {
 	problemName string
 	config      *common.Config
+	loader      v1CompatSettingsLoader
 	db          *sql.DB
 }
 
 func v1CompatNewGraderInputFactory(
 	problemName string,
 	config *common.Config,
-	db *sql.DB,
+	loader v1CompatSettingsLoader,
 ) common.InputFactory {
 	return &v1CompatGraderInputFactory{
 		problemName: problemName,
 		config:      config,
-		db:          db,
+		loader:      loader,
 	}
 }
 
@@ -447,7 +478,7 @@ func (factory *v1CompatGraderInputFactory) NewInput(
 			"problems.git",
 			factory.problemName,
 		),
-		db:          factory.db,
+		loader:      factory.loader,
 		problemName: factory.problemName,
 	}
 }

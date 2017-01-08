@@ -353,7 +353,11 @@ func v1CompatInjectRuns(
 		counterAdd("grader_runs_total", 1)
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
-			v1CompatNewGraderInputFactory(runCtx.ProblemName, &ctx.Config, db),
+			v1CompatNewGraderInputFactory(
+				runCtx.ProblemName,
+				&ctx.Config,
+				&v1CompatDatabaseSettingsLoader{db: db},
+			),
 		)
 		if err != nil {
 			ctx.Log.Error("Error getting input", "err", err, "run", runCtx)
