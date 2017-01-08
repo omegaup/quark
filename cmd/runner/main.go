@@ -26,7 +26,15 @@ import (
 )
 
 var (
-	benchmark  = flag.Bool("benchmark", false, "Only run benchmark")
+	// One-shot mode: Performs a single operation and exits.
+	oneshot = flag.String("oneshot", "",
+		"Perform one action and return. Valid values are 'benchmark' and 'run'.")
+	verbose = flag.Bool("verbose", false, "Enable verbose logging in oneshot mode.")
+	request = flag.String("request", "",
+		"With -oneshot=run, the path to the JSON request.")
+	input = flag.String("input", "",
+		"With -oneshot=run, the path to the input directory.")
+
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
 	configPath = flag.String("config", "/etc/omegaup/runner/config.json",
 		"Runner configuration file")
@@ -36,14 +44,26 @@ var (
 	minijail      runner.MinijailSandbox
 )
 
+func isOneShotMode() bool {
+	return *oneshot == "benchmark" || *oneshot == "run"
+}
+
 func loadContext() error {
 	f, err := os.Open(*configPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	config, err := common.NewConfig(f)
+	if isOneShotMode() {
+		config.Logging.File = "stderr"
+		config.Tracing.Enabled = false
+		if *verbose {
+			config.Logging.Level = "debug"
+		}
+	}
 
-	ctx, err := common.NewContextFromReader(f)
+	ctx, err := common.NewContext(config)
 	if err != nil {
 		return err
 	}
@@ -60,9 +80,88 @@ func main() {
 	}
 
 	ctx := globalContext.Load().(*common.Context)
+	if isOneShotMode() {
+		tmpdir, err := ioutil.TempDir("", "quark-runner-oneshot")
+		if err != nil {
+			panic(err)
+		}
+		if !ctx.Config.Runner.PreserveFiles {
+			defer os.RemoveAll(tmpdir)
+		}
+		ctx.Config.Runner.RuntimePath = tmpdir
+	}
+
 	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
 	inputManager = common.NewInputManager(ctx)
 	inputPath := path.Join(ctx.Config.Runner.RuntimePath, "input")
+
+	if isOneShotMode() {
+		if *oneshot == "benchmark" {
+			results, err := runner.RunHostBenchmark(
+				ctx,
+				inputManager,
+				&minijail,
+				&ioLock,
+			)
+			if err != nil {
+				ctx.Log.Error("Failed to run benchmark", "err", err)
+			} else {
+				encoder := json.NewEncoder(os.Stdout)
+				encoder.SetIndent("", "  ")
+				if err := encoder.Encode(results); err != nil {
+					ctx.Log.Error("Failed to encode JSON", "err", err)
+				}
+			}
+		} else if *oneshot == "run" {
+			if *request == "" {
+				ctx.Log.Error("Missing -request parameter")
+				return
+			}
+			if *input == "" {
+				ctx.Log.Error("Missing -input parameter")
+				return
+			}
+			f, err := os.Open(*request)
+			if err != nil {
+				ctx.Log.Error("Error opening request", "err", err)
+				return
+			}
+			defer f.Close()
+
+			decoder := json.NewDecoder(f)
+			var run common.Run
+			if err := decoder.Decode(&run); err != nil {
+				ctx.Log.Error("Error reading request", "err", err)
+				return
+			}
+
+			input, err := inputManager.Add(
+				run.InputHash,
+				runner.NewRunnerCachedInputFactory(*input),
+			)
+			if err != nil {
+				ctx.Log.Error("Error loading input", "hash", run.InputHash, "err", err)
+				return
+			}
+			defer input.Release(input)
+
+			results, err := runner.Grade(ctx, nil, &run, input, &minijail)
+			if err != nil {
+				ctx.Log.Error("Error grading run", "err", err)
+				return
+			}
+
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			if err := encoder.Encode(results); err != nil {
+				ctx.Log.Error("Failed to encode JSON", "err", err)
+			}
+		} else {
+			ctx.Log.Error("Unknown oneshot mode", "mode", *oneshot)
+		}
+		return
+	}
+
 	go inputManager.PreloadInputs(
 		inputPath,
 		runner.NewRunnerCachedInputFactory(inputPath),

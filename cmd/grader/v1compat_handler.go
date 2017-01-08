@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/lhchavez/quark/broadcaster"
+	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/runner"
 	git "github.com/libgit2/git2go"
@@ -502,6 +503,38 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		}
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
+	})
+
+	mux.HandleFunc("/run/payload/", func(w http.ResponseWriter, r *http.Request) {
+		ctx := context()
+		decoder := json.NewDecoder(r.Body)
+		defer r.Body.Close()
+
+		var request runGradeRequest
+		if err := decoder.Decode(&request); err != nil {
+			ctx.Log.Error("Error receiving grade request", "err", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		ctx.Log.Info("/run/payload/", "request", request)
+		var response = make(map[string]*common.Run)
+		for _, guid := range request.GUIDs {
+			runCtx, err := v1CompatNewRunContext(ctx, db, guid)
+			if err != nil {
+				ctx.Log.Error(
+					"Error getting run context",
+					"err", err,
+					"guid", guid,
+				)
+				response[guid] = nil
+			} else {
+				response[guid] = runCtx.Run
+			}
+		}
+		w.Header().Set("Content-Type", "text/json; charset=utf-8")
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "  ")
+		encoder.Encode(response)
 	})
 
 	mux.HandleFunc("/broadcast/", func(w http.ResponseWriter, r *http.Request) {
