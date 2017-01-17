@@ -34,6 +34,7 @@ var (
 		"With -oneshot=run, the path to the JSON request.")
 	input = flag.String("input", "",
 		"With -oneshot=run, the path to the input directory.")
+	debug = flag.Bool("debug", false, "Enables debug in oneshot mode.")
 
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
 	configPath = flag.String("config", "/etc/omegaup/runner/config.json",
@@ -128,11 +129,13 @@ func main() {
 			}
 			defer f.Close()
 
-			decoder := json.NewDecoder(f)
 			var run common.Run
-			if err := decoder.Decode(&run); err != nil {
+			if err := json.NewDecoder(f).Decode(&run); err != nil {
 				ctx.Log.Error("Error reading request", "err", err)
 				return
+			}
+			if *debug {
+				run.Debug = true
 			}
 
 			input, err := inputManager.Add(
