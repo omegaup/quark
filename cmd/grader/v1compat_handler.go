@@ -191,6 +191,7 @@ func v1CompatBroadcastRun(
 			Penalty:      -1,
 		},
 	}
+
 	err := db.QueryRow(
 		`SELECT
 			u.username, r.penalty, r.submit_delay, UNIX_TIMESTAMP(r.time)
@@ -217,7 +218,9 @@ func v1CompatBroadcastRun(
 
 	message.Message = string(marshaled)
 
-	v1CompatBroadcast(ctx, client, &message)
+	if err := v1CompatBroadcast(ctx, client, &message); err != nil {
+		ctx.Log.Error("Error sending run broadcast", "err", err)
+	}
 	return nil
 }
 
@@ -416,10 +419,11 @@ func v1CompatBroadcast(
 	}
 
 	resp, err := client.Post(
-		"https://localhost:32672/broadcast/",
+		ctx.Config.Grader.BroadcasterURL,
 		"text/json",
 		bytes.NewReader(marshaled),
 	)
+	ctx.Log.Debug("Broadcast", "message", message, "resp", resp, "err", err)
 	if err != nil {
 		return err
 	}

@@ -88,6 +88,7 @@ func main() {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+		ctx.Log.Debug("/broadcast/", "message", message)
 		if !b.Broadcast(&message) {
 			ctx.Log.Error("Error sending message, queue too large")
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -145,7 +146,11 @@ func main() {
 
 		subscriber.Run()
 	})
-	ctx.Log.Info("omegaUp broadcaster started", "port", ctx.Config.Broadcaster.EventsPort)
+	ctx.Log.Info(
+		"omegaUp broadcaster started",
+		"broadcaster port", ctx.Config.Broadcaster.Port,
+		"events port", ctx.Config.Broadcaster.EventsPort,
+	)
 	go b.Run()
 	go common.RunServer(
 		&ctx.Config.Broadcaster.TLS,
