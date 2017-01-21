@@ -19,6 +19,7 @@ type expectedResult struct {
 
 type runnerTestCase struct {
 	language, source       string
+	maxScore               float64
 	expectedVerdict        string
 	expectedScore          float64
 	expectedCompileResults expectedResult
@@ -165,8 +166,8 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
 			Cases: map[string]common.LiteralCaseSettings{
-				"0": {Input: "1 2", ExpectedOutput: "3"},
-				"1": {Input: "2 3", ExpectedOutput: "5"},
+				"0": {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
+				"1": {Input: "2 3", ExpectedOutput: "5", Weight: &[]float64{3.0}[0]},
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",
@@ -188,6 +189,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"py",
 			"print sum(map(int, raw_input().strip().split()))",
+			1.0,
 			"AC",
 			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
@@ -199,8 +201,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"py",
 			"print 3",
+			1.0,
 			"PA",
-			0.5,
+			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -210,6 +213,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"py",
 			"print 2",
+			1.0,
 			"WA",
 			0.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
@@ -221,6 +225,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"py",
 			"if",
+			1.0,
 			"CE",
 			0.0,
 			expectedResult{
@@ -236,8 +241,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"c",
 			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
+			1.0,
 			"PA",
-			0.5,
+			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -247,8 +253,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"cpp",
 			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
+			1.0,
 			"PA",
-			0.5,
+			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -258,8 +265,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"rb",
 			"puts 3",
+			1.0,
 			"PA",
-			0.5,
+			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -269,8 +277,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"hs",
 			"main = putStrLn \"3\"",
+			1.0,
 			"PA",
-			0.5,
+			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -283,8 +292,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			begin
 				writeln ('3');
 			end.`,
+			1.0,
 			"PA",
-			0.5,
+			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -298,8 +308,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 					System.out.println('3');
 				}
 			}`,
+			1.0,
 			"PA",
-			0.5,
+			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -315,6 +326,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				"ADLUfFVnV4CwABBOgDAAAE6AMAAFBLAQIeAwoAAAAAAOeiUUhXOT0DAgAAAAIAAAAFAB" +
 				"gAAAAAAAEAAAC0gUEAAAAxLm91dFVUBQADMUfFVnV4CwABBOgDAAAE6AMAAFBLBQYAAA" +
 				"AAAgACAJYAAACCAAAAAAA=",
+			1.0,
 			"AC",
 			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
@@ -333,7 +345,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				Language:  rte.language,
 				InputHash: input.Hash(),
 				Source:    rte.source,
-				MaxScore:  1.0,
+				MaxScore:  rte.maxScore,
 			},
 			input,
 			wrapper.sandbox(&rte),
@@ -436,6 +448,7 @@ func TestLibinteractive(t *testing.T) {
 					cout << A + B << endl;
 				}
 			`,
+			1.0,
 			"CE",
 			0.0,
 			expectedResult{
@@ -459,6 +472,7 @@ func TestLibinteractive(t *testing.T) {
 					return -1;
 				}
 			`,
+			1.0,
 			"WA",
 			0.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
@@ -478,6 +492,7 @@ func TestLibinteractive(t *testing.T) {
 					return x;
 				}
 			`,
+			1.0,
 			"AC",
 			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
@@ -500,6 +515,7 @@ func TestLibinteractive(t *testing.T) {
 					}
 				}
 			`,
+			1.0,
 			"AC",
 			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
@@ -511,6 +527,7 @@ func TestLibinteractive(t *testing.T) {
 		{
 			"py",
 			"def sum(A, B):\n  return A + B\ndef identity(x):\n  return x",
+			1.0,
 			"AC",
 			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
@@ -529,7 +546,7 @@ func TestLibinteractive(t *testing.T) {
 				Language:  rte.language,
 				InputHash: input.Hash(),
 				Source:    rte.source,
-				MaxScore:  1.0,
+				MaxScore:  rte.maxScore,
 			},
 			input,
 			minijail,
