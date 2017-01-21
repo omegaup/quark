@@ -300,7 +300,7 @@ func v1CompatNewRunContext(
 	settings := common.ProblemSettings{}
 	err := db.QueryRow(
 		`SELECT
-			r.run_id, c.alias, r.language, p.alias, cp.points,
+			r.run_id, c.alias, r.language, p.alias, pp.points,
 			p.extra_wall_time, p.memory_limit, p.output_limit,
 			p.overall_wall_time_limit, p.time_limit, p.validator_time_limit, p.slow,
 			p.validator
@@ -309,10 +309,10 @@ func v1CompatNewRunContext(
 		INNER JOIN
 			Problems p ON p.problem_id = r.problem_id
 		LEFT JOIN
-			Contests c ON c.contest_id = r.contest_id
+			Problemset_Problems pp ON pp.problem_id = r.problem_id AND
+			pp.problemset_id = r.problemset_id
 		LEFT JOIN
-			Contest_Problems cp ON cp.problem_id = r.problem_id AND
-			cp.contest_id = r.contest_id
+			Contests c ON c.problemset_id = pp.problemset_id
 		WHERE
 			r.guid = ?;`, guid).Scan(
 		&runCtx.ID,
