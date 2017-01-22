@@ -199,6 +199,7 @@ type Subscriber struct {
 
 func NewSubscriber(
 	ctx *common.Context,
+	requestURL *url.URL,
 	authToken string,
 	filterString string,
 	transport Transport,
@@ -221,11 +222,6 @@ func NewSubscriber(
 		}
 		s.filters = append(s.filters, f)
 	}
-
-	requestURL := mustParseURL(
-		ctx.Config.Broadcaster.FrontendURL,
-		"api/user/validateFilter/",
-	)
 
 	q := requestURL.Query()
 	q.Set("filter", filterString)
@@ -341,18 +337,4 @@ func (s *Subscriber) Run() {
 			}
 		}
 	}
-}
-
-func mustParseURL(rawurl string, relative ...string) *url.URL {
-	parsed, err := url.Parse(rawurl)
-	if err != nil {
-		panic(err)
-	}
-	for _, rel := range relative {
-		parsed, err = parsed.Parse(rel)
-		if err != nil {
-			panic(err)
-		}
-	}
-	return parsed
 }
