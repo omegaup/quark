@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha1"
 	"encoding/csv"
 	"encoding/json"
 	"flag"
@@ -116,6 +117,18 @@ func v1CompatGetTreeId(repositoryPath string) (string, error) {
 	return headCommit.TreeId().String(), nil
 }
 
+func versionedHash(
+	hash string,
+	settings *common.ProblemSettings,
+) string {
+	hasher := sha1.New()
+	fmt.Fprint(hasher, "%d:", v1compat.InputVersion)
+	io.WriteString(hasher, hash)
+	io.WriteString(hasher, ":")
+	json.NewEncoder(hasher).Encode(settings)
+	return fmt.Sprintf("%0x", hasher.Sum(nil))
+}
+
 func main() {
 	flag.Parse()
 
@@ -136,23 +149,32 @@ func main() {
 		return
 	}
 
+	repositoryPath := fmt.Sprintf("%s/%s", *repositoryRoot, *problemName)
+	gitTree, err := v1CompatGetTreeId(repositoryPath)
+	if err != nil {
+		panic(err)
+	}
+
 	loader, err := newCsvSettingsLoader(*problemCsv)
 	if err != nil {
 		panic(err)
 	}
 
-	repositoryPath := fmt.Sprintf("%s/%s", *repositoryRoot, *problemName)
-	hash, err := v1CompatGetTreeId(repositoryPath)
+	settings, err := loader.Load(*problemName)
 	if err != nil {
 		panic(err)
 	}
+	hash := versionedHash(gitTree, settings)
 
-	settings, _, err := v1compat.CreateArchiveFromGit(
+	_, _, err = v1compat.CreateArchiveFromGit(
 		*problemName,
 		*output,
 		repositoryPath,
 		hash,
-		loader,
+		&v1compat.SettingsLoader{
+			Settings: settings,
+			GitTree:  gitTree,
+		},
 	)
 	if err != nil {
 		panic(err)

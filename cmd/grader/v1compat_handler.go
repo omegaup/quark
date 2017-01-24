@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -16,6 +17,7 @@ import (
 	git "github.com/libgit2/git2go"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -49,36 +51,16 @@ type runGradeRequest struct {
 	Debug   bool     `json:"debug"`
 }
 
-type v1CompatDatabaseSettingsLoader struct {
-	db *sql.DB
-}
-
-func (loader *v1CompatDatabaseSettingsLoader) Load(
-	problemName string,
-) (*common.ProblemSettings, error) {
-	settings := common.ProblemSettings{}
-	err := loader.db.QueryRow(
-		`SELECT
-			extra_wall_time, memory_limit, output_limit, overall_wall_time_limit,
-			time_limit, validator_time_limit, slow, validator
-		FROM
-			Problems
-		WHERE
-			alias = ?;`, problemName).Scan(
-		&settings.Limits.ExtraWallTime,
-		&settings.Limits.MemoryLimit,
-		&settings.Limits.OutputLimit,
-		&settings.Limits.OverallWallTimeLimit,
-		&settings.Limits.TimeLimit,
-		&settings.Limits.ValidatorTimeLimit,
-		&settings.Slow,
-		&settings.Validator.Name,
-	)
-	settings.Limits.MemoryLimit *= 1024
-	if err != nil {
-		return nil, err
-	}
-	return &settings, nil
+func versionedHash(
+	hash string,
+	settings *common.ProblemSettings,
+) string {
+	hasher := sha1.New()
+	fmt.Fprint(hasher, "%d:", v1compat.InputVersion)
+	io.WriteString(hasher, hash)
+	io.WriteString(hasher, ":")
+	json.NewEncoder(hasher).Encode(settings)
+	return fmt.Sprintf("%0x", hasher.Sum(nil))
 }
 
 func v1CompatUpdateDatabase(
@@ -305,7 +287,7 @@ func v1CompatNewRunContext(
 	ctx *grader.Context,
 	db *sql.DB,
 	guid string,
-) (*grader.RunContext, error) {
+) (*grader.RunContext, string, *common.ProblemSettings, error) {
 	runCtx := grader.NewEmptyRunContext(ctx)
 	runCtx.GUID = guid
 	runCtx.GradeDir = path.Join(
@@ -315,9 +297,13 @@ func v1CompatNewRunContext(
 	)
 	var contestName sql.NullString
 	var contestPoints sql.NullFloat64
+	settings := common.ProblemSettings{}
 	err := db.QueryRow(
 		`SELECT
-			r.run_id, c.alias, r.language, p.alias, cp.points
+			r.run_id, c.alias, r.language, p.alias, cp.points,
+			p.extra_wall_time, p.memory_limit, p.output_limit,
+			p.overall_wall_time_limit, p.time_limit, p.validator_time_limit, p.slow,
+			p.validator
 		FROM
 			Runs r
 		INNER JOIN
@@ -329,19 +315,33 @@ func v1CompatNewRunContext(
 			cp.contest_id = r.contest_id
 		WHERE
 			r.guid = ?;`, guid).Scan(
-		&runCtx.ID, &contestName, &runCtx.Run.Language, &runCtx.ProblemName,
-		&contestPoints)
+		&runCtx.ID,
+		&contestName,
+		&runCtx.Run.Language,
+		&runCtx.ProblemName,
+		&contestPoints,
+		&settings.Limits.ExtraWallTime,
+		&settings.Limits.MemoryLimit,
+		&settings.Limits.OutputLimit,
+		&settings.Limits.OverallWallTimeLimit,
+		&settings.Limits.TimeLimit,
+		&settings.Limits.ValidatorTimeLimit,
+		&settings.Slow,
+		&settings.Validator.Name,
+	)
 	if err != nil {
-		return nil, err
+		return nil, "", nil, err
 	}
 
-	runCtx.Run.InputHash, err = v1CompatGetTreeId(path.Join(
+	settings.Limits.MemoryLimit *= 1024
+
+	gitTree, err := v1CompatGetTreeId(path.Join(
 		ctx.Config.Grader.V1.RuntimePath,
 		"problems.git",
 		runCtx.ProblemName,
 	))
 	if err != nil {
-		return nil, err
+		return nil, "", nil, err
 	}
 
 	if contestName.Valid {
@@ -362,10 +362,12 @@ func v1CompatNewRunContext(
 		),
 	)
 	if err != nil {
-		return nil, err
+		return nil, "", nil, err
 	}
 	runCtx.Run.Source = string(contents)
-	return runCtx, nil
+
+	runCtx.Run.InputHash = versionedHash(gitTree, &settings)
+	return runCtx, gitTree, &settings, nil
 }
 
 func v1CompatInjectRuns(
@@ -375,7 +377,7 @@ func v1CompatInjectRuns(
 	guids []string,
 ) error {
 	for _, guid := range guids {
-		runCtx, err := v1CompatNewRunContext(ctx, db, guid)
+		runCtx, gitTree, settings, err := v1CompatNewRunContext(ctx, db, guid)
 		if err != nil {
 			ctx.Log.Error(
 				"Error getting run context",
@@ -392,7 +394,10 @@ func v1CompatInjectRuns(
 			v1compat.NewGraderInputFactory(
 				runCtx.ProblemName,
 				&ctx.Config,
-				&v1CompatDatabaseSettingsLoader{db: db},
+				&v1compat.SettingsLoader{
+					Settings: settings,
+					GitTree:  gitTree,
+				},
 			),
 		)
 		if err != nil {
@@ -560,7 +565,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		ctx.Log.Info("/run/payload/", "request", request)
 		var response = make(map[string]*common.Run)
 		for _, guid := range request.GUIDs {
-			runCtx, err := v1CompatNewRunContext(ctx, db, guid)
+			runCtx, _, _, err := v1CompatNewRunContext(ctx, db, guid)
 			if err != nil {
 				ctx.Log.Error(
 					"Error getting run context",

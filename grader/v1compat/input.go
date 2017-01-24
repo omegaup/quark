@@ -21,8 +21,15 @@ import (
 	"strings"
 )
 
-type SettingsLoader interface {
-	Load(problemName string) (*common.ProblemSettings, error)
+const (
+	// A global version. Bump if we start producing fundamentally incompatible
+	// inputs.
+	InputVersion = 0
+)
+
+type SettingsLoader struct {
+	Settings *common.ProblemSettings
+	GitTree  string
 }
 
 type graderBaseInput struct {
@@ -125,7 +132,7 @@ type graderInput struct {
 	graderBaseInput
 	repositoryPath string
 	problemName    string
-	loader         SettingsLoader
+	loader         *SettingsLoader
 }
 
 func (input *graderInput) Persist() error {
@@ -234,12 +241,9 @@ func CreateArchiveFromGit(
 	archivePath string,
 	repositoryPath string,
 	inputHash string,
-	loader SettingsLoader,
+	loader *SettingsLoader,
 ) (*common.ProblemSettings, int64, error) {
-	settings, err := loader.Load(problemName)
-	if err != nil {
-		return nil, 0, err
-	}
+	settings := loader.Settings
 	if settings.Validator.Name == "token-numeric" {
 		tolerance := 1e-6
 		settings.Validator.Tolerance = &tolerance
@@ -251,7 +255,7 @@ func CreateArchiveFromGit(
 	}
 	defer repository.Free()
 
-	treeOid, err := git.NewOid(inputHash)
+	treeOid, err := git.NewOid(loader.GitTree)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -513,13 +517,13 @@ func CreateArchiveFromGit(
 type graderInputFactory struct {
 	problemName string
 	config      *common.Config
-	loader      SettingsLoader
+	loader      *SettingsLoader
 }
 
 func NewGraderInputFactory(
 	problemName string,
 	config *common.Config,
-	loader SettingsLoader,
+	loader *SettingsLoader,
 ) common.InputFactory {
 	return &graderInputFactory{
 		problemName: problemName,
