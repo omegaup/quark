@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"expvar"
 	"flag"
+	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/grader"
@@ -172,10 +173,20 @@ func main() {
 	mux := http.DefaultServeMux
 	if ctx.Config.Grader.V1.Enabled {
 		registerV1CompatHandlers(mux, db)
-		go common.RunServer(&ctx.Config.TLS, mux, ctx.Config.Grader.V1.Port, *insecure)
+		go common.RunServer(
+			&ctx.Config.TLS,
+			mux,
+			fmt.Sprintf(":%d", ctx.Config.Grader.V1.Port),
+			*insecure,
+		)
 		mux = http.NewServeMux()
 	}
 
 	registerHandlers(mux, db)
-	common.RunServer(&ctx.Config.TLS, mux, ctx.Config.Grader.Port, *insecure)
+	common.RunServer(
+		&ctx.Config.TLS,
+		mux,
+		fmt.Sprintf(":%d", ctx.Config.Grader.Port),
+		*insecure,
+	)
 }

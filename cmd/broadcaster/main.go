@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"expvar"
 	"flag"
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/lhchavez/quark/broadcaster"
 	"github.com/lhchavez/quark/common"
@@ -201,7 +202,16 @@ func main() {
 	b := broadcaster.NewBroadcaster(ctx, &PrometheusMetrics{})
 	contestChan := make(chan string, 1)
 
-	http.Handle("/metrics", prometheus.Handler())
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", prometheus.Handler())
+	go func() {
+		addr := fmt.Sprintf(":%d", ctx.Config.Metrics.Port)
+		ctx.Log.Error(
+			"http listen and serve",
+			"err", http.ListenAndServe(addr, metricsMux),
+		)
+	}()
+
 	http.HandleFunc("/deauthenticate/", func(w http.ResponseWriter, r *http.Request) {
 		pathComponents := strings.Split(r.URL.Path, "/")
 		if len(pathComponents) < 3 {
@@ -302,10 +312,15 @@ func main() {
 		"events port", ctx.Config.Broadcaster.EventsPort,
 	)
 	go b.Run()
+
+	eventsHost := ""
+	if ctx.Config.Broadcaster.Proxied {
+		eventsHost = "localhost"
+	}
 	go common.RunServer(
 		&ctx.Config.Broadcaster.TLS,
 		eventsMux,
-		ctx.Config.Broadcaster.EventsPort,
+		fmt.Sprintf("%s:%d", eventsHost, ctx.Config.Broadcaster.EventsPort),
 		ctx.Config.Broadcaster.Proxied,
 	)
 	go updateScoreboardLoop(
@@ -316,5 +331,10 @@ func main() {
 		),
 		contestChan,
 	)
-	common.RunServer(&ctx.Config.TLS, nil, ctx.Config.Broadcaster.Port, *insecure)
+	common.RunServer(
+		&ctx.Config.TLS,
+		nil,
+		fmt.Sprintf(":%d", ctx.Config.Broadcaster.Port),
+		*insecure,
+	)
 }

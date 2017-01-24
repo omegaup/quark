@@ -3,15 +3,19 @@ package common
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
 )
 
-func RunServer(tlsConfig *TLSConfig, handler http.Handler, port uint16, insecure bool) {
+func RunServer(
+	tlsConfig *TLSConfig,
+	handler http.Handler,
+	addr string,
+	insecure bool,
+) {
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    addr,
 		Handler: handler,
 	}
 
