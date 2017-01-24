@@ -166,8 +166,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
 			Cases: map[string]common.LiteralCaseSettings{
-				"0": {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
-				"1": {Input: "2 3", ExpectedOutput: "5", Weight: &[]float64{3.0}[0]},
+				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
+				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
+				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: &[]float64{2.0}[0]},
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",
@@ -194,8 +195,24 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"py",
+			"ans = sum(map(int, raw_input().strip().split()))\n" +
+				"assert ans <= 3\n" +
+				"print ans",
+			1.0,
+			"RTE",
+			0.25,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"", "", &RunMetadata{Verdict: "RTE"}},
 			},
 		},
 		{
@@ -206,8 +223,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
@@ -218,8 +236,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			0.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"2", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"2", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"2", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"2", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"2", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
@@ -246,8 +265,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
@@ -258,8 +278,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
@@ -270,8 +291,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
@@ -282,8 +304,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
@@ -297,8 +320,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
@@ -313,26 +337,30 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			0.25,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
 			"cat",
-			"data:application/zip;base64,UEsDBAoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABwAMC" +
-				"5vdXRVVAkAAy1HxVYtR8VWdXgLAAEE6AMAAAToAwAAMwpQSwMECgAAAAAA56JRSFc5PQ" +
-				"MCAAAAAgAAAAUAHAAxLm91dFVUCQADMUfFVjFHxVZ1eAsAAQToAwAABOgDAAA1ClBLAQ" +
-				"IeAwoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABgAAAAAAAEAAAC0gQAAAAAwLm91dFVUBQ" +
-				"ADLUfFVnV4CwABBOgDAAAE6AMAAFBLAQIeAwoAAAAAAOeiUUhXOT0DAgAAAAIAAAAFAB" +
-				"gAAAAAAAEAAAC0gUEAAAAxLm91dFVUBQADMUfFVnV4CwABBOgDAAAE6AMAAFBLBQYAAA" +
-				"AAAgACAJYAAACCAAAAAAA=",
+			"data:application/zip;base64,UEsDBAoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABwAMC5vdX" +
+				"RVVAkAA67WxFb8t4ZYdXgLAAEE6AMAAAToAwAAMwpQSwMECgAAAAAAhhE4StGeZ1UCAAAAAg" +
+				"AAAAcAHAAxLjAub3V0VVQJAAP8t4ZYCbiGWHV4CwABBOgDAAAE6AMAADMKUEsDBAoAAAAAAO" +
+				"eiUUhXOT0DAgAAAAIAAAAHABwAMS4xLm91dFVUCQADstbEVgm4hlh1eAsAAQToAwAABOgDAA" +
+				"A1ClBLAQIeAwoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABgAAAAAAAEAAAC0gQAAAAAwLm91dF" +
+				"VUBQADrtbEVnV4CwABBOgDAAAE6AMAAFBLAQIeAwoAAAAAAIYROErRnmdVAgAAAAIAAAAHAB" +
+				"gAAAAAAAEAAAC0gUEAAAAxLjAub3V0VVQFAAP8t4ZYdXgLAAEE6AMAAAToAwAAUEsBAh4DCg" +
+				"AAAAAA56JRSFc5PQMCAAAAAgAAAAcAGAAAAAAAAQAAALSBhAAAADEuMS5vdXRVVAUAA7LWxF" +
+				"Z1eAsAAQToAwAABOgDAABQSwUGAAAAAAMAAwDlAAAAxwAAAAAA",
 			1.0,
 			"AC",
 			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 	}

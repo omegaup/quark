@@ -940,6 +940,8 @@ func Grade(
 						caseResults.Verdict = "PA"
 					}
 				}
+			} else {
+				correct = false
 			}
 		}
 		if correct {
