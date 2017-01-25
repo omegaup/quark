@@ -115,6 +115,8 @@ func updateScoreboardForContest(
 		)
 		return
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != 200 {
 		ctx.Log.Error(
 			"Failed to request scoreboard update",
@@ -126,6 +128,7 @@ func updateScoreboardForContest(
 
 func updateScoreboardLoop(
 	ctx *common.Context,
+	client *http.Client,
 	updateScoreboardURL *url.URL,
 	contestChan <-chan string,
 ) {
@@ -134,7 +137,6 @@ func updateScoreboardLoop(
 	timer := time.NewTimer(infinity)
 	events := updateScoreboardEventHeap{}
 	eventSet := make(map[string]bool)
-	var client http.Client
 
 	for {
 		select {
@@ -158,7 +160,7 @@ func updateScoreboardLoop(
 
 			updateScoreboardForContest(
 				ctx,
-				&client,
+				client,
 				updateScoreboardURL,
 				contestAlias,
 			)
@@ -177,7 +179,7 @@ func updateScoreboardLoop(
 			if eventSet[event.contestAlias] {
 				updateScoreboardForContest(
 					ctx,
-					&client,
+					client,
 					updateScoreboardURL,
 					event.contestAlias,
 				)
@@ -201,6 +203,8 @@ func main() {
 
 	b := broadcaster.NewBroadcaster(ctx, &PrometheusMetrics{})
 	contestChan := make(chan string, 1)
+
+	client := http.Client{}
 
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", prometheus.Handler())
@@ -282,6 +286,7 @@ func main() {
 
 		subscriber, err := broadcaster.NewSubscriber(
 			ctx,
+			&client,
 			mustParseURL(
 				ctx.Config.Broadcaster.FrontendURL,
 				"api/user/validateFilter/",
@@ -325,6 +330,7 @@ func main() {
 	)
 	go updateScoreboardLoop(
 		ctx,
+		&client,
 		mustParseURL(
 			ctx.Config.Broadcaster.FrontendURL,
 			"api/scoreboard/refresh/",

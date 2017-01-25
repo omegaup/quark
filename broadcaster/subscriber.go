@@ -199,6 +199,7 @@ type Subscriber struct {
 
 func NewSubscriber(
 	ctx *common.Context,
+	client *http.Client,
 	requestURL *url.URL,
 	authToken string,
 	filterString string,
@@ -238,7 +239,6 @@ func NewSubscriber(
 		)
 	}
 
-	var client http.Client
 	response, err := client.Do(request)
 	if err != nil {
 		ctx.Log.Error("Error", "err", err)
