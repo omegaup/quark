@@ -77,7 +77,7 @@ func v1CompatUpdateDatabase(
 		WHERE
 			run_id = ?;`,
 		run.Result.Verdict,
-		run.Result.Time,
+		run.Result.Time*1000,
 		run.Result.Memory,
 		run.Result.Score,
 		run.Result.ContestScore,
