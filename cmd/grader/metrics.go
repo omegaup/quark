@@ -81,8 +81,29 @@ var (
 		"grader_queue_delay_seconds": prometheus.NewSummary(prometheus.SummaryOpts{
 			Namespace:  "quark",
 			Subsystem:  "grader",
-			Help:       "The duration of a run in the queue",
+			Help:       "The duration of a run in any queue",
 			Name:       "queue_delay_seconds",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+		}),
+		"grader_queue_low_delay_seconds": prometheus.NewSummary(prometheus.SummaryOpts{
+			Namespace:  "quark",
+			Subsystem:  "grader",
+			Help:       "The duration of a run in the low-priority queue",
+			Name:       "queue_low_delay_seconds",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+		}),
+		"grader_queue_normal_delay_seconds": prometheus.NewSummary(prometheus.SummaryOpts{
+			Namespace:  "quark",
+			Subsystem:  "grader",
+			Help:       "The duration of a run in the normal-priority queue",
+			Name:       "queue_normal_delay_seconds",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+		}),
+		"grader_queue_high_delay_seconds": prometheus.NewSummary(prometheus.SummaryOpts{
+			Namespace:  "quark",
+			Subsystem:  "grader",
+			Help:       "The duration of a run in the high-priority queue",
+			Name:       "queue_high_delay_seconds",
 			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		}),
 	}

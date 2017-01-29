@@ -214,10 +214,15 @@ func v1CompatRunPostProcessor(
 	ctx := context()
 	for run := range finishedRuns {
 		gaugeAdd("grader_queue_total_length", -1)
-		summaryObserve(
-			"grader_queue_delay_seconds",
-			time.Now().Sub(run.CreationTime).Seconds(),
-		)
+		delay := time.Now().Sub(run.CreationTime).Seconds()
+		summaryObserve("grader_queue_delay_seconds", delay)
+		if run.Priority == grader.QueuePriorityLow {
+			summaryObserve("grader_queue_low_delay_seconds", delay)
+		} else if run.Priority == grader.QueuePriorityNormal {
+			summaryObserve("grader_queue_normal_delay_seconds", delay)
+		} else if run.Priority == grader.QueuePriorityHigh {
+			summaryObserve("grader_queue_high_delay_seconds", delay)
+		}
 		if run.Result.Verdict == "JE" {
 			counterAdd("grader_runs_je", 1)
 		}
