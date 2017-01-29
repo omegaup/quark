@@ -16,6 +16,14 @@ import (
 	"time"
 )
 
+type QueuePriority int
+
+const (
+	QueuePriorityHigh   = QueuePriority(0)
+	QueuePriorityNormal = QueuePriority(1)
+	QueuePriorityLow    = QueuePriority(2)
+)
+
 // RunInfo holds the necessary data of a Run, even after the RunContext is
 // gone.
 type RunInfo struct {
@@ -26,6 +34,7 @@ type RunInfo struct {
 	Run         *common.Run
 	Result      runner.RunResult
 	GradeDir    string
+	Priority    QueuePriority
 
 	CreationTime time.Time
 }
@@ -85,6 +94,7 @@ func NewEmptyRunContext(ctx *Context) *RunContext {
 				Verdict: "JE",
 			},
 			CreationTime: time.Now(),
+			Priority:     QueuePriorityNormal,
 		},
 		tries: ctx.Config.Grader.MaxGradeRetries,
 		ready: make(chan struct{}),
@@ -207,7 +217,7 @@ func (run *RunContext) Requeue(lastAttempt bool) bool {
 	run.Run.UpdateAttemptID()
 	// Since it was already ready to be executed, place it in the high-priority
 	// queue.
-	if !run.queue.enqueue(run, 0) {
+	if !run.queue.enqueue(run, QueuePriorityHigh) {
 		// That queue is full. We've exhausted all our options, bail out.
 		run.Close()
 		return false
@@ -264,27 +274,27 @@ func (queue *Queue) GetRun(
 func (queue *Queue) AddRun(run *RunContext) {
 	// TODO(lhchavez): Add async events for queue operations.
 	// Add new runs to the normal priority by default.
-	queue.enqueueBlocking(run, 1)
+	queue.enqueueBlocking(run)
 }
 
 // enqueueBlocking adds a run to the queue, waits if needed.
-func (queue *Queue) enqueueBlocking(run *RunContext, idx int) {
+func (queue *Queue) enqueueBlocking(run *RunContext) {
 	if run == nil {
 		panic("null RunContext")
 	}
 	run.queue = queue
-	queue.runs[idx] <- run
+	queue.runs[run.Priority] <- run
 	queue.ready <- struct{}{}
 }
 
 // enqueue adds a run to the queue, returns true if possible.
-func (queue *Queue) enqueue(run *RunContext, idx int) bool {
+func (queue *Queue) enqueue(run *RunContext, priority QueuePriority) bool {
 	if run == nil {
 		panic("null RunContext")
 	}
 	run.queue = queue
 	select {
-	case queue.runs[idx] <- run:
+	case queue.runs[priority] <- run:
 		queue.ready <- struct{}{}
 		return true
 	default:

@@ -375,6 +375,7 @@ func v1CompatInjectRuns(
 	runs *grader.Queue,
 	db *sql.DB,
 	guids []string,
+	priority grader.QueuePriority,
 ) error {
 	for _, guid := range guids {
 		runCtx, gitTree, settings, err := v1CompatNewRunContext(ctx, db, guid)
@@ -385,6 +386,11 @@ func v1CompatInjectRuns(
 				"guid", guid,
 			)
 			return err
+		}
+		if settings.Slow {
+			runCtx.Priority = grader.QueuePriorityLow
+		} else {
+			runCtx.Priority = priority
 		}
 		ctx.Log.Info("RunContext", "runCtx", runCtx)
 		gaugeAdd("grader_queue_total_length", 1)
@@ -450,7 +456,13 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	if err != nil {
 		panic(err)
 	}
-	if err := v1CompatInjectRuns(context(), runs, db, guids); err != nil {
+	if err := v1CompatInjectRuns(
+		context(),
+		runs,
+		db,
+		guids,
+		grader.QueuePriorityNormal,
+	); err != nil {
 		panic(err)
 	}
 	context().Log.Info("Injected pending runs", "count", len(guids))
@@ -544,7 +556,11 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 			return
 		}
 		ctx.Log.Info("/run/grade/", "request", request)
-		if err = v1CompatInjectRuns(ctx, runs, db, request.GUIDs); err != nil {
+		priority := grader.QueuePriorityNormal
+		if request.Rejudge || request.Debug {
+			priority = grader.QueuePriorityLow
+		}
+		if err = v1CompatInjectRuns(ctx, runs, db, request.GUIDs, priority); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")

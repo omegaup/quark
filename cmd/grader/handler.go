@@ -275,6 +275,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 			return
 		}
 		if _, ok := r.URL.Query()["debug"]; ok {
+			runCtx.Priority = grader.QueuePriorityLow
 			if err := runCtx.Debug(); err != nil {
 				ctx.Log.Error("Unable to set debug mode", "err", err)
 			} else {
