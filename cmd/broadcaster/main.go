@@ -185,8 +185,6 @@ func updateScoreboardLoop(
 				)
 			}
 			delete(eventSet, event.contestAlias)
-		default:
-			break
 		}
 	}
 }
