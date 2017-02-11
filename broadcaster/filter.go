@@ -46,8 +46,8 @@ func (f *ProblemFilter) String() string {
 
 func (f *ProblemFilter) Matches(msg *Message, subscriber *Subscriber) bool {
 	return msg.Problem == f.problem && (subscriber.admin || msg.Public ||
-		msg.User == subscriber.user || mapContains(subscriber.problemAdminMap,
-		msg.Problem))
+		(subscriber.user != "" && msg.User == subscriber.user) ||
+		mapContains(subscriber.problemAdminMap, msg.Problem))
 }
 
 type ContestFilter struct {
@@ -66,8 +66,8 @@ func (f *ContestFilter) String() string {
 
 func (f *ContestFilter) Matches(msg *Message, subscriber *Subscriber) bool {
 	return msg.Contest == f.contest && (subscriber.admin || msg.Public ||
-		msg.User == subscriber.user || mapContains(subscriber.contestAdminMap,
-		msg.Contest))
+		(subscriber.user != "" && msg.User == subscriber.user) ||
+		mapContains(subscriber.contestAdminMap, msg.Contest))
 }
 
 func NewFilter(filter string) (Filter, error) {
