@@ -44,6 +44,12 @@ func CalculateScore(
 			}
 		}
 		if !expectedNext || !contestantNext {
+			if !expectedNext && expectedTokenizer.Err() != nil {
+				return 0, mismatch, expectedTokenizer.Err()
+			}
+			if !contestantNext && contestantTokenizer.Err() != nil {
+				return 0, mismatch, contestantTokenizer.Err()
+			}
 			break
 		}
 		expectedToken := expectedTokenizer.Token()

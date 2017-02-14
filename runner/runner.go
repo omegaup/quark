@@ -923,7 +923,11 @@ func Grade(
 					contestantFd,
 				)
 				if err != nil {
-					ctx.Log.Debug("error comparing values", "err", err)
+					ctx.Log.Debug(
+						"error comparing values",
+						"case", caseData.Name,
+						"err", err,
+					)
 				}
 				caseResults.Score = runScore
 				caseResults.ContestScore = runResult.MaxScore * caseResults.Score *

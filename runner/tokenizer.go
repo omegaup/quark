@@ -7,6 +7,10 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	MaxTokenLength = 4194304 // 4MiB
+)
+
 // TokenizerFunc is a callback that returns true if the rune is part of a
 // token.
 type TokenizerFunc func(rune) bool
@@ -57,6 +61,7 @@ func NewTokenizer(r io.Reader, tokenizerFunc TokenizerFunc) *Tokenizer {
 		line:          -1,
 		column:        -1,
 	}
+	tokenizer.scanner.Buffer(nil, MaxTokenLength)
 	tokenizer.scanner.Split(tokenizer.splitFunc())
 	return tokenizer
 }

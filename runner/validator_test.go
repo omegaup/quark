@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bufio"
 	"bytes"
 	"github.com/lhchavez/quark/common"
 	"testing"
@@ -106,5 +107,28 @@ func TestValidator(t *testing.T) {
 		); err == nil {
 			t.Errorf("Expected to fail, but didn't: %v", vet)
 		}
+	}
+}
+
+func TestHugeTokens(t *testing.T) {
+	large := make([]byte, MaxTokenLength-1)
+	for idx, _ := range large {
+		large[idx] = 'A'
+	}
+	tokenizer := NewTokenizer(bytes.NewReader(large), IsNonWhitespace)
+	if !tokenizer.Scan() {
+		t.Errorf("Expected to scan a token. Err: %v", tokenizer.Err())
+	}
+
+	large = make([]byte, MaxTokenLength)
+	for idx, _ := range large {
+		large[idx] = 'A'
+	}
+	tokenizer = NewTokenizer(bytes.NewReader(large), IsNonWhitespace)
+	if tokenizer.Scan() {
+		t.Errorf("Expected to fail scanning a token")
+	}
+	if bufio.ErrTooLong != tokenizer.Err() {
+		t.Errorf("Expected %v, got %v", bufio.ErrTooLong, tokenizer.Err())
 	}
 }
