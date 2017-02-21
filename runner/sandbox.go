@@ -175,7 +175,7 @@ func (*MinijailSandbox) Compile(
 			"-S", path.Join(minijailPath, "scripts/javac"),
 			"-b", path.Join(minijailPath, "root-openjdk,/usr/lib/jvm"),
 			"-b", "/sys/,/sys",
-			"--", "/usr/bin/javac", "-J-Xmx512M",
+			"--", "/usr/bin/javac", "-J-Xmx512M", "-d", ".",
 		}
 	case "c":
 		params = []string{
@@ -249,7 +249,29 @@ func (*MinijailSandbox) Compile(
 		}, err
 	}
 	defer metaFd.Close()
-	return parseMetaFile(ctx, nil, lang, metaFd, false)
+	metadata, err := parseMetaFile(ctx, nil, lang, metaFd, false)
+
+	if lang == "java" && metadata.Verdict == "OK" {
+		classPath := path.Join(chdir, fmt.Sprintf("%s.class", target))
+		if _, err := os.Stat(classPath); os.IsNotExist(err) {
+			compileError := fmt.Sprintf(
+				"Class `%s` not found. Make sure your class is named `%s` "+
+					"and outside all packages",
+				target,
+				target,
+			)
+			metadata.Verdict = "CE"
+			f, err := os.OpenFile(errorFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+			if err != nil {
+				return metadata, err
+			}
+			defer f.Close()
+			f.WriteString("\n")
+			f.WriteString(compileError)
+		}
+	}
+
+	return metadata, err
 }
 
 func (*MinijailSandbox) Run(

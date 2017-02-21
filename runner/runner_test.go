@@ -363,6 +363,24 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
+		{
+			"java",
+			`package foo;
+			class Main {
+				public static void main(String[] args) {
+					System.out.println('3');
+				}
+			}`,
+			1.0,
+			"CE",
+			0,
+			expectedResult{
+				"",
+				"\nClass `Main` not found. Make sure your class is named `Main` and outside all packages",
+				&RunMetadata{ExitStatus: 1, Verdict: "CE"},
+			},
+			map[string]expectedResult{},
+		},
 	}
 	for idx, rte := range runtests {
 		results, err := Grade(
