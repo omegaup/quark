@@ -231,6 +231,11 @@ func (*MinijailSandbox) Compile(
 			"-b", path.Join(minijailPath, "root-hs") + ",/usr/lib/ghc",
 			"--", haskellCompiler, "-B/usr/lib/ghc", "-O2", "-o", target,
 		}
+	case "lua":
+		params = []string{
+			"-S", path.Join(minijailPath, "scripts/lua"),
+			"--", "/usr/bin/luac", "-o", target,
+		}
 	}
 
 	finalParams := make([]string, 0)
@@ -399,6 +404,11 @@ func (*MinijailSandbox) Run(
 			"-S", path.Join(minijailPath, "scripts/hs"),
 			"-b", path.Join(minijailPath, "root-hs") + ",/usr/lib/ghc",
 			"-m", hardLimit, "--", fmt.Sprintf("./%s", target),
+		}
+	case "lua":
+		params = []string{
+			"-S", path.Join(minijailPath, "scripts/lua"),
+			"-m", hardLimit, "--", "/usr/bin/lua", target,
 		}
 	}
 

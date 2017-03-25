@@ -326,6 +326,19 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
+			"lua",
+			"a = io.read(\"*n\"); b = io.read(\"*n\"); io.write(a + b)",
+			1.0,
+			"AC",
+			1.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
 			"java",
 			`class Main {
 				public static void main(String[] args) {
