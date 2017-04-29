@@ -335,7 +335,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
 				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
@@ -415,10 +415,11 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		}
 		if results.Verdict != rte.expectedVerdict {
 			t.Errorf(
-				"results.Verdict = %q, expected %q, test %v",
+				"results.Verdict = %q, expected %q, test %v: %v",
 				results.Verdict,
 				rte.expectedVerdict,
 				idx,
+				rte,
 			)
 		}
 		if results.Score != rte.expectedScore {
