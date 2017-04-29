@@ -215,15 +215,17 @@ func (*MinijailSandbox) Compile(
 		}
 	case "kj":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/kcl"),
-			"--", "/usr/bin/ldwrapper", "/usr/bin/kcl", "-lj",
-			"-o", fmt.Sprintf("%s.kx", target), "-c",
+			"-S", path.Join(minijailPath, "scripts/js"),
+			"-b", path.Join(minijailPath, "root-js") + ",/opt/nodejs",
+			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "compile", "java",
+			"-o", fmt.Sprintf("%s.kx", target),
 		}
 	case "kp":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/kcl"),
-			"--", "/usr/bin/ldwrapper", "/usr/bin/kcl", "-lp",
-			"-o", fmt.Sprintf("%s.kx", target), "-c",
+			"-S", path.Join(minijailPath, "scripts/js"),
+			"-b", path.Join(minijailPath, "root-js") + ",/opt/nodejs",
+			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "compile", "pascal",
+			"-o", fmt.Sprintf("%s.kx", target),
 		}
 	case "hs":
 		params = []string{
@@ -396,8 +398,9 @@ func (*MinijailSandbox) Run(
 	case "kp", "kj":
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/karel"),
-			"--", "/usr/bin/ldwrapper", "/usr/bin/karel", "/dev/stdin", "-oi", "-q",
-			"-p2", fmt.Sprintf("./%s.kx", target),
+			"-S", path.Join(minijailPath, "scripts/js"),
+			"-b", path.Join(minijailPath, "root-js") + ",/opt/nodejs",
+			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "run", fmt.Sprintf("%s.kx", target),
 		}
 	case "hs":
 		params = []string{

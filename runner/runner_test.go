@@ -432,6 +432,144 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	}
 }
 
+func TestKarelGrade(t *testing.T) {
+	runKarelGraderTests(t, &fakeSandboxWrapper{})
+}
+
+func TestKarelGradeMinijail(t *testing.T) {
+	minijail := &MinijailSandbox{}
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	if !minijail.Supported() {
+		t.Skip("minijail sandbox not supported")
+	}
+	runKarelGraderTests(t, &minijailSandboxWrapper{minijail: minijail})
+}
+
+func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
+	ctx, err := newRunnerContext()
+	if err != nil {
+		t.Fatalf("RunnerContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	}
+
+	inputManager := common.NewInputManager(ctx)
+	expectedOutput := `<resultados>
+	<mundos>
+		<mundo nombre="mundo_0"/>
+	</mundos>
+	<programas>
+		<programa nombre="p1" resultadoEjecucion="FIN PROGRAMA">
+			<karel x="1" y="2"/>
+		</programa>
+	</programas>
+</resultados>`
+	AplusB, err := common.NewLiteralInputFactory(
+		&common.LiteralInput{
+			Cases: map[string]common.LiteralCaseSettings{
+				"0": {Input: `<ejecucion>
+	<condiciones instruccionesMaximasAEjecutar="10000000" longitudStack="65000"></condiciones>
+	<mundos>
+		<mundo nombre="mundo_0" ancho="100" alto="100">
+			<monton x="1" y="2" zumbadores="1"></monton>
+		</mundo>
+	</mundos>
+	<programas tipoEjecucion="CONTINUA" intruccionesCambioContexto="1" milisegundosParaPasoAutomatico="0">
+		<programa nombre="p1" ruta="{$2$}" mundoDeEjecucion="mundo_0" xKarel="1" yKarel="1" direccionKarel="NORTE" mochilaKarel="0">
+			<despliega tipo="MUNDO"></despliega>
+			<despliega tipo="POSICION"></despliega>
+		</programa>
+	</programas>
+</ejecucion>`, ExpectedOutput: expectedOutput, Weight: &[]float64{1.0}[0]},
+			},
+			Validator: &common.LiteralValidatorSettings{
+				Name: "token-numeric",
+			},
+		},
+		ctx.Config.Runner.RuntimePath,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create Input: %q", err)
+	}
+	inputManager.Add(AplusB.Hash(), AplusB)
+
+	input, err := inputManager.Get(AplusB.Hash())
+	if err != nil {
+		t.Fatalf("Failed to open problem: %q", err)
+	}
+
+	runtests := []runnerTestCase{
+		{
+			"kp",
+			`
+			iniciar-programa
+				inicia-ejecucion
+					mientras no-junto-a-zumbador hacer avanza;
+					apagate;
+				termina-ejecucion
+			finalizar-programa
+			`,
+			1.0,
+			"AC",
+			1.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"kj",
+			"class program { program () { while (!nextToABeeper()) move(); turnoff(); } }",
+			1.0,
+			"AC",
+			1.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+	}
+	for idx, rte := range runtests {
+		results, err := Grade(
+			ctx,
+			&bytes.Buffer{},
+			&common.Run{
+				AttemptID: uint64(idx),
+				Language:  rte.language,
+				InputHash: input.Hash(),
+				Source:    rte.source,
+				MaxScore:  rte.maxScore,
+			},
+			input,
+			wrapper.sandbox(&rte),
+		)
+		if err != nil {
+			t.Errorf("Failed to run %v: %q", rte, err)
+			continue
+		}
+		if results.Verdict != rte.expectedVerdict {
+			t.Errorf(
+				"results.Verdict = %q, expected %q, test %v: %v",
+				results.Verdict,
+				rte.expectedVerdict,
+				idx,
+				rte,
+			)
+		}
+		if results.Score != rte.expectedScore {
+			t.Errorf(
+				"results.Score = %v, expected %v",
+				results.Score,
+				rte.expectedScore,
+			)
+		}
+	}
+}
+
 func TestLibinteractive(t *testing.T) {
 	minijail := &MinijailSandbox{}
 	if testing.Short() {
