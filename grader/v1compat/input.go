@@ -24,7 +24,7 @@ import (
 const (
 	// A global version. Bump if we start producing fundamentally incompatible
 	// inputs.
-	InputVersion = 0
+	InputVersion = 1
 )
 
 type SettingsLoader struct {

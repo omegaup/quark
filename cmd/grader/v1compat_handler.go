@@ -302,6 +302,7 @@ func v1CompatNewRunContext(
 	)
 	var contestName sql.NullString
 	var contestPoints sql.NullFloat64
+	validatorLimits := common.DefaultValidatorLimits
 	settings := common.ProblemSettings{}
 	err := db.QueryRow(
 		`SELECT
@@ -330,7 +331,7 @@ func v1CompatNewRunContext(
 		&settings.Limits.OutputLimit,
 		&settings.Limits.OverallWallTimeLimit,
 		&settings.Limits.TimeLimit,
-		&settings.Limits.ValidatorTimeLimit,
+		&validatorLimits.TimeLimit,
 		&settings.Slow,
 		&settings.Validator.Name,
 	)
@@ -339,6 +340,22 @@ func v1CompatNewRunContext(
 	}
 
 	settings.Limits.MemoryLimit *= 1024
+
+	if settings.Validator.Name == "custom" {
+		if validatorLimits.ExtraWallTime < settings.Limits.ExtraWallTime {
+			validatorLimits.ExtraWallTime = settings.Limits.ExtraWallTime
+		}
+		if validatorLimits.MemoryLimit < settings.Limits.MemoryLimit {
+			validatorLimits.MemoryLimit = settings.Limits.MemoryLimit
+		}
+		if validatorLimits.OutputLimit < settings.Limits.OutputLimit {
+			validatorLimits.OutputLimit = settings.Limits.OutputLimit
+		}
+		if validatorLimits.OverallWallTimeLimit < settings.Limits.OverallWallTimeLimit {
+			validatorLimits.OverallWallTimeLimit = settings.Limits.OverallWallTimeLimit
+		}
+		settings.Validator.Limits = &validatorLimits
+	}
 
 	gitTree, err := v1CompatGetTreeId(path.Join(
 		ctx.Config.Grader.V1.RuntimePath,

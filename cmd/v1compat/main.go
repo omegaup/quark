@@ -31,6 +31,13 @@ func mustParseInt64(s string) int64 {
 	return ret
 }
 
+func max64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 type csvSettingsLoader struct {
 	settings map[string]*common.ProblemSettings
 }
@@ -81,11 +88,29 @@ func newCsvSettingsLoader(path string) (*csvSettingsLoader, error) {
 				OutputLimit:          mustParseInt64(row[colMapping["output_limit"]]),
 				OverallWallTimeLimit: mustParseInt64(row[colMapping["overall_wall_time_limit"]]),
 				TimeLimit:            mustParseInt64(row[colMapping["time_limit"]]),
-				ValidatorTimeLimit:   mustParseInt64(row[colMapping["validator_time_limit"]]),
 			},
 			Slow: mustParseInt64(row[colMapping["slow"]]) == 1,
 			Validator: common.ValidatorSettings{
 				Name: row[colMapping["validator"]],
+				Limits: &common.LimitsSettings{
+					ExtraWallTime: max64(
+						common.DefaultValidatorLimits.ExtraWallTime,
+						mustParseInt64(row[colMapping["extra_wall_time"]]),
+					),
+					MemoryLimit: max64(
+						common.DefaultValidatorLimits.MemoryLimit,
+						mustParseInt64(row[colMapping["memory_limit"]])*1024,
+					),
+					OutputLimit: max64(
+						common.DefaultValidatorLimits.OutputLimit,
+						mustParseInt64(row[colMapping["output_limit"]]),
+					),
+					OverallWallTimeLimit: max64(
+						common.DefaultValidatorLimits.OverallWallTimeLimit,
+						mustParseInt64(row[colMapping["overall_wall_time_limit"]]),
+					),
+					TimeLimit: mustParseInt64(row[colMapping["validator_time_limit"]]),
+				},
 			},
 		}
 	}

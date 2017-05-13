@@ -1,12 +1,5 @@
 package common
 
-// ValidatorSettings represents the options used to validate outputs.
-type ValidatorSettings struct {
-	Lang      *string  `json:"Lang,omitempty"`
-	Name      string   `json:"Name"`
-	Tolerance *float64 `json:"Tolerance,omitempty"`
-}
-
 // LimitsSettings represents runtime limits for the Input.
 type LimitsSettings struct {
 	ExtraWallTime        int64
@@ -14,7 +7,14 @@ type LimitsSettings struct {
 	OutputLimit          int64
 	OverallWallTimeLimit int64
 	TimeLimit            int64
-	ValidatorTimeLimit   int64
+}
+
+// ValidatorSettings represents the options used to validate outputs.
+type ValidatorSettings struct {
+	Lang      *string         `json:"Lang,omitempty"`
+	Name      string          `json:"Name"`
+	Tolerance *float64        `json:"Tolerance,omitempty"`
+	Limits    *LimitsSettings `json:"Limits,omitempty"`
 }
 
 type InteractiveInterface struct {
@@ -76,3 +76,13 @@ type ProblemSettings struct {
 	Slow        bool                 `json:"Slow"`
 	Validator   ValidatorSettings    `json:"Validator"`
 }
+
+var (
+	DefaultValidatorLimits LimitsSettings = LimitsSettings{
+		ExtraWallTime:        0,                 // 0s
+		MemoryLimit:          256 * 1024 * 1024, // 256MB
+		OutputLimit:          10 * 1024,         // 10k
+		OverallWallTimeLimit: 5000,              // 5s
+		TimeLimit:            1000,              // 1s
+	}
+)

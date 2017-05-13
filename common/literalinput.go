@@ -28,8 +28,9 @@ type LiteralCaseSettings struct {
 // LiteralCustomValidatorSettings stores the source of the program that will
 // validate the contestant's outputs.
 type LiteralCustomValidatorSettings struct {
-	Source   string `json:"source"`
-	Language string `json:"language"`
+	Source   string          `json:"source"`
+	Language string          `json:"language"`
+	Limits   *LimitsSettings `json:"limits,omitempty"`
 }
 
 // LiteralValidatorSettings stores the settings for the validator, that will
@@ -60,7 +61,6 @@ var (
 		OverallWallTimeLimit: 5000,     // 5s
 		ExtraWallTime:        0,        // 0s
 		OutputLimit:          10240,    // 10k
-		ValidatorTimeLimit:   1000,     // 1s
 	}
 
 	DefaultLiteralValidatorSettings = LiteralValidatorSettings{
@@ -158,6 +158,10 @@ func NewLiteralInputFactory(
 			validator.CustomValidator.Language,
 		)
 		factory.files[validatorFilename] = []byte(validator.CustomValidator.Source)
+		if validator.CustomValidator.Limits == nil {
+			limits := DefaultValidatorLimits
+			validator.CustomValidator.Limits = &limits
+		}
 	case "token", "token-caseless":
 		factory.settings.Validator.Name = validator.Name
 	case "token-numeric":
@@ -194,10 +198,6 @@ func NewLiteralInputFactory(
 		factory.settings.Limits.OutputLimit = min(
 			input.Limits.OutputLimit,
 			DefaultLiteralLimitSettings.OutputLimit,
-		)
-		factory.settings.Limits.ValidatorTimeLimit = min(
-			input.Limits.ValidatorTimeLimit,
-			DefaultLiteralLimitSettings.ValidatorTimeLimit,
 		)
 	} else {
 		factory.settings.Limits = DefaultLiteralLimitSettings
