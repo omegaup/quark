@@ -172,6 +172,7 @@ type Context struct {
 	Log             log15.Logger
 	EventCollector  EventCollector
 	EventFactory    *EventFactory
+	Metrics         Metrics
 	handler         log15.Handler
 	logBuffer       *bytes.Buffer
 	tracingFd       *os.File
@@ -199,7 +200,8 @@ func NewConfig(reader io.Reader) (*Config, error) {
 // creates a Logger.
 func NewContext(config *Config) (*Context, error) {
 	var context = Context{
-		Config: *config,
+		Config:  *config,
+		Metrics: &NoOpMetrics{},
 	}
 
 	// Logging

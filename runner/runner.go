@@ -841,6 +841,7 @@ func Grade(
 						fmt.Sprintf("%s.out", caseData.Name),
 					)
 					if _, err := os.Stat(originalOutputFile); os.IsNotExist(err) {
+						ctx.Metrics.CounterAdd("runner_validator_errors", 1)
 						ctx.Log.Info(
 							"original file did not exist, using /dev/null",
 							"case name", caseData.Name,

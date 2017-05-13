@@ -213,18 +213,18 @@ func v1CompatRunPostProcessor(
 ) {
 	ctx := context()
 	for run := range finishedRuns {
-		gaugeAdd("grader_queue_total_length", -1)
+		ctx.Metrics.GaugeAdd("grader_queue_total_length", -1)
 		delay := time.Now().Sub(run.CreationTime).Seconds()
-		summaryObserve("grader_queue_delay_seconds", delay)
+		ctx.Metrics.SummaryObserve("grader_queue_delay_seconds", delay)
 		if run.Priority == grader.QueuePriorityLow {
-			summaryObserve("grader_queue_low_delay_seconds", delay)
+			ctx.Metrics.SummaryObserve("grader_queue_low_delay_seconds", delay)
 		} else if run.Priority == grader.QueuePriorityNormal {
-			summaryObserve("grader_queue_normal_delay_seconds", delay)
+			ctx.Metrics.SummaryObserve("grader_queue_normal_delay_seconds", delay)
 		} else if run.Priority == grader.QueuePriorityHigh {
-			summaryObserve("grader_queue_high_delay_seconds", delay)
+			ctx.Metrics.SummaryObserve("grader_queue_high_delay_seconds", delay)
 		}
 		if run.Result.Verdict == "JE" {
-			counterAdd("grader_runs_je", 1)
+			ctx.Metrics.CounterAdd("grader_runs_je", 1)
 		}
 		if ctx.Config.Grader.V1.UpdateDatabase {
 			v1CompatUpdateDatabase(ctx, db, run)
@@ -415,8 +415,8 @@ func v1CompatInjectRuns(
 			runCtx.Priority = priority
 		}
 		ctx.Log.Info("RunContext", "runCtx", runCtx)
-		gaugeAdd("grader_queue_total_length", 1)
-		counterAdd("grader_runs_total", 1)
+		ctx.Metrics.GaugeAdd("grader_queue_total_length", 1)
+		ctx.Metrics.CounterAdd("grader_runs_total", 1)
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
 			v1compat.NewGraderInputFactory(

@@ -109,6 +109,27 @@ var (
 	}
 )
 
+type prometheusMetrics struct {
+}
+
+func (p *prometheusMetrics) GaugeAdd(name string, value float64) {
+	if gauge, ok := gauges[name]; ok {
+		gauge.Add(value)
+	}
+}
+
+func (p *prometheusMetrics) CounterAdd(name string, value float64) {
+	if counter, ok := counters[name]; ok {
+		counter.Add(value)
+	}
+}
+
+func (p *prometheusMetrics) SummaryObserve(name string, value float64) {
+	if summary, ok := summaries[name]; ok {
+		summary.Observe(value)
+	}
+}
+
 func setupMetrics(ctx *grader.Context) {
 	for _, gauge := range gauges {
 		prometheus.MustRegister(gauge)
@@ -119,6 +140,8 @@ func setupMetrics(ctx *grader.Context) {
 	for _, summary := range summaries {
 		prometheus.MustRegister(summary)
 	}
+
+	ctx.Metrics = &prometheusMetrics{}
 
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", prometheus.Handler())
@@ -149,16 +172,4 @@ func gaugesUpdate() {
 		gauges["disk_total"].Set(float64(s.Total))
 		gauges["disk_used"].Set(float64(s.Used))
 	}
-}
-
-func gaugeAdd(name string, value float64) {
-	gauges[name].Add(value)
-}
-
-func counterAdd(name string, value float64) {
-	counters[name].Add(value)
-}
-
-func summaryObserve(name string, value float64) {
-	summaries[name].Observe(value)
 }

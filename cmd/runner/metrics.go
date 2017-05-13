@@ -12,6 +12,15 @@ import (
 )
 
 var (
+	counters = map[string]prometheus.Counter{
+		"runner_validator_errors": prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "quark",
+			Subsystem: "runner",
+			Help:      "Number of validator errors",
+			Name:      "validator_errors",
+		}),
+	}
+
 	gauges = map[string]prometheus.Gauge{
 		"cpu_load1": prometheus.NewGauge(prometheus.GaugeOpts{
 			Subsystem: "os",
@@ -96,10 +105,33 @@ var (
 	}
 )
 
+type prometheusMetrics struct {
+}
+
+func (p *prometheusMetrics) GaugeAdd(name string, value float64) {
+	if gauge, ok := gauges[name]; ok {
+		gauge.Add(value)
+	}
+}
+
+func (p *prometheusMetrics) CounterAdd(name string, value float64) {
+	if counter, ok := counters[name]; ok {
+		counter.Add(value)
+	}
+}
+
+func (p *prometheusMetrics) SummaryObserve(name string, value float64) {
+}
+
 func setupMetrics(ctx *common.Context) {
 	for _, gauge := range gauges {
 		prometheus.MustRegister(gauge)
 	}
+	for _, counter := range counters {
+		prometheus.MustRegister(counter)
+	}
+
+	ctx.Metrics = &prometheusMetrics{}
 
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", prometheus.Handler())
