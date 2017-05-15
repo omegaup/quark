@@ -397,7 +397,6 @@ func (*MinijailSandbox) Run(
 		}
 	case "kp", "kj":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/karel"),
 			"-S", path.Join(minijailPath, "scripts/js"),
 			"-b", path.Join(minijailPath, "root-js") + ",/opt/nodejs",
 			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "run", fmt.Sprintf("%s.kx", target),
