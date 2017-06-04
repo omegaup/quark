@@ -37,12 +37,13 @@ var (
 	debug = flag.Bool("debug", false, "Enables debug in oneshot mode.")
 
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
+	noop       = flag.Bool("noop-sandbox", false, "Use the no-op sandbox (always returns AC)")
 	configPath = flag.String("config", "/etc/omegaup/runner/config.json",
 		"Runner configuration file")
 	globalContext atomic.Value
 	ioLock        common.FairMutex
 	inputManager  *common.InputManager
-	minijail      runner.MinijailSandbox
+	sandbox       runner.Sandbox
 )
 
 func isOneShotMode() bool {
@@ -76,6 +77,12 @@ func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	flag.Parse()
 
+	if *noop {
+		sandbox = &noopSandbox{}
+	} else {
+		sandbox = &runner.MinijailSandbox{}
+	}
+
 	if err := loadContext(); err != nil {
 		panic(err)
 	}
@@ -101,7 +108,7 @@ func main() {
 			results, err := runner.RunHostBenchmark(
 				ctx,
 				inputManager,
-				&minijail,
+				sandbox,
 				&ioLock,
 			)
 			if err != nil {
@@ -148,7 +155,7 @@ func main() {
 			}
 			defer input.Release(input)
 
-			results, err := runner.Grade(ctx, nil, &run, input, &minijail)
+			results, err := runner.Grade(ctx, nil, &run, input, sandbox)
 			if err != nil {
 				ctx.Log.Error("Error grading run", "err", err)
 				return
@@ -217,7 +224,7 @@ func main() {
 			results, err := runner.RunHostBenchmark(
 				ctx,
 				inputManager,
-				&minijail,
+				sandbox,
 				&ioLock,
 			)
 			if err != nil {
@@ -417,6 +424,27 @@ func gradeAndUploadResults(
 		}
 	}
 
+	if *noop {
+		// The no-op runner judges everything as AC.
+		result.Verdict = "AC"
+		result.Score = 1.0
+		result.ContestScore = result.MaxScore
+
+		for i, _ := range result.Groups {
+			group := &result.Groups[i]
+			group.Score = group.MaxScore
+			group.ContestScore = group.MaxScore * result.ContestScore
+
+			for j, _ := range group.Cases {
+				caseResult := &group.Cases[j]
+				caseResult.Score = caseResult.MaxScore
+				caseResult.ContestScore = caseResult.MaxScore * result.ContestScore
+				caseResult.Verdict = "AC"
+
+			}
+		}
+	}
+
 	// Send results.
 	resultWriter, err := multipartWriter.CreateFormFile("file", "details.json")
 	if err != nil {
@@ -502,5 +530,5 @@ func gradeRun(
 		return nil, err
 	}
 
-	return runner.Grade(ctx, filesWriter, run, input, &minijail)
+	return runner.Grade(ctx, filesWriter, run, input, sandbox)
 }
