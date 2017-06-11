@@ -68,24 +68,47 @@ func v1CompatUpdateDatabase(
 	db *sql.DB,
 	run *grader.RunInfo,
 ) {
-	_, err := db.Exec(
-		`UPDATE
-			Runs
-		SET
-			status = 'ready', verdict = ?, runtime = ?, memory = ?, score = ?,
-			contest_score = ?, judged_by = ?
-		WHERE
-			run_id = ?;`,
-		run.Result.Verdict,
-		run.Result.Time*1000,
-		run.Result.Memory,
-		run.Result.Score,
-		run.Result.ContestScore,
-		run.Result.JudgedBy,
-		run.ID,
-	)
-	if err != nil {
-		ctx.Log.Error("Error updating the database", "err", err, "run", run)
+	if run.PenaltyType == "runtime" {
+		_, err := db.Exec(
+			`UPDATE
+				Runs
+			SET
+				status = 'ready', verdict = ?, runtime = ?, penalty = ?, memory = ?,
+				score = ?, contest_score = ?, judged_by = ?
+			WHERE
+				run_id = ?;`,
+			run.Result.Verdict,
+			run.Result.Time*1000,
+			run.Result.Time*1000,
+			run.Result.Memory,
+			run.Result.Score,
+			run.Result.ContestScore,
+			run.Result.JudgedBy,
+			run.ID,
+		)
+		if err != nil {
+			ctx.Log.Error("Error updating the database", "err", err, "run", run)
+		}
+	} else {
+		_, err := db.Exec(
+			`UPDATE
+				Runs
+			SET
+				status = 'ready', verdict = ?, runtime = ?, memory = ?, score = ?,
+				contest_score = ?, judged_by = ?
+			WHERE
+				run_id = ?;`,
+			run.Result.Verdict,
+			run.Result.Time*1000,
+			run.Result.Memory,
+			run.Result.Score,
+			run.Result.ContestScore,
+			run.Result.JudgedBy,
+			run.ID,
+		)
+		if err != nil {
+			ctx.Log.Error("Error updating the database", "err", err, "run", run)
+		}
 	}
 }
 
@@ -301,12 +324,13 @@ func v1CompatNewRunContext(
 		guid[2:],
 	)
 	var contestName sql.NullString
+	var penaltyType sql.NullString
 	var contestPoints sql.NullFloat64
 	validatorLimits := common.DefaultValidatorLimits
 	settings := common.ProblemSettings{}
 	err := db.QueryRow(
 		`SELECT
-			r.run_id, c.alias, r.language, p.alias, pp.points,
+			r.run_id, c.alias, c.penalty_type, r.language, p.alias, pp.points,
 			p.extra_wall_time, p.memory_limit, p.output_limit,
 			p.overall_wall_time_limit, p.time_limit, p.validator_time_limit, p.slow,
 			p.validator
@@ -323,6 +347,7 @@ func v1CompatNewRunContext(
 			r.guid = ?;`, guid).Scan(
 		&runCtx.ID,
 		&contestName,
+		&penaltyType,
 		&runCtx.Run.Language,
 		&runCtx.ProblemName,
 		&contestPoints,
@@ -368,6 +393,9 @@ func v1CompatNewRunContext(
 
 	if contestName.Valid {
 		runCtx.Contest = &contestName.String
+	}
+	if penaltyType.Valid {
+		runCtx.PenaltyType = penaltyType.String
 	}
 	if contestPoints.Valid {
 		runCtx.Run.MaxScore = contestPoints.Float64

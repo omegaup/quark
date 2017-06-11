@@ -35,6 +35,7 @@ type RunInfo struct {
 	Result      runner.RunResult
 	GradeDir    string
 	Priority    QueuePriority
+	PenaltyType string
 
 	CreationTime time.Time
 }
