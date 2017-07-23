@@ -238,6 +238,23 @@ func (*MinijailSandbox) Compile(
 			"-S", path.Join(minijailPath, "scripts/lua"),
 			"--", "/usr/bin/luac", "-o", target,
 		}
+	case "cs":
+		params = []string{
+			"-S", path.Join(minijailPath, "scripts/csc"),
+			"-b", path.Join(minijailPath, "root-dotnet") + ",/usr/share/dotnet",
+			"-m", "-1", // TODO(lhchavez): Add memory limits.
+			"--", "/usr/share/dotnet/dotnet",
+			"/usr/share/dotnet/sdk/1.0.4/Roslyn/csc.exe", "/noconfig",
+			"@/usr/share/dotnet/Release.rsp", "/target:exe",
+			fmt.Sprintf("/out:%s.dll", target),
+		}
+		err := os.Symlink(
+			"/usr/share/dotnet/Main.runtimeconfig.json",
+			fmt.Sprintf("%s/%s.runtimeconfig.json", chdir, target),
+		)
+		if err != nil {
+			ctx.Log.Error("Failed to symlink runtimeconfig", "err", err)
+		}
 	}
 
 	finalParams := make([]string, 0)
@@ -411,6 +428,13 @@ func (*MinijailSandbox) Run(
 		params = []string{
 			"-S", path.Join(minijailPath, "scripts/lua"),
 			"-m", hardLimit, "--", "/usr/bin/lua", target,
+		}
+	case "cs":
+		params = []string{
+			"-S", path.Join(minijailPath, "scripts/cs"),
+			"-b", path.Join(minijailPath, "root-dotnet") + ",/usr/share/dotnet",
+			"-m", "-1", // TODO(lhchavez): Add memory limits.
+			"--", "/usr/share/dotnet/dotnet", fmt.Sprintf("%s.dll", target),
 		}
 	}
 

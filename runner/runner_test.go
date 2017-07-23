@@ -339,6 +339,33 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
+			"cs",
+			`using System.Collections.Generic;
+			using System.Linq;
+			using System;
+
+			class Program
+			{
+					static void Main(string[] args)
+					{
+							List<int> l = new List<int>();
+							foreach (String token in Console.ReadLine().Trim().Split(' ')) {
+								l.Add(Int32.Parse(token));
+							}
+							Console.WriteLine(l.Sum(x => x));
+					}
+			}`,
+			1.0,
+			"AC",
+			1.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
 			"java",
 			`class Main {
 				public static void main(String[] args) {
