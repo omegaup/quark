@@ -30,12 +30,12 @@ type sandboxWrapper interface {
 	sandbox(testCase *runnerTestCase) Sandbox
 }
 
-type minijailSandboxWrapper struct {
-	minijail *MinijailSandbox
+type omegajailSandboxWrapper struct {
+	omegajail *OmegajailSandbox
 }
 
-func (wrapper *minijailSandboxWrapper) sandbox(testCase *runnerTestCase) Sandbox {
-	return wrapper.minijail
+func (wrapper *omegajailSandboxWrapper) sandbox(testCase *runnerTestCase) Sandbox {
+	return wrapper.omegajail
 }
 
 type fakeSandboxWrapper struct {
@@ -141,15 +141,15 @@ func TestGrade(t *testing.T) {
 	runGraderTests(t, &fakeSandboxWrapper{})
 }
 
-func TestGradeMinijail(t *testing.T) {
-	minijail := &MinijailSandbox{}
+func TestGradeOmegajail(t *testing.T) {
+	omegajail := &OmegajailSandbox{}
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	if !minijail.Supported() {
-		t.Skip("minijail sandbox not supported")
+	if !omegajail.Supported() {
+		t.Skip("omegajail sandbox not supported")
 	}
-	runGraderTests(t, &minijailSandboxWrapper{minijail: minijail})
+	runGraderTests(t, &omegajailSandboxWrapper{omegajail: omegajail})
 }
 
 func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
@@ -366,6 +366,35 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
+			"cs",
+			`using System.Collections.Generic;
+			using System.Linq;
+			using System;
+
+			class Program
+			{
+					static void Main(string[] args)
+					{
+							List<int> l = new List<int>();
+							foreach (String token in Console.ReadLine().Trim().Split(' ')) {
+								for (int i = 0; i < 10000000; i++) {
+									l.Add(Int32.Parse(token));
+								}
+							}
+							Console.WriteLine(l.Sum(x => x));
+					}
+			}`,
+			1.0,
+			"MLE",
+			0.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"", "", &RunMetadata{Verdict: "MLE"}},
+				"1.0": {"", "", &RunMetadata{Verdict: "MLE"}},
+				"1.1": {"", "", &RunMetadata{Verdict: "MLE"}},
+			},
+		},
+		{
 			"java",
 			`class Main {
 				public static void main(String[] args) {
@@ -463,15 +492,15 @@ func TestKarelGrade(t *testing.T) {
 	runKarelGraderTests(t, &fakeSandboxWrapper{})
 }
 
-func TestKarelGradeMinijail(t *testing.T) {
-	minijail := &MinijailSandbox{}
+func TestKarelGradeOmegajail(t *testing.T) {
+	omegajail := &OmegajailSandbox{}
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	if !minijail.Supported() {
-		t.Skip("minijail sandbox not supported")
+	if !omegajail.Supported() {
+		t.Skip("omegajail sandbox not supported")
 	}
-	runKarelGraderTests(t, &minijailSandboxWrapper{minijail: minijail})
+	runKarelGraderTests(t, &omegajailSandboxWrapper{omegajail: omegajail})
 }
 
 func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
@@ -598,12 +627,12 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 }
 
 func TestLibinteractive(t *testing.T) {
-	minijail := &MinijailSandbox{}
+	omegajail := &OmegajailSandbox{}
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	if !minijail.Supported() {
-		t.Skip("minijail sandbox not supported")
+	if !omegajail.Supported() {
+		t.Skip("omegajail sandbox not supported")
 	}
 	ctx, err := newRunnerContext()
 	if err != nil {
@@ -774,7 +803,7 @@ func TestLibinteractive(t *testing.T) {
 				MaxScore:  rte.maxScore,
 			},
 			input,
-			minijail,
+			omegajail,
 		)
 		if err != nil {
 			t.Errorf("Failed to run %v: %q", rte, err)

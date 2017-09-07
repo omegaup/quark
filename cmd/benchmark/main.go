@@ -13,7 +13,7 @@ var (
 	runtimePath = flag.String("runtime-path", "", "Override the runtime path")
 	verbose     = flag.Bool("verbose", false, "Verbose logging")
 	ioLock      common.FairMutex
-	minijail    runner.MinijailSandbox
+	omegajail   runner.OmegajailSandbox
 )
 
 func main() {
@@ -45,7 +45,7 @@ func main() {
 	results, err := runner.RunHostBenchmark(
 		ctx,
 		inputManager,
-		&minijail,
+		&omegajail,
 		&ioLock,
 	)
 	if err != nil {

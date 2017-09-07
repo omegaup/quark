@@ -58,6 +58,7 @@ type RunnerConfig struct {
 	RuntimePath         string
 	CompileTimeLimit    int
 	CompileOutputLimit  int
+	ClrVmEstimatedSize  int64
 	JavaVmEstimatedSize int64
 	PreserveFiles       bool
 }
@@ -145,6 +146,7 @@ var defaultConfig = Config{
 		GraderURL:           "https://omegaup.com:11302",
 		CompileTimeLimit:    30,
 		CompileOutputLimit:  10 * 1024 * 1024, // 10 MiB
+		ClrVmEstimatedSize:  20 * 1024 * 1024, // 20 MiB
 		JavaVmEstimatedSize: 30 * 1024 * 1024, // 30 MiB
 		PreserveFiles:       false,
 	},

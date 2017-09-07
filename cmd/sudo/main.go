@@ -19,7 +19,7 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintf(
 			os.Stderr,
-			"Usage: %s [--setup-setuid] /var/lib/minijail/bin/minijail0 args...\n",
+			"Usage: %s [--setup-setuid] /var/lib/omegajail/bin/omegajail args...\n",
 			os.Args[0],
 		)
 		os.Exit(1)
@@ -33,8 +33,8 @@ func main() {
 			panic(err)
 		}
 		os.Exit(0)
-	} else if os.Args[1] != "/var/lib/minijail/bin/minijail0" {
-		fmt.Fprintf(os.Stderr, "Only minijail0 is supported\n")
+	} else if os.Args[1] != "/var/lib/omegajail/bin/omegajail" {
+		fmt.Fprintf(os.Stderr, "Only omegajail is supported\n")
 		os.Exit(2)
 	}
 

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	minijailPath string = "/var/lib/minijail"
+	omegajailPath string = "/var/lib/omegajail"
 )
 
 var (
@@ -26,7 +26,7 @@ var (
 
 func init() {
 	// ghc was moved from lib/ghc to bin/ghc recently. Try to detect that.
-	_, err := os.Stat(path.Join(minijailPath, "root-hs/lib/ghc"))
+	_, err := os.Stat(path.Join(omegajailPath, "root-hs/lib/ghc"))
 	if !os.IsNotExist(err) {
 		haskellCompiler = "/usr/lib/ghc/lib/ghc"
 	}
@@ -95,6 +95,26 @@ type RunMetadata struct {
 	Syscall    *string `json:"syscall,omitempty"`
 }
 
+func (m *RunMetadata) String() string {
+	metadata := fmt.Sprintf(
+		"{Verdict: %s, ExitStatus: %d, Time: %.3fs, SystemTime: %.3fs, WallTime: %.3fs, Memory: %.3fMiB",
+		m.Verdict,
+		m.ExitStatus,
+		m.Time,
+		m.SystemTime,
+		m.WallTime,
+		float64(m.Memory)/1024.0/1024.0,
+	)
+	if m.Signal != nil {
+		metadata += fmt.Sprintf(", Signal: %s", *m.Signal)
+	}
+	if m.Syscall != nil {
+		metadata += fmt.Sprintf(", Syscall: %s", *m.Syscall)
+	}
+	metadata += "}"
+	return metadata
+}
+
 type Sandbox interface {
 	// Supported returns true if the sandbox is available in the system.
 	Supported() bool
@@ -120,14 +140,14 @@ type Sandbox interface {
 	) (*RunMetadata, error)
 }
 
-type MinijailSandbox struct{}
+type OmegajailSandbox struct{}
 
-func (*MinijailSandbox) Supported() bool {
-	_, err := os.Stat(path.Join(minijailPath, "bin/minijail0"))
+func (*OmegajailSandbox) Supported() bool {
+	_, err := os.Stat(path.Join(omegajailPath, "bin/omegajail"))
 	return err == nil
 }
 
-func (*MinijailSandbox) Compile(
+func (*OmegajailSandbox) Compile(
 	ctx *common.Context,
 	lang string,
 	inputFiles []string,
@@ -135,9 +155,7 @@ func (*MinijailSandbox) Compile(
 	extraFlags []string,
 ) (*RunMetadata, error) {
 	commonParams := []string{
-		path.Join(minijailPath, "bin/minijail0"),
-		"-q",
-		"-C", path.Join(minijailPath, "root-compilers"),
+		"-C", path.Join(omegajailPath, "root-compilers"),
 		"-d", "/home",
 		"-b", chdir + ",/home,1",
 		"-1", outputFile,
@@ -172,79 +190,79 @@ func (*MinijailSandbox) Compile(
 	switch lang {
 	case "java":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/javac"),
-			"-b", path.Join(minijailPath, "root-openjdk,/usr/lib/jvm"),
-			"-b", "/sys/,/sys",
+			"-S", path.Join(omegajailPath, "scripts/javac"),
+			"-b", path.Join(omegajailPath, "root-openjdk,/usr/lib/jvm"),
 			"--", "/usr/bin/javac", "-J-Xmx512M", "-d", ".",
 		}
 	case "c":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/gcc"),
+			"-S", path.Join(omegajailPath, "scripts/gcc"),
 			"--", "/usr/bin/gcc", "-o", target, "-std=c11", "-O2",
 		}
 		linkerFlags = append(linkerFlags, "-lm")
 	case "cpp":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/gcc"),
+			"-S", path.Join(omegajailPath, "scripts/gcc"),
 			"--", "/usr/bin/g++", "-o", target, "-O2",
 		}
 		linkerFlags = append(linkerFlags, "-lm")
 	case "cpp11":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/gcc"),
+			"-S", path.Join(omegajailPath, "scripts/gcc"),
 			"--", "/usr/bin/g++", "-o", target, "-std=c++11", "-O2",
 		}
 		linkerFlags = append(linkerFlags, "-lm")
 	case "pas":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/fpc"),
-			"--", "/usr/bin/ldwrapper", "/usr/bin/fpc", "-Tlinux", "-O2",
+			"-S", path.Join(omegajailPath, "scripts/fpc"),
+			"--", "/usr/bin/fpc", "-Tlinux", "-O2",
 			"-Mobjfpc", "-Sc", "-Sh", fmt.Sprintf("-o%s", target),
 		}
 	case "py":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/pyc"),
-			"-b", path.Join(minijailPath, "root-python") + ",/usr/lib/python2.7",
+			"-S", path.Join(omegajailPath, "scripts/pyc"),
+			"-b", path.Join(omegajailPath, "root-python") + ",/usr/lib/python2.7",
 			"--", "/usr/bin/python", "-m", "py_compile",
 		}
 	case "rb":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/ruby"),
-			"-b", path.Join(minijailPath, "root-ruby") + ",/usr/lib/ruby",
+			"-S", path.Join(omegajailPath, "scripts/ruby"),
+			"-b", path.Join(omegajailPath, "root-ruby") + ",/usr/lib/ruby",
 			"--", "/usr/bin/ruby", "-wc",
 		}
 	case "kj":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/js"),
-			"-b", path.Join(minijailPath, "root-js") + ",/opt/nodejs",
+			"-S", path.Join(omegajailPath, "scripts/js"),
+			"-b", path.Join(omegajailPath, "root-js") + ",/opt/nodejs",
+			"-0", path.Join(omegajailPath, "root-compilers/dev/null"),
 			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "compile", "java",
 			"-o", fmt.Sprintf("%s.kx", target),
 		}
 	case "kp":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/js"),
-			"-b", path.Join(minijailPath, "root-js") + ",/opt/nodejs",
+			"-S", path.Join(omegajailPath, "scripts/js"),
+			"-b", path.Join(omegajailPath, "root-js") + ",/opt/nodejs",
+			"-0", path.Join(omegajailPath, "root-compilers/dev/null"),
 			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "compile", "pascal",
 			"-o", fmt.Sprintf("%s.kx", target),
 		}
 	case "hs":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/ghc"),
-			"-b", path.Join(minijailPath, "root-hs") + ",/usr/lib/ghc",
+			"-S", path.Join(omegajailPath, "scripts/ghc"),
+			"-b", path.Join(omegajailPath, "root-hs") + ",/usr/lib/ghc",
 			"--", haskellCompiler, "-B/usr/lib/ghc", "-O2", "-o", target,
 		}
 	case "lua":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/lua"),
+			"-S", path.Join(omegajailPath, "scripts/lua"),
 			"--", "/usr/bin/luac", "-o", target,
 		}
 	case "cs":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/csc"),
-			"-b", path.Join(minijailPath, "root-dotnet") + ",/usr/share/dotnet",
-			"-m", "-1", // TODO(lhchavez): Add memory limits.
+			"-S", path.Join(omegajailPath, "scripts/csc"),
+			"-b", path.Join(omegajailPath, "root-dotnet") + ",/usr/share/dotnet",
 			"--", "/usr/share/dotnet/dotnet",
-			"/usr/share/dotnet/sdk/1.0.4/Roslyn/csc.exe", "/noconfig",
+			"/usr/share/dotnet/sdk/2.0.0/Roslyn/csc.exe", "/noconfig",
 			"@/usr/share/dotnet/Release.rsp", "/target:exe",
 			fmt.Sprintf("/out:%s.dll", target),
 		}
@@ -264,7 +282,7 @@ func (*MinijailSandbox) Compile(
 	finalParams = append(finalParams, inputFlags...)
 	finalParams = append(finalParams, linkerFlags...)
 
-	invokeMinijail(ctx, finalParams, errorFile)
+	invokeOmegajail(ctx, finalParams, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -298,7 +316,7 @@ func (*MinijailSandbox) Compile(
 	return metadata, err
 }
 
-func (*MinijailSandbox) Run(
+func (*OmegajailSandbox) Run(
 	ctx *common.Context,
 	limits *common.LimitsSettings,
 	lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
@@ -311,10 +329,13 @@ func (*MinijailSandbox) Run(
 		timeLimit += 1000
 	}
 
+	// Avoid using the real /dev/null. Pass in an empty file instead.
+	if inputFile == "/dev/null" {
+		inputFile = path.Join(omegajailPath, "root/dev/null")
+	}
+
 	commonParams := []string{
-		path.Join(minijailPath, "bin/minijail0"),
-		"-q",
-		"-C", path.Join(minijailPath, "root"),
+		"-C", path.Join(omegajailPath, "root"),
 		"-d", "/home",
 		"-b", chdir + ",/home",
 		"-0", inputFile,
@@ -324,14 +345,13 @@ func (*MinijailSandbox) Run(
 		"-t", strconv.FormatInt(timeLimit, 10),
 		"-w", strconv.FormatInt(limits.ExtraWallTime, 10),
 		"-O", strconv.FormatInt(limits.OutputLimit, 10),
-		"-k", "-1",
 	}
 
-	extraMinijailFlags := make([]string, 2*len(extraMountPoints))
+	extraOmegajailFlags := make([]string, 2*len(extraMountPoints))
 	i := 0
 	for path, mountTarget := range extraMountPoints {
-		extraMinijailFlags[i] = "-b"
-		extraMinijailFlags[i+1] = fmt.Sprintf("%s,%s", path, mountTarget)
+		extraOmegajailFlags[i] = "-b"
+		extraOmegajailFlags[i+1] = fmt.Sprintf("%s,%s", path, mountTarget)
 		i += 2
 	}
 
@@ -379,15 +399,14 @@ func (*MinijailSandbox) Run(
 	switch lang {
 	case "java":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/java"),
-			"-b", path.Join(minijailPath, "root-openjdk,/usr/lib/jvm"),
-			"-b", "/sys/,/sys",
+			"-S", path.Join(omegajailPath, "scripts/java"),
+			"-b", path.Join(omegajailPath, "root-openjdk,/usr/lib/jvm"),
 			"--", "/usr/bin/java", fmt.Sprintf("-Xmx%d", memoryLimit), target,
 		}
 	case "c", "cpp", "cpp11":
 		if limits.MemoryLimit != -1 {
 			params = []string{
-				"-S", path.Join(minijailPath, "scripts/cpp"),
+				"-S", path.Join(omegajailPath, "scripts/cpp"),
 				"-m", hardLimit,
 			}
 		} else {
@@ -397,50 +416,50 @@ func (*MinijailSandbox) Run(
 		params = append(params, "--", fmt.Sprintf("./%s", target))
 	case "pas":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/pas"),
-			"-m", hardLimit, "--", "/usr/bin/ldwrapper", fmt.Sprintf("./%s", target),
+			"-S", path.Join(omegajailPath, "scripts/pas"),
+			"-m", hardLimit, "--", fmt.Sprintf("./%s", target),
 		}
 	case "py":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/py"),
-			"-b", path.Join(minijailPath, "root-python") + ",/usr/lib/python2.7",
+			"-S", path.Join(omegajailPath, "scripts/py"),
+			"-b", path.Join(omegajailPath, "root-python") + ",/usr/lib/python2.7",
 			"-m", hardLimit, "--", "/usr/bin/python", fmt.Sprintf("./%s.py", target),
 		}
 	case "rb":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/ruby"),
-			"-b", path.Join(minijailPath, "root-ruby") + ",/usr/lib/ruby",
+			"-S", path.Join(omegajailPath, "scripts/ruby"),
+			"-b", path.Join(omegajailPath, "root-ruby") + ",/usr/lib/ruby",
 			"-m", hardLimit, "--", "/usr/bin/ruby", fmt.Sprintf("./%s.rb", target),
 		}
 	case "kp", "kj":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/js"),
-			"-b", path.Join(minijailPath, "root-js") + ",/opt/nodejs",
+			"-S", path.Join(omegajailPath, "scripts/js"),
+			"-b", path.Join(omegajailPath, "root-js") + ",/opt/nodejs",
 			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "run", fmt.Sprintf("%s.kx", target),
 		}
 	case "hs":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/hs"),
-			"-b", path.Join(minijailPath, "root-hs") + ",/usr/lib/ghc",
+			"-S", path.Join(omegajailPath, "scripts/hs"),
+			"-b", path.Join(omegajailPath, "root-hs") + ",/usr/lib/ghc",
 			"-m", hardLimit, "--", fmt.Sprintf("./%s", target),
 		}
 	case "lua":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/lua"),
+			"-S", path.Join(omegajailPath, "scripts/lua"),
 			"-m", hardLimit, "--", "/usr/bin/lua", target,
 		}
 	case "cs":
 		params = []string{
-			"-S", path.Join(minijailPath, "scripts/cs"),
-			"-b", path.Join(minijailPath, "root-dotnet") + ",/usr/share/dotnet",
-			"-m", "-1", // TODO(lhchavez): Add memory limits.
+			"-S", path.Join(omegajailPath, "scripts/cs"),
+			"-b", path.Join(omegajailPath, "root-dotnet") + ",/usr/share/dotnet",
+			"--cgroup-memory-limit", hardLimit,
 			"--", "/usr/share/dotnet/dotnet", fmt.Sprintf("%s.dll", target),
 		}
 	}
 
 	finalParams := make([]string, 0)
 	finalParams = append(finalParams, commonParams...)
-	finalParams = append(finalParams, extraMinijailFlags...)
+	finalParams = append(finalParams, extraOmegajailFlags...)
 	finalParams = append(finalParams, params...)
 	finalParams = append(finalParams, extraParams...)
 
@@ -452,7 +471,7 @@ func (*MinijailSandbox) Run(
 		preloader.release()
 	}
 
-	invokeMinijail(ctx, finalParams, errorFile)
+	invokeOmegajail(ctx, finalParams, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -464,27 +483,29 @@ func (*MinijailSandbox) Run(
 	return parseMetaFile(ctx, limits, lang, metaFd, lang == "c")
 }
 
-func invokeMinijail(ctx *common.Context, minijailParams []string, errorFile string) {
-	ctx.Log.Debug("invoking", "params", minijailParams)
-	cmd := exec.Command("/usr/bin/sudo", minijailParams...)
-	minijailErrorFile := errorFile + ".minijail"
-	minijailErrorFd, err := os.Create(minijailErrorFile)
+func invokeOmegajail(ctx *common.Context, omegajailParams []string, errorFile string) {
+	omegajailFullParams := []string{path.Join(omegajailPath, "bin/omegajail")}
+	omegajailFullParams = append(omegajailFullParams, omegajailParams...)
+	ctx.Log.Debug("invoking", "params", omegajailFullParams)
+	cmd := exec.Command(omegajailFullParams[0], omegajailParams...)
+	omegajailErrorFile := errorFile + ".omegajail"
+	omegajailErrorFd, err := os.Create(omegajailErrorFile)
 	if err != nil {
-		ctx.Log.Error("Failed to redirect minijail stderr", "err", err)
+		ctx.Log.Error("Failed to redirect omegajail stderr", "err", err)
 	} else {
-		defer os.Remove(minijailErrorFile)
-		cmd.Stderr = minijailErrorFd
+		defer os.Remove(omegajailErrorFile)
+		cmd.Stderr = omegajailErrorFd
 	}
 	if err := cmd.Run(); err != nil {
 		ctx.Log.Error(
-			"Minijail execution failed",
+			"Omegajail execution failed",
 			"err", err,
 		)
 	}
-	if minijailErrorFd != nil {
-		minijailErrorFd.Close()
-		if err := appendFile(errorFile, minijailErrorFile); err != nil {
-			ctx.Log.Error("Failed to append minijail stderr", "err", err)
+	if omegajailErrorFd != nil {
+		omegajailErrorFd.Close()
+		if err := appendFile(errorFile, omegajailErrorFile); err != nil {
+			ctx.Log.Error("Failed to append omegajail stderr", "err", err)
 		}
 	}
 }
@@ -578,15 +599,16 @@ func parseMetaFile(
 		meta.Verdict = "RTE"
 	}
 
-	if lang == "java" {
-		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVmEstimatedSize)
-	}
 	if limits != nil &&
 		limits.MemoryLimit > 0 &&
 		meta.Memory > limits.MemoryLimit &&
 		(lang != "java" || meta.ExitStatus != 0) {
 		meta.Verdict = "MLE"
 		meta.Memory = limits.MemoryLimit
+	} else if lang == "java" {
+		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVmEstimatedSize)
+	} else if lang == "cs" {
+		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.ClrVmEstimatedSize)
 	}
 
 	return meta, nil

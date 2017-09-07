@@ -449,8 +449,7 @@ func Grade(
 			extraFlags := []string{}
 			if run.Debug &&
 				(run.Language == "c" || run.Language == "cpp" || run.Language == "cpp11") {
-				// ASan does not like not being the first dynamic library in the load
-				// chain, so link it dynamically so it can run with minijail.
+				// We don't ship the dynamic library for ASan, so link it statically.
 				extraFlags = []string{"-static-libasan", "-fsanitize=address"}
 				// ASan uses TONS of extra memory.
 				settings.Limits.MemoryLimit = -1
@@ -551,8 +550,8 @@ func Grade(
 			ctx.Log.Error("Compile error", "err", err, "compileMeta", compileMeta)
 			runResult.Verdict = "CE"
 			compileErrorFile := "compile.err"
-			if b.language == "pas" {
-				// Lazarus writes the output of the compile error in compile.out.
+			if b.language == "pas" || b.language == "cs" {
+				// Lazarus and dotnet writes the output of the compile error in compile.out.
 				compileErrorFile = "compile.out"
 			} else {
 				compileErrorFile = "compile.err"

@@ -80,7 +80,7 @@ func main() {
 	if *noop {
 		sandbox = &noopSandbox{}
 	} else {
-		sandbox = &runner.MinijailSandbox{}
+		sandbox = &runner.OmegajailSandbox{}
 	}
 
 	if err := loadContext(); err != nil {

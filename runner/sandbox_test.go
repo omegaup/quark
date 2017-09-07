@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-func TestMinijail(t *testing.T) {
-	minijail := MinijailSandbox{}
-	if !minijail.Supported() {
-		t.Skip("minijail sandbox not supported")
+func TestOmegajail(t *testing.T) {
+	omegajail := OmegajailSandbox{}
+	if !omegajail.Supported() {
+		t.Skip("omegajail sandbox not supported")
 	}
 }
 
