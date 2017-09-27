@@ -396,19 +396,27 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		},
 		{
 			"java",
-			`class Main {
-				public static void main(String[] args) {
-					System.out.println('3');
+			`import java.io.*;
+			import java.util.*;
+			class Main {
+				public static void main(String[] args) throws IOException {
+					long total = 0;
+					try (Scanner in = new Scanner(new BufferedInputStream(System.in))) {
+						while (in.hasNext()) {
+							total += in.nextLong();
+						}
+					}
+					System.out.println(total);
 				}
 			}`,
 			1.0,
-			"PA",
-			0.25,
+			"AC",
+			1.0,
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
 				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
 			},
 		},
 		{
