@@ -143,6 +143,7 @@ func TestParseMetaFile(t *testing.T) {
 			te.limits,
 			te.lang,
 			bytes.NewBufferString(te.contents),
+			nil,
 			te.lang == "c",
 		)
 		if err != nil {

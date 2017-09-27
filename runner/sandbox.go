@@ -291,7 +291,7 @@ func (*OmegajailSandbox) Compile(
 		}, err
 	}
 	defer metaFd.Close()
-	metadata, err := parseMetaFile(ctx, nil, lang, metaFd, false)
+	metadata, err := parseMetaFile(ctx, nil, lang, metaFd, nil, false)
 
 	if lang == "java" && metadata.Verdict == "OK" {
 		classPath := path.Join(chdir, fmt.Sprintf("%s.class", target))
@@ -390,7 +390,7 @@ func (*OmegajailSandbox) Run(
 	}
 
 	// 16MB + memory limit to prevent some RTE
-	memoryLimit := (16*1024 + limits.MemoryLimit) * 1024
+	memoryLimit := 16*1024 + limits.MemoryLimit
 	// "640MB should be enough for anybody"
 	hardLimit := strconv.FormatInt(min64(640*1024*1024, memoryLimit), 10)
 
@@ -480,7 +480,7 @@ func (*OmegajailSandbox) Run(
 		}, err
 	}
 	defer metaFd.Close()
-	return parseMetaFile(ctx, limits, lang, metaFd, lang == "c")
+	return parseMetaFile(ctx, limits, lang, metaFd, &errorFile, lang == "c")
 }
 
 func invokeOmegajail(ctx *common.Context, omegajailParams []string, errorFile string) {
@@ -538,6 +538,7 @@ func parseMetaFile(
 	limits *common.LimitsSettings,
 	lang string,
 	metaFile io.Reader,
+	errorFilePath *string,
 	allowNonZeroExitCode bool,
 ) (*RunMetadata, error) {
 	meta := &RunMetadata{
@@ -599,19 +600,46 @@ func parseMetaFile(
 		meta.Verdict = "RTE"
 	}
 
-	if limits != nil &&
-		limits.MemoryLimit > 0 &&
-		meta.Memory > limits.MemoryLimit &&
-		(lang != "java" || meta.ExitStatus != 0) {
-		meta.Verdict = "MLE"
-		meta.Memory = limits.MemoryLimit
-	} else if lang == "java" {
+	if lang == "java" {
 		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVmEstimatedSize)
 	} else if lang == "cs" {
 		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.ClrVmEstimatedSize)
 	}
+	if limits != nil &&
+		limits.MemoryLimit > 0 &&
+		(meta.Memory > limits.MemoryLimit ||
+			lang == "java" && meta.ExitStatus != 0 && isJavaMLE(ctx, errorFilePath)) {
+		meta.Verdict = "MLE"
+		meta.Memory = limits.MemoryLimit
+	}
 
 	return meta, nil
+}
+
+func isJavaMLE(ctx *common.Context, errorFilePath *string) bool {
+	if errorFilePath == nil {
+		return false
+	}
+
+	f, err := os.Open(*errorFilePath)
+	if err != nil {
+		ctx.Log.Error("Failed to open stderr", "err", err)
+		return false
+	}
+	defer f.Close()
+
+	r := bufio.NewReaderSize(f, 4096)
+	for {
+		line, _, err := r.ReadLine()
+		if err != nil {
+			break
+		}
+		if strings.Contains(string(line), "java.lang.OutOfMemoryError") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func min64(a, b int64) int64 {

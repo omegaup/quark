@@ -420,6 +420,40 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
+			"java",
+			`import java.io.*;
+			import java.util.*;
+			class Main {
+				public static void main(String[] args) throws IOException {
+					long total = 0;
+					try (Scanner in = new Scanner(new BufferedInputStream(System.in))) {
+						while (in.hasNext()) {
+							long x = in.nextLong();
+							long[] arr = new long[1024 * 1024 * 160 * (int)x];
+							for (int i = 0; i < arr.length; i++) {
+								arr[i] = x;
+							}
+							long sum = 0;
+							for (int i = arr.length - 1; i >= 0; i--) {
+								sum += arr[i];
+							}
+							total += (sum % 2) + x;
+						}
+					}
+					System.out.println(total);
+				}
+			}`,
+			1.0,
+			"MLE",
+			0.0,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
+				"1.0": {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
+				"1.1": {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
+			},
+		},
+		{
 			"cat",
 			"data:application/zip;base64,UEsDBAoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABwAMC5vdX" +
 				"RVVAkAA67WxFb8t4ZYdXgLAAEE6AMAAAToAwAAMwpQSwMECgAAAAAAhhE4StGeZ1UCAAAAAg" +
