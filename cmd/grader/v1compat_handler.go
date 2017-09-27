@@ -506,14 +506,16 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	if err != nil {
 		panic(err)
 	}
-	if err := v1CompatInjectRuns(
-		context(),
-		runs,
-		db,
-		guids,
-		grader.QueuePriorityNormal,
-	); err != nil {
-		panic(err)
+	for _, guid := range guids {
+		if err := v1CompatInjectRuns(
+			context(),
+			runs,
+			db,
+			[]string{guid},
+			grader.QueuePriorityNormal,
+		); err != nil {
+			context().Log.Error("Error injecting run", "guid", guid, "err", err)
+		}
 	}
 	context().Log.Info("Injected pending runs", "count", len(guids))
 
