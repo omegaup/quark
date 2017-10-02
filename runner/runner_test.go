@@ -150,6 +150,7 @@ func TestGradeOmegajail(t *testing.T) {
 		t.Skip("omegajail sandbox not supported")
 	}
 	runGraderTests(t, &omegajailSandboxWrapper{omegajail: omegajail})
+	runGraderTestsLowMem(t, &omegajailSandboxWrapper{omegajail: omegajail})
 }
 
 func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
@@ -491,6 +492,128 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				&RunMetadata{ExitStatus: 1, Verdict: "CE"},
 			},
 			map[string]expectedResult{},
+		},
+	}
+	for idx, rte := range runtests {
+		results, err := Grade(
+			ctx,
+			&bytes.Buffer{},
+			&common.Run{
+				AttemptID: uint64(idx),
+				Language:  rte.language,
+				InputHash: input.Hash(),
+				Source:    rte.source,
+				MaxScore:  rte.maxScore,
+			},
+			input,
+			wrapper.sandbox(&rte),
+		)
+		if err != nil {
+			t.Errorf("Failed to run %v: %q", rte, err)
+			continue
+		}
+		if results.Verdict != rte.expectedVerdict {
+			t.Errorf(
+				"results.Verdict = %q, expected %q, test %v: %v",
+				results.Verdict,
+				rte.expectedVerdict,
+				idx,
+				rte,
+			)
+		}
+		if results.Score != rte.expectedScore {
+			t.Errorf(
+				"results.Score = %v, expected %v",
+				results.Score,
+				rte.expectedScore,
+			)
+		}
+	}
+}
+
+func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
+	ctx, err := newRunnerContext()
+	if err != nil {
+		t.Fatalf("RunnerContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	}
+
+	inputManager := common.NewInputManager(ctx)
+	AplusB, err := common.NewLiteralInputFactory(
+		&common.LiteralInput{
+			Cases: map[string]common.LiteralCaseSettings{
+				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
+				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
+				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: &[]float64{2.0}[0]},
+			},
+			Validator: &common.LiteralValidatorSettings{
+				Name: "token-numeric",
+			},
+			Limits: &common.LimitsSettings{
+				TimeLimit:            common.DefaultLiteralLimitSettings.TimeLimit,
+				MemoryLimit:          8 * 1024 * 1024,
+				OverallWallTimeLimit: common.DefaultLiteralLimitSettings.OverallWallTimeLimit,
+				ExtraWallTime:        common.DefaultLiteralLimitSettings.ExtraWallTime,
+				OutputLimit:          common.DefaultLiteralLimitSettings.OutputLimit,
+			},
+		},
+		ctx.Config.Runner.RuntimePath,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create Input: %q", err)
+	}
+	inputManager.Add(AplusB.Hash(), AplusB)
+
+	input, err := inputManager.Get(AplusB.Hash())
+	if err != nil {
+		t.Fatalf("Failed to open problem: %q", err)
+	}
+
+	runtests := []runnerTestCase{
+		{
+			"c",
+			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
+			1.0,
+			"PA",
+			0.25,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"cpp",
+			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
+			1.0,
+			"PA",
+			0.25,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"pas",
+			`program Main;
+			begin
+				writeln ('3');
+			end.`,
+			1.0,
+			"PA",
+			0.25,
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
 		},
 	}
 	for idx, rte := range runtests {

@@ -390,7 +390,7 @@ func (*OmegajailSandbox) Run(
 	}
 
 	// 16MB + memory limit to prevent some RTE
-	memoryLimit := 16*1024 + limits.MemoryLimit
+	memoryLimit := 16*1024*1024 + limits.MemoryLimit
 	// "640MB should be enough for anybody"
 	hardLimit := strconv.FormatInt(min64(640*1024*1024, memoryLimit), 10)
 
