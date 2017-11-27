@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
+	"crypto/sha1"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,65 @@ type graderBaseInput struct {
 	archivePath      string
 	storedHash       string
 	uncompressedSize int64
+}
+
+type ProblemInformation struct {
+	TreeID        string
+	IsInteractive bool
+}
+
+func VersionedHash(
+	libinteractiveVersion string,
+	problemInfo *ProblemInformation,
+	settings *common.ProblemSettings,
+) string {
+	hasher := sha1.New()
+	fmt.Fprintf(
+		hasher,
+		"%d:%s:",
+		InputVersion,
+		problemInfo.TreeID,
+	)
+	if problemInfo.IsInteractive {
+		fmt.Fprintf(
+			hasher,
+			"%s:",
+			libinteractiveVersion,
+		)
+	}
+	json.NewEncoder(hasher).Encode(settings)
+	return fmt.Sprintf("%0x", hasher.Sum(nil))
+}
+
+func GetProblemInformation(repositoryPath string) (*ProblemInformation, error) {
+	repository, err := git.OpenRepository(repositoryPath)
+	if err != nil {
+		return nil, err
+	}
+	defer repository.Free()
+	headRef, err := repository.Head()
+	if err != nil {
+		return nil, err
+	}
+	defer headRef.Free()
+	headObject, err := headRef.Peel(git.ObjectCommit)
+	if err != nil {
+		return nil, err
+	}
+	defer headObject.Free()
+	headCommit, err := headObject.AsCommit()
+	if err != nil {
+		return nil, err
+	}
+	defer headCommit.Free()
+	headTree, err := headCommit.Tree()
+	if err != nil {
+		return nil, err
+	}
+	return &ProblemInformation{
+		headTree.Id().String(),
+		headTree.EntryByName("interactive") != nil,
+	}, nil
 }
 
 func (input *graderBaseInput) Verify() error {

@@ -1,14 +1,13 @@
 package main
 
 import (
-	"crypto/sha1"
 	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/lhchavez/quark/common"
+	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/grader/v1compat"
-	git "github.com/libgit2/git2go"
 	"io"
 	"os"
 	"strconv"
@@ -118,42 +117,6 @@ func newCsvSettingsLoader(path string) (*csvSettingsLoader, error) {
 	return loader, nil
 }
 
-func v1CompatGetTreeId(repositoryPath string) (string, error) {
-	repository, err := git.OpenRepository(repositoryPath)
-	if err != nil {
-		return "", err
-	}
-	defer repository.Free()
-	headRef, err := repository.Head()
-	if err != nil {
-		return "", err
-	}
-	defer headRef.Free()
-	headObject, err := headRef.Peel(git.ObjectCommit)
-	if err != nil {
-		return "", err
-	}
-	defer headObject.Free()
-	headCommit, err := headObject.AsCommit()
-	if err != nil {
-		return "", err
-	}
-	defer headCommit.Free()
-	return headCommit.TreeId().String(), nil
-}
-
-func versionedHash(
-	hash string,
-	settings *common.ProblemSettings,
-) string {
-	hasher := sha1.New()
-	fmt.Fprint(hasher, "%d:", v1compat.InputVersion)
-	io.WriteString(hasher, hash)
-	io.WriteString(hasher, ":")
-	json.NewEncoder(hasher).Encode(settings)
-	return fmt.Sprintf("%0x", hasher.Sum(nil))
-}
-
 func main() {
 	flag.Parse()
 
@@ -175,7 +138,7 @@ func main() {
 	}
 
 	repositoryPath := fmt.Sprintf("%s/%s", *repositoryRoot, *problemName)
-	gitTree, err := v1CompatGetTreeId(repositoryPath)
+	gitProblemInfo, err := v1compat.GetProblemInformation(repositoryPath)
 	if err != nil {
 		panic(err)
 	}
@@ -189,7 +152,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	hash := versionedHash(gitTree, settings)
+
+	libinteractiveVersion, err := grader.GetLibinteractiveVersion()
+	if err != nil {
+		panic(err)
+	}
+	hash := v1compat.VersionedHash(libinteractiveVersion, gitProblemInfo, settings)
 
 	_, _, err = v1compat.CreateArchiveFromGit(
 		*problemName,
@@ -198,7 +166,7 @@ func main() {
 		hash,
 		&v1compat.SettingsLoader{
 			Settings: settings,
-			GitTree:  gitTree,
+			GitTree:  gitProblemInfo.TreeID,
 		},
 	)
 	if err != nil {

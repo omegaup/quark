@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -14,10 +13,8 @@ import (
 	"github.com/lhchavez/quark/grader"
 	"github.com/lhchavez/quark/grader/v1compat"
 	"github.com/lhchavez/quark/runner"
-	git "github.com/libgit2/git2go"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
-	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -49,18 +46,6 @@ type runGradeRequest struct {
 	GUIDs   []string `json:"id"`
 	Rejudge bool     `json:"rejudge"`
 	Debug   bool     `json:"debug"`
-}
-
-func versionedHash(
-	hash string,
-	settings *common.ProblemSettings,
-) string {
-	hasher := sha1.New()
-	fmt.Fprint(hasher, "%d:", v1compat.InputVersion)
-	io.WriteString(hasher, hash)
-	io.WriteString(hasher, ":")
-	json.NewEncoder(hasher).Encode(settings)
-	return fmt.Sprintf("%0x", hasher.Sum(nil))
 }
 
 func v1CompatUpdateDatabase(
@@ -287,30 +272,6 @@ func v1CompatGetPendingRuns(ctx *grader.Context, db *sql.DB) ([]string, error) {
 	return guids, nil
 }
 
-func v1CompatGetTreeId(repositoryPath string) (string, error) {
-	repository, err := git.OpenRepository(repositoryPath)
-	if err != nil {
-		return "", err
-	}
-	defer repository.Free()
-	headRef, err := repository.Head()
-	if err != nil {
-		return "", err
-	}
-	defer headRef.Free()
-	headObject, err := headRef.Peel(git.ObjectCommit)
-	if err != nil {
-		return "", err
-	}
-	defer headObject.Free()
-	headCommit, err := headObject.AsCommit()
-	if err != nil {
-		return "", err
-	}
-	defer headCommit.Free()
-	return headCommit.TreeId().String(), nil
-}
-
 func v1CompatNewRunContext(
 	ctx *grader.Context,
 	db *sql.DB,
@@ -382,7 +343,7 @@ func v1CompatNewRunContext(
 		settings.Validator.Limits = &validatorLimits
 	}
 
-	gitTree, err := v1CompatGetTreeId(path.Join(
+	gitProblemInfo, err := v1compat.GetProblemInformation(path.Join(
 		ctx.Config.Grader.V1.RuntimePath,
 		"problems.git",
 		runCtx.ProblemName,
@@ -416,8 +377,8 @@ func v1CompatNewRunContext(
 	}
 	runCtx.Run.Source = string(contents)
 
-	runCtx.Run.InputHash = versionedHash(gitTree, &settings)
-	return runCtx, gitTree, &settings, nil
+	runCtx.Run.InputHash = v1compat.VersionedHash(ctx.LibinteractiveVersion, gitProblemInfo, &settings)
+	return runCtx, gitProblemInfo.TreeID, &settings, nil
 }
 
 func v1CompatInjectRuns(
