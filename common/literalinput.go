@@ -93,7 +93,7 @@ func validateLanguage(lang string) error {
 	case "c", "cpp", "cpp11", "kj", "kp", "java", "py", "pas", "rb", "cat":
 		return nil
 	default:
-		return errors.New(fmt.Sprintf("invalid language %q", lang))
+		return fmt.Errorf("invalid language %q", lang)
 	}
 }
 
@@ -102,17 +102,17 @@ func validateInterface(interfaceName string) error {
 		return errors.New("empty interface name")
 	}
 	if len(interfaceName) > 32 {
-		return errors.New(fmt.Sprintf(
+		return fmt.Errorf(
 			"interface name longer than 32 characters: %q",
 			interfaceName,
-		))
+		)
 	}
 	matched, err := regexp.MatchString("^[a-zA-Z_][0-9a-zA-Z]+$", interfaceName)
 	if err != nil {
 		return err
 	}
 	if !matched {
-		return errors.New(fmt.Sprintf("invalid interface name: %q", interfaceName))
+		return fmt.Errorf("invalid interface name: %q", interfaceName)
 	}
 	return nil
 }
@@ -172,9 +172,7 @@ func NewLiteralInputFactory(
 			factory.settings.Validator.Tolerance = &DefaultValidatorTolerance
 		}
 	default:
-		return nil, errors.New(
-			fmt.Sprintf("invalid validator %q", validator.Name),
-		)
+		return nil, fmt.Errorf("invalid validator %q", validator.Name)
 	}
 
 	// Limits
@@ -210,12 +208,10 @@ func NewLiteralInputFactory(
 	totalWeight := 0.0
 	for _, c := range input.Cases {
 		if c.Weight == nil {
-			totalWeight += 1
+			totalWeight++
 		} else {
 			if *c.Weight < 0 {
-				return nil, errors.New(
-					fmt.Sprintf("invalid weight, must be positive: %v", *c.Weight),
-				)
+				return nil, fmt.Errorf("invalid weight, must be positive: %v", *c.Weight)
 			}
 			totalWeight += *c.Weight
 		}
@@ -349,6 +345,7 @@ func (factory *LiteralInputFactory) NewInput(hash string, mgr *InputManager) Inp
 	}
 }
 
+// Hash returns the hash of the literal input.
 func (factory *LiteralInputFactory) Hash() string {
 	return factory.hash
 }

@@ -262,7 +262,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 		}
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
-			grader.NewGraderInputFactory(runCtx.ProblemName, &ctx.Config),
+			grader.NewInputFactory(runCtx.ProblemName, &ctx.Config),
 		)
 		if err != nil {
 			ctx.Log.Error("Error getting input", "err", err, "run", runCtx)

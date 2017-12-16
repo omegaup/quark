@@ -151,7 +151,7 @@ func main() {
 	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
 	go ctx.InputManager.PreloadInputs(
 		cachePath,
-		grader.NewGraderCachedInputFactory(cachePath),
+		grader.NewCachedInputFactory(cachePath),
 		&sync.Mutex{},
 	)
 

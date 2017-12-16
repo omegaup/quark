@@ -97,7 +97,7 @@ func TestPreloadInputs(t *testing.T) {
 	}
 	ctx.InputManager.PreloadInputs(
 		cachePath,
-		NewGraderCachedInputFactory(cachePath),
+		NewCachedInputFactory(cachePath),
 		&sync.Mutex{},
 	)
 
@@ -138,7 +138,7 @@ func TestTransmitInput(t *testing.T) {
 
 	input, err := ctx.InputManager.Add(
 		"2af3227d22470f4d9730937b6b47fd79622fdb32",
-		NewGraderInputFactory("test", &ctx.Config),
+		NewInputFactory("test", &ctx.Config),
 	)
 	if err != nil {
 		t.Fatalf("Failed to get the input: %q", err)
@@ -148,7 +148,7 @@ func TestTransmitInput(t *testing.T) {
 		t.Fatalf("Failed to verify the input: %q", err)
 	}
 
-	graderInput := input.(*GraderInput)
+	graderInput := input.(*Input)
 	w := httptest.NewRecorder()
 	if err := graderInput.Transmit(w); err != nil {
 		t.Fatalf("Failed to transmit input: %q", err)

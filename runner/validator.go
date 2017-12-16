@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"errors"
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io"
@@ -10,6 +9,8 @@ import (
 	"strings"
 )
 
+// CalculateScore calculates the score of a contestantOutput by comparing it
+// with the expectedOutput under the specified validator settings.
 func CalculateScore(
 	settings *common.ValidatorSettings,
 	expectedOutput, contestantOutput io.Reader,
@@ -30,7 +31,7 @@ func CalculateScore(
 
 	expectedTokenizer := NewTokenizer(expectedOutput, scanFunc)
 
-	var mismatch *TokenMismatch = nil
+	var mismatch *TokenMismatch
 	for mismatch == nil {
 		expectedNext := expectedTokenizer.Scan()
 		contestantNext := contestantTokenizer.Scan()
@@ -67,7 +68,7 @@ func CalculateScore(
 				*settings.Tolerance,
 			)
 		default:
-			return 0, nil, errors.New(fmt.Sprintf("Unknown validator: %q", settings.Name))
+			return 0, nil, fmt.Errorf("Unknown validator: %q", settings.Name)
 		}
 		if !correct {
 			mismatch = &TokenMismatch{
@@ -106,7 +107,6 @@ func tokenNumericEquals(a, b string, tolerance float64) bool {
 		return true
 	} else if af == 0 || bf == 0 || diff < SmallestNormal {
 		return diff <= tolerance*SmallestNormal
-	} else {
-		return diff/math.Max(math.Abs(af), math.Abs(bf)) <= tolerance
 	}
+	return diff/math.Max(math.Abs(af), math.Abs(bf)) <= tolerance
 }

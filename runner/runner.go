@@ -17,6 +17,7 @@ import (
 	"syscall"
 )
 
+// A CaseResult represents the sub-results of a specific test case.
 type CaseResult struct {
 	Verdict        string                 `json:"verdict"`
 	Name           string                 `json:"name"`
@@ -27,6 +28,7 @@ type CaseResult struct {
 	IndividualMeta map[string]RunMetadata `json:"individual_meta,omitempty"`
 }
 
+// A GroupResult represents the sub-results of a specific group of test cases.
 type GroupResult struct {
 	Group        string       `json:"group"`
 	Score        float64      `json:"score"`
@@ -35,6 +37,7 @@ type GroupResult struct {
 	Cases        []CaseResult `json:"cases"`
 }
 
+// A RunResult represents the results of a run.
 type RunResult struct {
 	Verdict      string                 `json:"verdict"`
 	CompileError *string                `json:"compile_error,omitempty"`
@@ -195,7 +198,7 @@ func generateParentMountpoints(
 	interactive *common.InteractiveSettings,
 ) map[string]string {
 	result := make(map[string]string)
-	for name, _ := range interactive.Interfaces {
+	for name := range interactive.Interfaces {
 		if name == interactive.Main {
 			continue
 		}
@@ -229,6 +232,8 @@ func validatorLimits(
 	return &limitsCopy
 }
 
+// Grade compiles and runs a contestant-provided program, supplies it with the
+// Input-specified inputs, and computes its final score and verdict.
 func Grade(
 	ctx *common.Context,
 	filesWriter io.Writer,
@@ -292,18 +297,18 @@ func Grade(
 				extraMountPoints: generateParentMountpoints(runRoot, interactive),
 			},
 		}
-		for name, lang_iface := range interactive.Interfaces {
+		for name, langIface := range interactive.Interfaces {
 			if name == interactive.Main {
 				continue
 			}
-			iface, ok := lang_iface[normalizedLanguage(run.Language)]
+			iface, ok := langIface[normalizedLanguage(run.Language)]
 			if !ok {
 				runResult.Verdict = "CE"
 				compileError := fmt.Sprintf("libinteractive does not support language '%s'", run.Language)
 				runResult.CompileError = &compileError
 				return runResult, nil
 			}
-			var target string = name
+			target := name
 			if run.Language == "py" || run.Language == "java" {
 				target = fmt.Sprintf("%s_entry", target)
 			}
@@ -355,14 +360,14 @@ func Grade(
 		); err != nil {
 			return runResult, err
 		}
-		for name, lang_iface := range interactive.Interfaces {
+		for name, langIface := range interactive.Interfaces {
 			var lang string
 			if name == "Main" {
 				lang = normalizedLanguage(interactive.ParentLang)
 			} else {
 				lang = normalizedLanguage(run.Language)
 			}
-			for filename, contents := range lang_iface[lang].Files {
+			for filename, contents := range langIface[lang].Files {
 				sourcePath := path.Join(
 					runRoot,
 					fmt.Sprintf("%s/bin/%s", name, path.Base(filename)),
@@ -373,13 +378,13 @@ func Grade(
 				}
 			}
 			if name == "Main" {
-				for iface_name, _ := range interactive.Interfaces {
-					if iface_name == "Main" {
+				for ifaceName := range interactive.Interfaces {
+					if ifaceName == "Main" {
 						continue
 					}
 					pipesMountPath := path.Join(
 						runRoot,
-						fmt.Sprintf("%s/bin/%s_pipes", name, iface_name),
+						fmt.Sprintf("%s/bin/%s_pipes", name, ifaceName),
 					)
 					if err := os.MkdirAll(pipesMountPath, 0755); err != nil {
 						return runResult, err
@@ -718,15 +723,15 @@ func Grade(
 						metaChan <- intermediateRunResult{bin.name, runMeta, bin.binaryType}
 					}(bin)
 				}
-				var parentMetadata *RunMetadata = nil
+				var parentMetadata *RunMetadata
 				chosenMetadata := RunMetadata{
 					Verdict: "OK",
 				}
 				chosenMetadataEmpty := true
 				var finalVerdict = "OK"
-				var totalTime float64 = 0
-				var totalWallTime float64 = 0
-				var totalMemory int64 = 0
+				var totalTime float64
+				var totalWallTime float64
+				var totalMemory int64
 				for i := 0; i < regularBinaryCount; i++ {
 					intermediateResult := <-metaChan
 					if regularBinaryCount != 1 {

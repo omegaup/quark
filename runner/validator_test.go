@@ -112,7 +112,7 @@ func TestValidator(t *testing.T) {
 
 func TestHugeTokens(t *testing.T) {
 	large := make([]byte, MaxTokenLength-1)
-	for idx, _ := range large {
+	for idx := range large {
 		large[idx] = 'A'
 	}
 	tokenizer := NewTokenizer(bytes.NewReader(large), IsNonWhitespace)
@@ -121,7 +121,7 @@ func TestHugeTokens(t *testing.T) {
 	}
 
 	large = make([]byte, MaxTokenLength)
-	for idx, _ := range large {
+	for idx := range large {
 		large[idx] = 'A'
 	}
 	tokenizer = NewTokenizer(bytes.NewReader(large), IsNonWhitespace)

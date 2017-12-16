@@ -8,6 +8,8 @@ import (
 )
 
 const (
+	// MaxTokenLength represents the maximum length of a token, which is 4MB. Any
+	// token longer than that is treated as EOF.
 	MaxTokenLength = 4194304 // 4MiB
 )
 
@@ -105,10 +107,10 @@ func (t *Tokenizer) splitFunc() bufio.SplitFunc {
 				break
 			}
 			if r == '\n' {
-				line += 1
+				line++
 				column = 1
 			} else {
-				column += 1
+				column++
 			}
 		}
 		if lastLine == -1 {
@@ -119,10 +121,10 @@ func (t *Tokenizer) splitFunc() bufio.SplitFunc {
 			var r rune
 			r, width = utf8.DecodeRune(data[i:])
 			if r == '\n' {
-				line += 1
+				line++
 				column = 1
 			} else {
-				column += 1
+				column++
 			}
 			if !t.tokenizerFunc(r) {
 				t.line, t.column = lastLine, lastColumn

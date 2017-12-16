@@ -2,7 +2,6 @@ package runner
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io/ioutil"
@@ -90,7 +89,7 @@ func (sandbox *fakeSandbox) Run(
 	caseName := strings.TrimSuffix(path.Base(outputFile), path.Ext(outputFile))
 	results, ok := sandbox.testCase.expectedResults[caseName]
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("case %q not found", caseName))
+		return nil, fmt.Errorf("case %q not found", caseName)
 	}
 	ef, err := os.Create(errorFile)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// A Context holds the state of the Grader.
 type Context struct {
 	common.Context
 	QueueManager          *QueueManager
@@ -16,6 +17,8 @@ type Context struct {
 	LibinteractiveVersion string
 }
 
+// GetLibinteractiveVersion returns the version of the installed libinteractive
+// jar.
 func GetLibinteractiveVersion() (string, error) {
 	cmd := exec.Command(
 		"/usr/bin/java",
@@ -39,6 +42,8 @@ func GetLibinteractiveVersion() (string, error) {
 	return tokens[len(tokens)-1], nil
 }
 
+// NewContext returns a new Context where the configuration is read in a JSON
+// format from the supplied io.Reader.
 func NewContext(reader io.Reader) (*Context, error) {
 	ctx, err := common.NewContextFromReader(reader)
 	if err != nil {

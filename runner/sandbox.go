@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	haskellCompiler string = "/usr/lib/ghc/bin/ghc"
+	haskellCompiler = "/usr/lib/ghc/bin/ghc"
 )
 
 func init() {
@@ -115,6 +115,8 @@ func (m *RunMetadata) String() string {
 	return metadata
 }
 
+// A Sandbox provides a mechanism to compile and run contestant-provided
+// programs in a safe manner.
 type Sandbox interface {
 	// Supported returns true if the sandbox is available in the system.
 	Supported() bool
@@ -140,13 +142,18 @@ type Sandbox interface {
 	) (*RunMetadata, error)
 }
 
+// OmegajailSandbox is an implementation of a Sandbox that uses the omegajail
+// sandbox.
 type OmegajailSandbox struct{}
 
+// Supported returns whether the omegajail binary is installed in the system.
 func (*OmegajailSandbox) Supported() bool {
 	_, err := os.Stat(path.Join(omegajailPath, "bin/omegajail"))
 	return err == nil
 }
 
+// Compile compiles the contestant-supplied program using the specified
+// configuration using the omegajail sandbox.
 func (*OmegajailSandbox) Compile(
 	ctx *common.Context,
 	lang string,
@@ -316,6 +323,8 @@ func (*OmegajailSandbox) Compile(
 	return metadata, err
 }
 
+// Run invokes the contestant-supplied program against a specified input and
+// run configuration using the omegajail sandbox.
 func (*OmegajailSandbox) Run(
 	ctx *common.Context,
 	limits *common.LimitsSettings,
@@ -601,9 +610,9 @@ func parseMetaFile(
 	}
 
 	if lang == "java" {
-		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVmEstimatedSize)
+		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVMEstimatedSize)
 	} else if lang == "cs" {
-		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.ClrVmEstimatedSize)
+		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.ClrVMEstimatedSize)
 	}
 	if limits != nil &&
 		limits.MemoryLimit > 0 &&

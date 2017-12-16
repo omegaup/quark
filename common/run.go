@@ -16,7 +16,7 @@ func init() {
 	attemptID = uint64(r.Int63())
 }
 
-// An omegaUp run.
+// A Run represents an omegaUp run.
 type Run struct {
 	AttemptID uint64  `json:"attempt_id"`
 	Source    string  `json:"source"`
@@ -33,7 +33,7 @@ func NewAttemptID() uint64 {
 	return atomic.AddUint64(&attemptID, 1)
 }
 
-// UpdateID assigns a new AttemptID to a run.
+// UpdateAttemptID assigns a new AttemptID to a run.
 func (run *Run) UpdateAttemptID() uint64 {
 	run.AttemptID = NewAttemptID()
 	return run.AttemptID

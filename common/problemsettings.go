@@ -17,6 +17,8 @@ type ValidatorSettings struct {
 	Limits    *LimitsSettings `json:"Limits,omitempty"`
 }
 
+// InteractiveInterface represents the metadata needed to compile and run
+// libinteractive problems.
 type InteractiveInterface struct {
 	MakefileRules []struct {
 		Targets    []string
@@ -48,6 +50,8 @@ type CaseSettings struct {
 	Weight float64
 }
 
+// A ByCaseName represents a list of CaseSettings associated with a group that
+// implements the sort.Interface.
 type ByCaseName []CaseSettings
 
 func (c ByCaseName) Len() int           { return len(c) }
@@ -61,6 +65,8 @@ type GroupSettings struct {
 	Weight float64
 }
 
+// A ByGroupName represents a list of GroupSettings associated with a problem
+// that implements the sort.Interface.
 type ByGroupName []GroupSettings
 
 func (g ByGroupName) Len() int           { return len(g) }
@@ -78,7 +84,8 @@ type ProblemSettings struct {
 }
 
 var (
-	DefaultValidatorLimits LimitsSettings = LimitsSettings{
+	// DefaultValidatorLimits specifies the default limits for a problem.
+	DefaultValidatorLimits = LimitsSettings{
 		ExtraWallTime:        0,                 // 0s
 		MemoryLimit:          256 * 1024 * 1024, // 256MB
 		OutputLimit:          10 * 1024,         // 10k

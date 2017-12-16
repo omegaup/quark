@@ -3,7 +3,6 @@ package grader
 import (
 	"compress/gzip"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/inconshreveable/log15"
 	"github.com/lhchavez/quark/common"
@@ -16,12 +15,18 @@ import (
 	"time"
 )
 
+// QueuePriority represents the relative priority of a queue with respect with
+// other queues. All the runs in a higher priority queue will be run before
+// those in a lower priority queue.
 type QueuePriority int
 
 const (
-	QueuePriorityHigh   = QueuePriority(0)
+	// QueuePriorityHigh represents a QueuePriority with high priority.
+	QueuePriorityHigh = QueuePriority(0)
+	// QueuePriorityNormal represents a QueuePriority with normal priority.
 	QueuePriorityNormal = QueuePriority(1)
-	QueuePriorityLow    = QueuePriority(2)
+	// QueuePriorityLow represents a QueuePriority with low priority.
+	QueuePriorityLow = QueuePriority(2)
 )
 
 // RunInfo holds the necessary data of a Run, even after the RunContext is
@@ -84,6 +89,7 @@ func AddRunContext(
 	return nil
 }
 
+// NewEmptyRunContext returns an empty RunContext.
 func NewEmptyRunContext(ctx *Context) *RunContext {
 	return &RunContext{
 		RunInfo: RunInfo{
@@ -102,6 +108,9 @@ func NewEmptyRunContext(ctx *Context) *RunContext {
 	}
 }
 
+// Debug marks a RunContext as being for debug. This causes some additional
+// logging and in C/C++ it enables AddressSanitizer. Use with caution, since
+// ASan needs a relaxed sandboxing profile.
 func (run *RunContext) Debug() error {
 	var err error
 	if run.GradeDir, err = ioutil.TempDir("", "grade"); err != nil {
@@ -111,12 +120,14 @@ func (run *RunContext) Debug() error {
 	return nil
 }
 
+// Close finalizes the run, stores its results in the filesystem, and releases
+// any resources associated with the RunContext.
 func (run *RunContext) Close() {
 	if atomic.SwapInt32(&run.closed, 1) != 0 {
 		run.Log.Warn("Attempting to close an already closed run")
 		return
 	}
-	var postProcessor *RunPostProcessor = nil
+	var postProcessor *RunPostProcessor
 	if run.monitor != nil {
 		postProcessor = run.monitor.PostProcessor
 		run.monitor.Remove(run.Run.AttemptID)
@@ -193,6 +204,8 @@ func (run *RunContext) Close() {
 	}
 }
 
+// AppendRunnerLogs appends the provided logs from the provided runner to the
+// current run's logs.
 func (run *RunContext) AppendRunnerLogs(runnerName string, contents []byte) {
 	run.context.AppendLogSection(runnerName, contents)
 }
@@ -204,7 +217,7 @@ func (run *RunContext) Requeue(lastAttempt bool) bool {
 	if run.monitor != nil {
 		run.monitor.Remove(run.Run.AttemptID)
 	}
-	run.tries -= 1
+	run.tries--
 	if run.tries <= 0 {
 		run.Close()
 		return false
@@ -236,6 +249,7 @@ func (run *RunContext) String() string {
 	)
 }
 
+// Ready returns a channel that will be closed when the RunContext is ready.
 func (run *RunContext) Ready() <-chan struct{} {
 	return run.ready
 }
@@ -272,6 +286,7 @@ func (queue *Queue) GetRun(
 	panic("unreachable")
 }
 
+// AddRun adds a new RunContext to the current Queue.
 func (queue *Queue) AddRun(run *RunContext) {
 	// TODO(lhchavez): Add async events for queue operations.
 	// Add new runs to the normal priority by default.
@@ -337,6 +352,7 @@ type RunData struct {
 	Elapsed      int64
 }
 
+// NewInflightMonitor returns a new InflightMonitor.
 func NewInflightMonitor() *InflightMonitor {
 	monitor := &InflightMonitor{
 		PostProcessor:  NewRunPostProcessor(),
@@ -433,6 +449,7 @@ func (monitor *InflightMonitor) Remove(attemptID uint64) {
 	delete(monitor.mapping, attemptID)
 }
 
+// GetRunData returns the list of in-flight run information.
 func (monitor *InflightMonitor) GetRunData() []*RunData {
 	monitor.Lock()
 	defer monitor.Unlock()
@@ -440,9 +457,9 @@ func (monitor *InflightMonitor) GetRunData() []*RunData {
 	data := make([]*RunData, len(monitor.mapping))
 	idx := 0
 	now := time.Now()
-	for attemptId, inflight := range monitor.mapping {
+	for attemptID, inflight := range monitor.mapping {
 		data[idx] = &RunData{
-			AttemptID:    attemptId,
+			AttemptID:    attemptID,
 			ID:           inflight.run.ID,
 			GUID:         inflight.run.GUID,
 			Queue:        inflight.run.queue.Name,
@@ -451,12 +468,13 @@ func (monitor *InflightMonitor) GetRunData() []*RunData {
 			Time:         inflight.creationTime.Unix(),
 			Elapsed:      now.Sub(inflight.creationTime).Nanoseconds(),
 		}
-		idx += 1
+		idx++
 	}
 
 	return data
 }
 
+// MarshalJSON returns a JSON representation of the InflightMonitor.
 func (monitor *InflightMonitor) MarshalJSON() ([]byte, error) {
 	return json.MarshalIndent(monitor.GetRunData(), "", "  ")
 }
@@ -466,12 +484,15 @@ type runPostProcessorListener struct {
 	added    *chan struct{}
 }
 
+// A RunPostProcessor broadcasts the events of runs that have been finished to
+// all registered listeners.
 type RunPostProcessor struct {
 	finishedRuns chan *RunInfo
 	listenerChan chan runPostProcessorListener
 	listeners    []chan<- *RunInfo
 }
 
+// NewRunPostProcessor returns a new RunPostProcessor.
 func NewRunPostProcessor() *RunPostProcessor {
 	return &RunPostProcessor{
 		finishedRuns: make(chan *RunInfo, 1),
@@ -480,6 +501,8 @@ func NewRunPostProcessor() *RunPostProcessor {
 	}
 }
 
+// AddListener adds a channel that will be notified for every Run that has
+// finished.
 func (postProcessor *RunPostProcessor) AddListener(c chan<- *RunInfo) {
 	added := make(chan struct{}, 0)
 	postProcessor.listenerChan <- runPostProcessorListener{
@@ -491,6 +514,8 @@ func (postProcessor *RunPostProcessor) AddListener(c chan<- *RunInfo) {
 	}
 }
 
+// PostProcess queues the provided run for post-processing. All the registered
+// listeners will be notified about this run.
 func (postProcessor *RunPostProcessor) PostProcess(run *RunInfo) {
 	postProcessor.finishedRuns <- run
 }
@@ -518,6 +543,8 @@ func (postProcessor *RunPostProcessor) run() {
 	}
 }
 
+// Close notifies the RunPostProcessor goroutine that there is no more work to
+// be done.
 func (postProcessor *RunPostProcessor) Close() {
 	close(postProcessor.finishedRuns)
 }
@@ -534,6 +561,7 @@ type QueueInfo struct {
 	Lengths [3]int
 }
 
+// NewQueueManager creates a new QueueManager.
 func NewQueueManager(channelLength int) *QueueManager {
 	manager := &QueueManager{
 		mapping:       make(map[string]*Queue),
@@ -543,6 +571,8 @@ func NewQueueManager(channelLength int) *QueueManager {
 	return manager
 }
 
+// Add creates a new queue or fetches a previously created queue with the
+// specified name and returns it.
 func (manager *QueueManager) Add(name string) *Queue {
 	queue := &Queue{
 		Name:  name,
@@ -557,17 +587,19 @@ func (manager *QueueManager) Add(name string) *Queue {
 	return queue
 }
 
+// Get gets the queue with the specified name.
 func (manager *QueueManager) Get(name string) (*Queue, error) {
 	manager.Lock()
 	defer manager.Unlock()
 
 	queue, ok := manager.mapping[name]
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("cannot find queue %q", name))
+		return nil, fmt.Errorf("cannot find queue %q", name)
 	}
 	return queue, nil
 }
 
+// GetQueueInfo returns the length of all the queues.
 func (manager *QueueManager) GetQueueInfo() map[string]QueueInfo {
 	manager.Lock()
 	defer manager.Unlock()
@@ -585,6 +617,8 @@ func (manager *QueueManager) GetQueueInfo() map[string]QueueInfo {
 	return queues
 }
 
+// MarshalJSON returns a JSON representation of the queue lengths for reporting
+// purposes.
 func (manager *QueueManager) MarshalJSON() ([]byte, error) {
 	return json.MarshalIndent(manager.GetQueueInfo(), "", "  ")
 }

@@ -2,7 +2,6 @@ package grader
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	git "github.com/libgit2/git2go"
 	"io/ioutil"
@@ -54,13 +53,13 @@ func newGraderContext() (*Context, error) {
 	if err != nil {
 		return nil, err
 	}
-	treeId, err := idx.WriteTree()
+	treeID, err := idx.WriteTree()
 	if err != nil {
 		return nil, err
 	}
 
 	message := "Initial commit\n"
-	tree, err := repo.LookupTree(treeId)
+	tree, err := repo.LookupTree(treeID)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +139,7 @@ func newGraderContext() (*Context, error) {
 				return nil, err
 			}
 		}
-		treeId, err := idx.WriteTree()
+		treeID, err := idx.WriteTree()
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +154,7 @@ func newGraderContext() (*Context, error) {
 		}
 
 		message := gct.message
-		tree, err := repo.LookupTree(treeId)
+		tree, err := repo.LookupTree(treeID)
 		if err != nil {
 			return nil, err
 		}
@@ -164,11 +163,11 @@ func newGraderContext() (*Context, error) {
 			return nil, err
 		}
 		if casesTree.Id.String() != gct.expectedhash {
-			return nil, errors.New(fmt.Sprintf(
+			return nil, fmt.Errorf(
 				"expected %q, got %q",
 				gct.expectedhash,
 				casesTree.Id.String(),
-			))
+			)
 		}
 		if _, err := repo.CreateCommit(
 			"HEAD", sig, sig, message, tree, currentTip,

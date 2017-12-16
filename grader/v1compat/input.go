@@ -23,11 +23,13 @@ import (
 )
 
 const (
-	// A global version. Bump if we start producing fundamentally incompatible
-	// inputs.
+	// InputVersion represents a global version. Bump if a fundamentally breaking
+	// change is introduced.
 	InputVersion = 1
 )
 
+// A SettingsLoader allows to load ProblemSettings from a particular git tree
+// hash.
 type SettingsLoader struct {
 	Settings *common.ProblemSettings
 	GitTree  string
@@ -40,11 +42,15 @@ type graderBaseInput struct {
 	uncompressedSize int64
 }
 
+// A ProblemInformation represents information from the problem.
 type ProblemInformation struct {
 	TreeID        string
 	IsInteractive bool
 }
 
+// VersionedHash returns the hash for a specified problem. It takes into
+// account the global InputVersion, the libinteractive version (for interactive
+// problems), and the hash of the tree in git.
 func VersionedHash(
 	libinteractiveVersion string,
 	problemInfo *ProblemInformation,
@@ -68,6 +74,8 @@ func VersionedHash(
 	return fmt.Sprintf("%0x", hasher.Sum(nil))
 }
 
+// GetProblemInformation returns the ProblemInformation obtained from the git
+// repository located at the provided repository path.
 func GetProblemInformation(repositoryPath string) (*ProblemInformation, error) {
 	repository, err := git.OpenRepository(repositoryPath)
 	if err != nil {
@@ -296,6 +304,8 @@ func getLibinteractiveSettings(
 	return &settings, nil
 }
 
+// CreateArchiveFromGit creates an archive that can be sent to a Runner as an
+// Input from a git repository.
 func CreateArchiveFromGit(
 	problemName string,
 	archivePath string,
@@ -343,8 +353,8 @@ func CreateArchiveFromGit(
 	archive := tar.NewWriter(gz)
 	defer archive.Close()
 
-	var walkErr error = nil
-	var uncompressedSize int64 = 0
+	var walkErr error
+	var uncompressedSize int64
 	rawCaseWeights := make(map[string]float64)
 	var libinteractiveIdlContents []byte
 	var libinteractiveModuleName string
@@ -571,28 +581,30 @@ func CreateArchiveFromGit(
 	return settings, uncompressedSize, nil
 }
 
-// graderInputFactory is an InputFactory that can store specific versions of a
+// inputFactory is an InputFactory that can store specific versions of a
 // problem's git repository into a .tar.gz file that can be easily shipped to
 // runners.
-type graderInputFactory struct {
+type inputFactory struct {
 	problemName string
 	config      *common.Config
 	loader      *SettingsLoader
 }
 
-func NewGraderInputFactory(
+// NewInputFactory returns a new InputFactory.
+func NewInputFactory(
 	problemName string,
 	config *common.Config,
 	loader *SettingsLoader,
 ) common.InputFactory {
-	return &graderInputFactory{
+	return &inputFactory{
 		problemName: problemName,
 		config:      config,
 		loader:      loader,
 	}
 }
 
-func (factory *graderInputFactory) NewInput(
+// NewInput returns an Input that corresponds to the specified hash.
+func (factory *inputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {

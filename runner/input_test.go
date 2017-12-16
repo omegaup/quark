@@ -135,7 +135,7 @@ func TestPreloadInputs(t *testing.T) {
 	}
 	inputManager.PreloadInputs(
 		inputPath,
-		NewRunnerCachedInputFactory(inputPath),
+		NewCachedInputFactory(inputPath),
 		&sync.Mutex{},
 	)
 
@@ -273,7 +273,7 @@ func TestInputFactory(t *testing.T) {
 		{"0000000000000000000000000000000000000004", false},
 		{"4bba61b5499a7a511eb515594f3293a8741516ad", true},
 	}
-	factory := NewRunnerInputFactory(http.DefaultClient, &ctx.Config)
+	factory := NewInputFactory(http.DefaultClient, &ctx.Config)
 	for _, het := range hashentries {
 		input, err := inputManager.Add(het.hash, factory)
 		if input != nil {

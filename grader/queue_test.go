@@ -233,7 +233,7 @@ func newListener() *listener {
 	}
 	go func() {
 		for _ = range l.c {
-			l.processed += 1
+			l.processed++
 		}
 		close(l.done)
 	}()
@@ -251,24 +251,24 @@ func TestPostProcessor(t *testing.T) {
 	go pp.run()
 	listeners := make([]*listener, 10)
 
-	for i, _ := range listeners {
+	for i := range listeners {
 		listeners[i] = newListener()
 		pp.AddListener(listeners[i].c)
 	}
 
-	kProcessed := 10
-	for i := 0; i < kProcessed; i++ {
+	numProcessed := 10
+	for i := 0; i < numProcessed; i++ {
 		pp.PostProcess(&RunInfo{})
 	}
 
 	pp.Close()
 
-	for i, _ := range listeners {
+	for i := range listeners {
 		select {
 		case <-listeners[i].done:
 		}
-		if listeners[i].processed != kProcessed {
-			t.Fatalf("listeners[%d].processed == %d, want %d", i, listeners[i].processed, kProcessed)
+		if listeners[i].processed != numProcessed {
+			t.Fatalf("listeners[%d].processed == %d, want %d", i, listeners[i].processed, numProcessed)
 		}
 	}
 }

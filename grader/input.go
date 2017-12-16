@@ -110,14 +110,15 @@ func (input *graderBaseInput) Transmit(w http.ResponseWriter) error {
 	return err
 }
 
-// GraderInput is an Input generated from a git repository that is then stored
+// Input is a common.Input generated from a git repository that is then stored
 // in a .tar.gz file that can be sent to a runner.
-type GraderInput struct {
+type Input struct {
 	graderBaseInput
 	repositoryPath string
 }
 
-func (input *GraderInput) Persist() error {
+// Persist writes the Input to disk and stores its hash.
+func (input *Input) Persist() error {
 	if err := os.MkdirAll(path.Dir(input.archivePath), 0755); err != nil {
 		return err
 	}
@@ -173,7 +174,7 @@ func (input *GraderInput) Persist() error {
 	return nil
 }
 
-func (input *GraderInput) createArchiveFromGit(archivePath string) (int64, error) {
+func (input *Input) createArchiveFromGit(archivePath string) (int64, error) {
 	repository, err := git.OpenRepository(input.repositoryPath)
 	if err != nil {
 		return 0, err
@@ -208,9 +209,9 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) (int64, error
 	archive := tar.NewWriter(gz)
 	defer archive.Close()
 
-	var walkErr error = nil
+	var walkErr error
 	foundSettings := false
-	var uncompressedSize int64 = 0
+	var uncompressedSize int64
 	tree.Walk(func(parent string, entry *git.TreeEntry) int {
 		entryPath := path.Join(parent, entry.Name)
 		if entryPath == "settings.json" {
@@ -275,29 +276,32 @@ func (input *GraderInput) createArchiveFromGit(archivePath string) (int64, error
 	return uncompressedSize, nil
 }
 
-// GraderInputFactory is an InputFactory that can store specific versions of a
+// InputFactory is a common.InputFactory that can store specific versions of a
 // problem's git repository into a .tar.gz file that can be easily shipped to
 // runners.
-type GraderInputFactory struct {
+type InputFactory struct {
 	problemName string
 	config      *common.Config
 }
 
-func NewGraderInputFactory(
+// NewInputFactory returns a new InputFactory for the specified problem name
+// and configuration.
+func NewInputFactory(
 	problemName string,
 	config *common.Config,
 ) common.InputFactory {
-	return &GraderInputFactory{
+	return &InputFactory{
 		problemName: problemName,
 		config:      config,
 	}
 }
 
-func (factory *GraderInputFactory) NewInput(
+// NewInput creates a new Input that is identified by the supplied hash.
+func (factory *InputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
-	return &GraderInput{
+	return &Input{
 		graderBaseInput: graderBaseInput{
 			BaseInput: *common.NewBaseInput(
 				hash,
@@ -317,18 +321,22 @@ func (factory *GraderInputFactory) NewInput(
 	}
 }
 
-// GraderCachedInputFactory is a grader-specific CachedInputFactory.
-type GraderCachedInputFactory struct {
+// A CachedInputFactory is a grader-specific CachedInputFactory. It reads
+// all its inputs from the filesystem, and validates that they have not been
+// accidentally corrupted by comparing the input against its hash.
+type CachedInputFactory struct {
 	inputPath string
 }
 
-func NewGraderCachedInputFactory(inputPath string) common.CachedInputFactory {
-	return &GraderCachedInputFactory{
+// NewCachedInputFactory returns a new CachedInputFactory.
+func NewCachedInputFactory(inputPath string) common.CachedInputFactory {
+	return &CachedInputFactory{
 		inputPath: inputPath,
 	}
 }
 
-func (factory *GraderCachedInputFactory) NewInput(
+// NewInput returns an Input with the provided hash.
+func (factory *CachedInputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
@@ -344,7 +352,8 @@ func (factory *GraderCachedInputFactory) NewInput(
 	}
 }
 
-func (factory *GraderCachedInputFactory) GetInputHash(
+// GetInputHash returns the hash of the current InputFactory.
+func (factory *CachedInputFactory) GetInputHash(
 	dirname string,
 	info os.FileInfo,
 ) (hash string, ok bool) {

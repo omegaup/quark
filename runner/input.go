@@ -7,7 +7,6 @@ import (
 	"compress/gzip"
 	"crypto/sha1"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/lhchavez/quark/common"
 	"io"
@@ -21,24 +20,26 @@ import (
 	"strings"
 )
 
-// RunnerInputFactory is an InputFactory that can fetch the test case data from
+// InputFactory is a common.InputFactory that can fetch the test case data from
 // the grader.
-type RunnerInputFactory struct {
+type InputFactory struct {
 	client *http.Client
 	config *common.Config
 }
 
-func NewRunnerInputFactory(
+// NewInputFactory returns a new InputFactory.
+func NewInputFactory(
 	client *http.Client,
 	config *common.Config,
 ) common.InputFactory {
-	return &RunnerInputFactory{
+	return &InputFactory{
 		client: client,
 		config: config,
 	}
 }
 
-func (factory *RunnerInputFactory) NewInput(
+// NewInput returns a new Input that corresponds to the specified hash.
+func (factory *InputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
@@ -50,7 +51,7 @@ func (factory *RunnerInputFactory) NewInput(
 	if err != nil {
 		panic(err)
 	}
-	return &RunnerInput{
+	return &Input{
 		runnerBaseInput: runnerBaseInput{
 			BaseInput: *common.NewBaseInput(
 				hash,
@@ -82,7 +83,7 @@ func (input *runnerBaseInput) Verify() error {
 		return err
 	}
 
-	var size int64 = 0
+	var size int64
 	for path, expectedHashStr := range hashes {
 		actualHash, err := common.Sha1sum(path)
 		if err != nil {
@@ -90,12 +91,12 @@ func (input *runnerBaseInput) Verify() error {
 		}
 		actualHashStr := fmt.Sprintf("%0x", actualHash)
 		if actualHashStr != expectedHashStr {
-			return errors.New(fmt.Sprintf(
+			return fmt.Errorf(
 				"hash mismatch for '%s' == %q, want %q",
 				path,
 				actualHashStr,
 				expectedHashStr,
-			))
+			)
 		}
 		stat, err := os.Stat(path)
 		if err != nil {
@@ -139,14 +140,18 @@ func (input *runnerBaseInput) getStoredHashes() (map[string]string, error) {
 	for scanner.Scan() {
 		res := sha1sumRe.FindStringSubmatch(scanner.Text())
 		if res == nil {
-			return result, errors.New(fmt.Sprintf("sha1sum file format error '%s",
-				hashPath))
+			return result, fmt.Errorf(
+				"sha1sum file format error '%s",
+				hashPath,
+			)
 		}
 		expectedHash := res[1]
 		filePath := filepath.Join(dir, res[2])
 		if !strings.HasPrefix(filePath, input.path) {
-			return result, errors.New(fmt.Sprintf("path is outside expected directory: '%s",
-				filePath))
+			return result, fmt.Errorf(
+				"path is outside expected directory: '%s",
+				filePath,
+			)
 		}
 		result[filePath] = expectedHash
 	}
@@ -194,7 +199,7 @@ func (input *runnerBaseInput) persistFromTarStream(
 	}
 	defer sha1sumFile.Close()
 
-	var size int64 = 0
+	var size int64
 
 	for {
 		hdr, err := archive.Next()
@@ -238,11 +243,11 @@ func (input *runnerBaseInput) persistFromTarStream(
 	}
 
 	if streamHash != fmt.Sprintf("%0x", hasher.Sum(nil)) {
-		return errors.New(fmt.Sprintf(
+		return fmt.Errorf(
 			"hash mismatch: expected %s got %s",
 			streamHash,
 			fmt.Sprintf("%0x", hasher.Sum(nil)),
-		))
+		)
 	}
 
 	settingsFd, err := os.Open(path.Join(tmpPath, "settings.json"))
@@ -264,14 +269,15 @@ func (input *runnerBaseInput) persistFromTarStream(
 	return nil
 }
 
-// RunnerInput is an Input that can fetch the test case data from the grader.
-type RunnerInput struct {
+// Input is a common.Input that can fetch the test case data from the grader.
+type Input struct {
 	runnerBaseInput
 	requestURL string
 	client     *http.Client
 }
 
-func (input *RunnerInput) Persist() error {
+// Persist stores the Input into the filesystem.
+func (input *Input) Persist() error {
 	resp, err := input.client.Get(input.requestURL)
 	if err != nil {
 		return err
@@ -293,18 +299,20 @@ func (input *RunnerInput) Persist() error {
 	)
 }
 
-// RunnerCachedInputFactory restores Inputs from a directory in the filesystem.
-type RunnerCachedInputFactory struct {
+// CachedInputFactory restores Inputs from a directory in the filesystem.
+type CachedInputFactory struct {
 	cachePath string
 }
 
-func NewRunnerCachedInputFactory(cachePath string) common.CachedInputFactory {
-	return &RunnerCachedInputFactory{
+// NewCachedInputFactory creates a new CachedInputFactory.
+func NewCachedInputFactory(cachePath string) common.CachedInputFactory {
+	return &CachedInputFactory{
 		cachePath: cachePath,
 	}
 }
 
-func (factory *RunnerCachedInputFactory) NewInput(
+// NewInput returns the Input for the provided hash.
+func (factory *CachedInputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
@@ -317,14 +325,15 @@ func (factory *RunnerCachedInputFactory) NewInput(
 	}
 }
 
-func (factory *RunnerCachedInputFactory) GetInputHash(
+// GetInputHash returns the hash of the input located at the specified directory.
+func (factory *CachedInputFactory) GetInputHash(
 	dirname string,
 	info os.FileInfo,
 ) (hash string, ok bool) {
 	return fmt.Sprintf("%s%s", path.Base(dirname), info.Name()), info.IsDir()
 }
 
-type LazyReadCloser interface {
+type lazyReadCloser interface {
 	Open() (io.ReadCloser, error)
 }
 
@@ -332,7 +341,7 @@ type LazyReadCloser interface {
 type runnerTarInputFactory struct {
 	inputPath string
 	hash      string
-	inputData LazyReadCloser
+	inputData lazyReadCloser
 }
 
 type runnerTarInput struct {
@@ -340,10 +349,10 @@ type runnerTarInput struct {
 	factory *runnerTarInputFactory
 }
 
-func NewRunnerTarInputFactory(
+func newRunnerTarInputFactory(
 	config *common.Config,
 	hash string,
-	inputData LazyReadCloser,
+	inputData lazyReadCloser,
 ) common.InputFactory {
 	return &runnerTarInputFactory{
 		inputPath: path.Join(

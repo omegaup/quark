@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Configuration
+// BroadcasterConfig represents the configuration for the Broadcaster.
 type BroadcasterConfig struct {
 	ChannelLength           int
 	EventsPort              uint16
@@ -24,10 +24,13 @@ type BroadcasterConfig struct {
 	WriteDeadline           time.Duration
 }
 
+// InputManagerConfig represents the configuration for the InputManager.
 type InputManagerConfig struct {
 	CacheSize int64
 }
 
+// V1Config represents the configuration for the V1-compatibility shim for the
+// Grader.
 type V1Config struct {
 	Enabled          bool
 	Port             uint16
@@ -38,6 +41,7 @@ type V1Config struct {
 	WriteResults     bool
 }
 
+// GraderConfig represents the configuration for the Grader.
 type GraderConfig struct {
 	ChannelLength   int
 	Port            uint16
@@ -48,40 +52,47 @@ type GraderConfig struct {
 	WriteGradeFiles bool // TODO(lhchavez): Remove once migration is done.
 }
 
+// TLSConfig represents the configuration for TLS.
 type TLSConfig struct {
 	CertFile string
 	KeyFile  string
 }
 
+// RunnerConfig represents the configuration for the Runner.
 type RunnerConfig struct {
 	GraderURL           string
 	RuntimePath         string
 	CompileTimeLimit    int
 	CompileOutputLimit  int
-	ClrVmEstimatedSize  int64
-	JavaVmEstimatedSize int64
+	ClrVMEstimatedSize  int64
+	JavaVMEstimatedSize int64
 	PreserveFiles       bool
 }
 
+// DbConfig represents the configuration for the database.
 type DbConfig struct {
 	Driver         string
 	DataSourceName string
 }
 
+// TracingConfig represents the configuration for tracing.
 type TracingConfig struct {
 	Enabled bool
 	File    string
 }
 
+// LoggingConfig represents the configuration for logging.
 type LoggingConfig struct {
 	File  string
 	Level string
 }
 
+// MetricsConfig represents the configuration for metrics.
 type MetricsConfig struct {
 	Port uint16
 }
 
+// Config represents the configuration for the whole program.
 type Config struct {
 	Broadcaster  BroadcasterConfig
 	InputManager InputManagerConfig
@@ -146,8 +157,8 @@ var defaultConfig = Config{
 		GraderURL:           "https://omegaup.com:11302",
 		CompileTimeLimit:    30,
 		CompileOutputLimit:  10 * 1024 * 1024, // 10 MiB
-		ClrVmEstimatedSize:  20 * 1024 * 1024, // 20 MiB
-		JavaVmEstimatedSize: 30 * 1024 * 1024, // 30 MiB
+		ClrVMEstimatedSize:  20 * 1024 * 1024, // 20 MiB
+		JavaVMEstimatedSize: 30 * 1024 * 1024, // 30 MiB
 		PreserveFiles:       false,
 	},
 	TLS: TLSConfig{
@@ -168,7 +179,7 @@ func (config *Config) String() string {
 	return string(buf)
 }
 
-// Context
+// A Context holds data associated with a single request.
 type Context struct {
 	Config          Config
 	Log             log15.Logger
@@ -181,6 +192,7 @@ type Context struct {
 	memoryCollector *MemoryEventCollector
 }
 
+// DefaultConfig returns a default Config.
 func DefaultConfig() Config {
 	return defaultConfig
 }
@@ -316,12 +328,15 @@ func (context *Context) DebugContext(logCtx ...interface{}) *Context {
 	return childContext
 }
 
+// AppendLogSection adds a complete section of logs to the log buffer. This
+// typcally comes from a client.
 func (context *Context) AppendLogSection(sectionName string, contents []byte) {
 	fmt.Fprintf(context.logBuffer, "================  %s  ================\n", sectionName)
 	context.logBuffer.Write(contents)
 	fmt.Fprintf(context.logBuffer, "================ /%s  ================\n", sectionName)
 }
 
+// LogBuffer returns the contents of the logging buffer for this context.
 func (context *Context) LogBuffer() []byte {
 	if context.logBuffer == nil {
 		return nil
@@ -329,6 +344,8 @@ func (context *Context) LogBuffer() []byte {
 	return context.logBuffer.Bytes()
 }
 
+// TraceBuffer returns a JSON representation of the Trace Event stream for this
+// Context.
 func (context *Context) TraceBuffer() []byte {
 	if context.memoryCollector == nil {
 		return nil

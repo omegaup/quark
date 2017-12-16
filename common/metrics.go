@@ -20,11 +20,15 @@ type Metrics interface {
 type NoOpMetrics struct {
 }
 
+// GaugeAdd adds the specified value to a gauge of the specified name.
 func (n *NoOpMetrics) GaugeAdd(name string, value float64) {
 }
 
+// CounterAdd adds the specified value to a counter of the specified name.
+// Value should be non-negative.
 func (n *NoOpMetrics) CounterAdd(name string, value float64) {
 }
 
+// SummaryObserve adds the specified value to a summary of the specified name.
 func (n *NoOpMetrics) SummaryObserve(name string, value float64) {
 }

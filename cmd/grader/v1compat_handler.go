@@ -408,7 +408,7 @@ func v1CompatInjectRuns(
 		ctx.Metrics.CounterAdd("grader_runs_total", 1)
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
-			v1compat.NewGraderInputFactory(
+			v1compat.NewInputFactory(
 				runCtx.ProblemName,
 				&ctx.Config,
 				&v1compat.SettingsLoader{

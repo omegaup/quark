@@ -94,6 +94,7 @@ type BaseInput struct {
 	settings  ProblemSettings
 }
 
+// NewBaseInput returns a new reference to a BaseInput.
 func NewBaseInput(hash string, mgr *InputManager) *BaseInput {
 	return &BaseInput{
 		hash: hash,
@@ -101,51 +102,70 @@ func NewBaseInput(hash string, mgr *InputManager) *BaseInput {
 	}
 }
 
+// Path returns the filesystem path to the Input.
 func (input *BaseInput) Path() string {
 	return "/dev/null"
 }
 
+// Committed returns whether the Input has been committed to disk.
 func (input *BaseInput) Committed() bool {
 	return input.committed
 }
 
+// Size returns the total disk size used by the Input.
 func (input *BaseInput) Size() int64 {
 	return input.size
 }
 
+// Hash returns the hash of the Input.
 func (input *BaseInput) Hash() string {
 	return input.hash
 }
 
+// Reserve ensures that there are at least size bytes available in the input
+// cache. This might evict older, unused Inputs.
 func (input *BaseInput) Reserve(size int64) {
 	input.mgr.Reserve(size)
 }
 
+// Commit adds the Input to the set of cached inputs, and also adds its size to
+// the total committed size.
 func (input *BaseInput) Commit(size int64) {
 	input.size = size
 	input.committed = true
 }
 
+// Verify ensures that the disk representation of the Input is still valid. It
+// typically does this by computing the hash of all files.
 func (input *BaseInput) Verify() error {
 	return errors.New("Unimplemented")
 }
 
+// Persist writes all the files associated with the Input to disk. The files
+// can be garbage collected later if there are no outstanding references to the
+// input and there is disk space pressure.
 func (input *BaseInput) Persist() error {
 	return errors.New("Unimplemented")
 }
 
+// Delete deletes all the files associated with the Input.
 func (input *BaseInput) Delete() error {
 	return nil
 }
 
+// Settings returns the ProblemSettings associated with the current Input.
 func (input *BaseInput) Settings() *ProblemSettings {
 	return &input.settings
 }
 
+// Acquire increases the refcount of the Input. This makes it ineligible for
+// garbage collection.
 func (input *BaseInput) Acquire() {
 	input.refcount++
 }
 
+// Release decreases the refcount of the Input. Once there are no outstanding
+// references to this input, it can be garbage collected if needed.
 func (input *BaseInput) Release(outerInput Input) {
 	input.Lock()
 	defer input.Unlock()
@@ -158,6 +178,7 @@ func (input *BaseInput) Release(outerInput Input) {
 	}
 }
 
+// Transmit sends the input across HTTP.
 func (input *BaseInput) Transmit(w http.ResponseWriter) error {
 	return errors.New("Unimplemented")
 }
@@ -253,12 +274,12 @@ func (mgr *InputManager) getEntryLocked(
 	}
 
 	if factory == nil {
-		panic(errors.New(fmt.Sprintf("hash %s not found and factory is nil", hash)))
+		panic(fmt.Errorf("hash %s not found and factory is nil", hash))
 	}
 
 	input := factory.NewInput(hash, mgr)
 	if input == nil {
-		panic(errors.New(fmt.Sprintf("input nil for hash %s", hash)))
+		panic(fmt.Errorf("input nil for hash %s", hash))
 	}
 	entry := &inputEntry{
 		input: input,
@@ -282,7 +303,7 @@ func (mgr *InputManager) Get(hash string) (Input, error) {
 		ent.input.Acquire()
 		return ent.input, nil
 	}
-	return nil, errors.New(fmt.Sprintf("hash %s not found", hash))
+	return nil, fmt.Errorf("hash %s not found", hash)
 }
 
 // Add associates an opaque identifier (the hash) with an Input in the
@@ -425,6 +446,7 @@ func (mgr *InputManager) PreloadInputs(
 	return nil
 }
 
+// MarshalJSON returns the JSON representation of the InputManager.
 func (mgr *InputManager) MarshalJSON() ([]byte, error) {
 	mgr.Lock()
 	defer mgr.Unlock()

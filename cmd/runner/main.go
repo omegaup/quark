@@ -147,7 +147,7 @@ func main() {
 
 			input, err := inputManager.Add(
 				run.InputHash,
-				runner.NewRunnerCachedInputFactory(*input),
+				runner.NewCachedInputFactory(*input),
 			)
 			if err != nil {
 				ctx.Log.Error("Error loading input", "hash", run.InputHash, "err", err)
@@ -174,7 +174,7 @@ func main() {
 
 	go inputManager.PreloadInputs(
 		inputPath,
-		runner.NewRunnerCachedInputFactory(inputPath),
+		runner.NewCachedInputFactory(inputPath),
 		&ioLock,
 	)
 	transport := &http.Transport{
@@ -516,7 +516,7 @@ func gradeRun(
 	inputEvent := ctx.EventFactory.NewCompleteEvent("input")
 	input, err := inputManager.Add(
 		run.InputHash,
-		runner.NewRunnerInputFactory(client, &ctx.Config),
+		runner.NewInputFactory(client, &ctx.Config),
 	)
 	if err != nil {
 		return nil, err

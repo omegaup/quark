@@ -47,15 +47,15 @@ func TestParseMetaFile(t *testing.T) {
 			func(meta *RunMetadata) bool { return meta.Verdict == "RTE" },
 		},
 		{
-			fmt.Sprintf("status:0\nmem:%d", ctx.Config.Runner.JavaVmEstimatedSize),
+			fmt.Sprintf("status:0\nmem:%d", ctx.Config.Runner.JavaVMEstimatedSize),
 			"c",
 			nil,
 			func(meta *RunMetadata) bool {
-				return meta.Memory == ctx.Config.Runner.JavaVmEstimatedSize
+				return meta.Memory == ctx.Config.Runner.JavaVMEstimatedSize
 			},
 		},
 		{
-			fmt.Sprintf("status:0\nmem:%d", ctx.Config.Runner.JavaVmEstimatedSize),
+			fmt.Sprintf("status:0\nmem:%d", ctx.Config.Runner.JavaVMEstimatedSize),
 			"java",
 			nil,
 			func(meta *RunMetadata) bool { return meta.Memory == 0 },

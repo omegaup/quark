@@ -175,14 +175,18 @@ int main() {
 	}
 )
 
+// A BenchmarkResult represents the result of a single benchmark run.
 type BenchmarkResult struct {
 	Time     float64
 	WallTime float64
 	Memory   int64
 }
 
+// BenchmarkResults represents the results of running the whole suite of
+// benchmarks.
 type BenchmarkResults map[string]BenchmarkResult
 
+// RunHostBenchmark runs the benchmarking suite and returns its results.
 func RunHostBenchmark(
 	ctx *common.Context,
 	inputManager *common.InputManager,
@@ -198,7 +202,7 @@ func RunHostBenchmark(
 	for idx, benchmarkCase := range cases {
 		input, err := inputManager.Add(
 			benchmarkCase.hash,
-			NewRunnerTarInputFactory(
+			newRunnerTarInputFactory(
 				&ctx.Config,
 				benchmarkCase.hash,
 				&benchmarkCase,

@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+// RunServer runs an http.Server with the specified http.Handler forever. It
+// will optionally enable TLS.
 func RunServer(
 	tlsConfig *TLSConfig,
 	handler http.Handler,
@@ -48,6 +50,8 @@ func RunServer(
 	}
 }
 
+// AcceptsMimeType returns whether the provided MIME type was mentioned in the
+// Accept HTTP header in the http.Request.
 func AcceptsMimeType(r *http.Request, mimeType string) bool {
 	for _, accepts := range r.Header["Accept"] {
 		for _, mime := range strings.Split(accepts, ",") {
