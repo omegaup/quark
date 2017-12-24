@@ -133,7 +133,6 @@ func updateScoreboardLoop(
 	contestChan <-chan string,
 ) {
 	const infinity = time.Duration(math.MaxInt64)
-	timeout := time.Duration(ctx.Config.Broadcaster.ScoreboardUpdateTimeout) * time.Second
 	timer := time.NewTimer(infinity)
 	events := updateScoreboardEventHeap{}
 	eventSet := make(map[string]bool)
@@ -149,13 +148,13 @@ func updateScoreboardLoop(
 			eventSet[contestAlias] = false
 			heap.Push(&events, &updateScoreboardEvent{
 				contestAlias: contestAlias,
-				deadline:     time.Now().Add(timeout),
+				deadline:     time.Now().Add(ctx.Config.Broadcaster.ScoreboardUpdateTimeout),
 			})
 			if len(events) == 1 {
 				if !timer.Stop() {
 					<-timer.C
 				}
-				timer.Reset(timeout)
+				timer.Reset(ctx.Config.Broadcaster.ScoreboardUpdateTimeout)
 			}
 
 			updateScoreboardForContest(

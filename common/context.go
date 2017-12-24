@@ -15,11 +15,11 @@ type BroadcasterConfig struct {
 	ChannelLength           int
 	EventsPort              uint16
 	FrontendURL             string
-	PingPeriod              int64
+	PingPeriod              time.Duration
 	Port                    uint16
 	Proxied                 bool
 	ScoreboardUpdateSecret  string
-	ScoreboardUpdateTimeout int64     // seconds
+	ScoreboardUpdateTimeout time.Duration
 	TLS                     TLSConfig // only used if Proxied == false
 	WriteDeadline           time.Duration
 }
@@ -110,11 +110,11 @@ var defaultConfig = Config{
 		ChannelLength:           10,
 		EventsPort:              22291,
 		FrontendURL:             "https://omegaup.com",
-		PingPeriod:              30,
+		PingPeriod:              time.Duration(30) * time.Second,
 		Port:                    32672,
 		Proxied:                 true,
 		ScoreboardUpdateSecret:  "secret",
-		ScoreboardUpdateTimeout: 10,
+		ScoreboardUpdateTimeout: time.Duration(10) * time.Second,
 		TLS: TLSConfig{
 			CertFile: "/etc/omegaup/broadcaster/certificate.pem",
 			KeyFile:  "/etc/omegaup/broadcaster/key.pem",
