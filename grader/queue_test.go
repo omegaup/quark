@@ -57,7 +57,7 @@ func TestQueue(t *testing.T) {
 		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
 	}
 
-	queue, err := ctx.QueueManager.Get("default")
+	queue, err := ctx.QueueManager.Get(DefaultQueueName)
 	if err != nil {
 		t.Fatalf("default queue not found")
 	}
@@ -147,7 +147,7 @@ func TestQueuePriorities(t *testing.T) {
 		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
 	}
 
-	queue, err := ctx.QueueManager.Get("default")
+	queue, err := ctx.QueueManager.Get(DefaultQueueName)
 	if err != nil {
 		t.Fatalf("default queue not found")
 	}
@@ -175,6 +175,7 @@ func TestQueuePriorities(t *testing.T) {
 
 	closeNotifier := make(chan bool, 1)
 
+	ephemeralPriority := addRun(t, ctx, queue, input, QueuePriorityEphemeral)
 	lowPriority := addRun(t, ctx, queue, input, QueuePriorityLow)
 	normalPriority := addRun(t, ctx, queue, input, QueuePriorityNormal)
 	highPriority := addRun(t, ctx, queue, input, QueuePriorityHigh)
@@ -192,29 +193,42 @@ func TestQueuePriorities(t *testing.T) {
 	if runCtx != lowPriority {
 		t.Fatalf("expected runCtx == %v, got %v", lowPriority, runCtx)
 	}
+	runCtx, _, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
+	if runCtx != ephemeralPriority {
+		t.Fatalf("expected runCtx == %v, got %v", ephemeralPriority, runCtx)
+	}
 
-	if len(queue.runs[QueuePriorityLow]) != 0 {
-		t.Fatalf(
-			"expected len(queue.Runs[%d]) == %d, got %d",
+	queueInfo := ctx.QueueManager.GetQueueInfo()[DefaultQueueName]
+	if queueInfo.Lengths[QueuePriorityEphemeral] != 0 {
+		t.Errorf(
+			"expected queueInfo.Lengths[%d] == %d, got %d",
+			QueuePriorityEphemeral,
+			0,
+			queueInfo.Lengths[QueuePriorityEphemeral],
+		)
+	}
+	if queueInfo.Lengths[QueuePriorityLow] != 0 {
+		t.Errorf(
+			"expected queueInfo.Lengths[%d] == %d, got %d",
 			QueuePriorityLow,
 			0,
-			len(queue.runs[QueuePriorityLow]),
+			queueInfo.Lengths[QueuePriorityLow],
 		)
 	}
-	if len(queue.runs[QueuePriorityNormal]) != 0 {
-		t.Fatalf(
-			"expected len(queue.Runs[%d]) == %d, got %d",
+	if queueInfo.Lengths[QueuePriorityNormal] != 0 {
+		t.Errorf(
+			"expected queueInfo.Lengths[%d] == %d, got %d",
 			QueuePriorityNormal,
 			0,
-			len(queue.runs[QueuePriorityNormal]),
+			queueInfo.Lengths[QueuePriorityNormal],
 		)
 	}
-	if len(queue.runs[QueuePriorityHigh]) != 0 {
-		t.Fatalf(
-			"expected len(queue.Runs[%d]) == %d, got %d",
+	if queueInfo.Lengths[QueuePriorityHigh] != 0 {
+		t.Errorf(
+			"expected queueInfo.Lengths[%d] == %d, got %d",
 			QueuePriorityHigh,
 			0,
-			len(queue.runs[QueuePriorityHigh]),
+			queueInfo.Lengths[QueuePriorityHigh],
 		)
 	}
 }

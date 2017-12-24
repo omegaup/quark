@@ -459,7 +459,7 @@ func v1CompatBroadcast(
 }
 
 func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
-	runs, err := context().QueueManager.Get("default")
+	runs, err := context().QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}

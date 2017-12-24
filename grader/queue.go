@@ -27,6 +27,15 @@ const (
 	QueuePriorityNormal = QueuePriority(1)
 	// QueuePriorityLow represents a QueuePriority with low priority.
 	QueuePriorityLow = QueuePriority(2)
+	// QueuePriorityEphemeral represents a QueuePriority with the lowest
+	// priority. This also does not persist the results in the filesystem.
+	QueuePriorityEphemeral = QueuePriority(3)
+
+	// QueueCount represents the total number of queues in the grader.
+	QueueCount = 4
+
+	// DefaultQueueName is the default queue name.
+	DefaultQueueName = "default"
 )
 
 // RunInfo holds the necessary data of a Run, even after the RunContext is
@@ -257,7 +266,7 @@ func (run *RunContext) Ready() <-chan struct{} {
 // Queue represents a RunContext queue with three discrete priorities.
 type Queue struct {
 	Name  string
-	runs  [3]chan *RunContext
+	runs  [QueueCount]chan *RunContext
 	ready chan struct{}
 }
 
@@ -558,7 +567,7 @@ type QueueManager struct {
 
 // QueueInfo has information about one queue.
 type QueueInfo struct {
-	Lengths [3]int
+	Lengths [QueueCount]int
 }
 
 // NewQueueManager creates a new QueueManager.
@@ -567,7 +576,7 @@ func NewQueueManager(channelLength int) *QueueManager {
 		mapping:       make(map[string]*Queue),
 		channelLength: channelLength,
 	}
-	manager.Add("default")
+	manager.Add(DefaultQueueName)
 	return manager
 }
 
@@ -576,7 +585,7 @@ func NewQueueManager(channelLength int) *QueueManager {
 func (manager *QueueManager) Add(name string) *Queue {
 	queue := &Queue{
 		Name:  name,
-		ready: make(chan struct{}, 3*manager.channelLength),
+		ready: make(chan struct{}, QueueCount*manager.channelLength),
 	}
 	for r := range queue.runs {
 		queue.runs[r] = make(chan *RunContext, manager.channelLength)
@@ -607,10 +616,11 @@ func (manager *QueueManager) GetQueueInfo() map[string]QueueInfo {
 	queues := make(map[string]QueueInfo)
 	for name, queue := range manager.mapping {
 		queues[name] = QueueInfo{
-			Lengths: [3]int{
+			Lengths: [QueueCount]int{
 				len(queue.runs[0]),
 				len(queue.runs[1]),
 				len(queue.runs[2]),
+				len(queue.runs[3]),
 			},
 		}
 	}
