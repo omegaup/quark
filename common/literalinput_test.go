@@ -27,6 +27,7 @@ func TestLiteralInput(t *testing.T) {
 			},
 		},
 		dirname,
+		LiteralPersistNone,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)

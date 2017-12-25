@@ -35,7 +35,9 @@ func TestPreloadInputs(t *testing.T) {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
 	defer ctx.Close()
-	defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+	}
 
 	inputManager := common.NewInputManager(ctx)
 
@@ -133,6 +135,35 @@ func TestPreloadInputs(t *testing.T) {
 			t.Fatalf("Failed to write file: %q", err)
 		}
 	}
+	var AplusBHash string
+	{
+		AplusB, err := common.NewLiteralInputFactory(
+			&common.LiteralInput{
+				Cases: map[string]common.LiteralCaseSettings{
+					"0": {Input: "1 2", ExpectedOutput: "3"},
+					"1": {Input: "2 3", ExpectedOutput: "5"},
+				},
+				Validator: &common.LiteralValidatorSettings{
+					Name: "token-numeric",
+				},
+			},
+			ctx.Config.Runner.RuntimePath,
+			common.LiteralPersistRunner,
+		)
+		if err != nil {
+			t.Fatalf("Failed to create InputFactory: %q", err)
+		}
+		inputManager := common.NewInputManager(ctx)
+		AplusBInput, err := inputManager.Add(AplusB.Hash(), AplusB)
+		if err != nil {
+			t.Fatalf("Failed to create Input: %q", err)
+		}
+		AplusBHash = AplusBInput.Hash()
+		if err = AplusBInput.Persist(); err != nil {
+			t.Fatalf("Failed to persist Input: %q", err)
+		}
+		AplusBInput.Release(AplusBInput)
+	}
 	inputManager.PreloadInputs(
 		inputPath,
 		NewCachedInputFactory(inputPath),
@@ -149,6 +180,7 @@ func TestPreloadInputs(t *testing.T) {
 		{"0000000000000000000000000000000000000003", false},
 		{"0000000000000000000000000000000000000004", false},
 		{"4bba61b5499a7a511eb515594f3293a8741516ad", true},
+		{AplusBHash, true},
 	}
 	for _, het := range hashentries {
 		input, err := inputManager.Get(het.hash)

@@ -73,6 +73,7 @@ func TestQueue(t *testing.T) {
 			},
 		},
 		ctx.Config.Grader.RuntimePath,
+		common.LiteralPersistGrader,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
@@ -163,6 +164,7 @@ func TestQueuePriorities(t *testing.T) {
 			},
 		},
 		ctx.Config.Grader.RuntimePath,
+		common.LiteralPersistGrader,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)

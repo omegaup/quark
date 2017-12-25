@@ -2,6 +2,7 @@ package grader
 
 import (
 	"encoding/base64"
+	"github.com/lhchavez/quark/common"
 	"io/ioutil"
 	"net/http/httptest"
 	"os"
@@ -95,6 +96,35 @@ func TestPreloadInputs(t *testing.T) {
 			t.Fatalf("Failed to write file: %q", err)
 		}
 	}
+	var AplusBHash string
+	{
+		AplusB, err := common.NewLiteralInputFactory(
+			&common.LiteralInput{
+				Cases: map[string]common.LiteralCaseSettings{
+					"0": {Input: "1 2", ExpectedOutput: "3"},
+					"1": {Input: "2 3", ExpectedOutput: "5"},
+				},
+				Validator: &common.LiteralValidatorSettings{
+					Name: "token-numeric",
+				},
+			},
+			ctx.Config.Grader.RuntimePath,
+			common.LiteralPersistGrader,
+		)
+		if err != nil {
+			t.Fatalf("Failed to create InputFactory: %q", err)
+		}
+		inputManager := common.NewInputManager(&ctx.Context)
+		AplusBInput, err := inputManager.Add(AplusB.Hash(), AplusB)
+		if err != nil {
+			t.Fatalf("Failed to create Input: %q", err)
+		}
+		AplusBHash = AplusBInput.Hash()
+		if err = AplusBInput.Persist(); err != nil {
+			t.Fatalf("Failed to persist Input: %q", err)
+		}
+		AplusBInput.Release(AplusBInput)
+	}
 	ctx.InputManager.PreloadInputs(
 		cachePath,
 		NewCachedInputFactory(cachePath),
@@ -108,6 +138,7 @@ func TestPreloadInputs(t *testing.T) {
 		{"0000000000000000000000000000000000000000", false},
 		{"0000000000000000000000000000000000000001", false},
 		{"4bba61b5499a7a511eb515594f3293a8741516ad", true},
+		{AplusBHash, true},
 	}
 	for _, het := range hashentries {
 		input, err := ctx.InputManager.Get(het.hash)

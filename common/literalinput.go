@@ -9,12 +9,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+)
+
+type LiteralPersistMode int
+
+const (
+	LiteralPersistNone LiteralPersistMode = iota
+	LiteralPersistGrader
+	LiteralPersistRunner
 )
 
 // LiteralCaseSettings stores the input, expected output, and the weight of a
@@ -120,11 +131,13 @@ func validateInterface(interfaceName string) error {
 // LiteralInputFactory is an InputFactory that will return an Input version of
 // the specified LiteralInput when asked for an input.
 type LiteralInputFactory struct {
-	settings    ProblemSettings
-	runtimePath string
-	files       map[string][]byte
-	hash        string
-	tarfile     bytes.Buffer
+	settings         ProblemSettings
+	persistMode      LiteralPersistMode
+	runtimePath      string
+	files            map[string][]byte
+	hash             string
+	tarfile          bytes.Buffer
+	uncompressedSize int64
 }
 
 // NewLiteralInputFactory validates the LiteralInput and stores it so it can be
@@ -132,9 +145,11 @@ type LiteralInputFactory struct {
 func NewLiteralInputFactory(
 	input *LiteralInput,
 	runtimePath string,
+	persistMode LiteralPersistMode,
 ) (*LiteralInputFactory, error) {
 	factory := &LiteralInputFactory{
 		runtimePath: runtimePath,
+		persistMode: persistMode,
 		settings: ProblemSettings{
 			Slow: true,
 		},
@@ -298,18 +313,22 @@ func NewLiteralInputFactory(
 		}
 	}
 
-	bytes, err := json.MarshalIndent(factory.settings, "", "  ")
+	marshaledBytes, err := json.MarshalIndent(factory.settings, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	factory.files["settings.json"] = bytes
+	factory.files["settings.json"] = marshaledBytes
+
+	for _, contents := range factory.files {
+		factory.uncompressedSize += int64(len(contents))
+	}
 
 	if err := createTar(&factory.tarfile, factory.files); err != nil {
 		return nil, err
 	}
 
 	hash := sha1.New()
-	if _, err := io.Copy(hash, &factory.tarfile); err != nil {
+	if _, err := io.Copy(hash, bytes.NewReader(factory.tarfile.Bytes())); err != nil {
 		return nil, err
 	}
 
@@ -332,16 +351,18 @@ func (factory *LiteralInputFactory) NewInput(hash string, mgr *InputManager) Inp
 		archivePath: path.Join(
 			factory.runtimePath,
 			"cache",
-			fmt.Sprintf("%s.tar.gz", hash),
+			fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
 		),
 		path: path.Join(
 			factory.runtimePath,
 			"input",
-			hash,
+			fmt.Sprintf("%s/%s", hash[:2], hash[2:]),
 		),
-		files:    &factory.files,
-		tarfile:  &factory.tarfile,
-		settings: &factory.settings,
+		files:            &factory.files,
+		tarfile:          &factory.tarfile,
+		settings:         &factory.settings,
+		persistMode:      factory.persistMode,
+		uncompressedSize: factory.uncompressedSize,
 	}
 }
 
@@ -353,11 +374,13 @@ func (factory *LiteralInputFactory) Hash() string {
 // inMemoryInput is an Input that is generated from a LiteralInput.
 type inMemoryInput struct {
 	BaseInput
-	archivePath string
-	path        string
-	files       *map[string][]byte
-	tarfile     *bytes.Buffer
-	settings    *ProblemSettings
+	archivePath      string
+	path             string
+	files            *map[string][]byte
+	tarfile          *bytes.Buffer
+	settings         *ProblemSettings
+	persistMode      LiteralPersistMode
+	uncompressedSize int64
 }
 
 func (input *inMemoryInput) Path() string {
@@ -368,36 +391,33 @@ func (input *inMemoryInput) Settings() *ProblemSettings {
 	return input.settings
 }
 
+func (input *inMemoryInput) Size() int64 {
+	return input.uncompressedSize
+}
+
 func (input *inMemoryInput) Persist() error {
-	// Write the Grader part of the Input.
-	{
+	if input.persistMode == LiteralPersistGrader {
 		if err := os.MkdirAll(path.Dir(input.archivePath), 0755); err != nil {
 			return err
 		}
-		tarFile, err := os.Create(input.archivePath)
-		if err != nil {
+		if err := ioutil.WriteFile(input.archivePath, input.tarfile.Bytes(), 0644); err != nil {
 			return nil
 		}
-		defer tarFile.Close()
-		if _, err := io.Copy(tarFile, input.tarfile); err != nil {
-			return err
-		}
-		sha1sumFile, err := os.Create(fmt.Sprintf("%s.sha1", input.archivePath))
-		if err != nil {
+		lengthContents := []byte(strconv.FormatInt(input.uncompressedSize, 10))
+		if err := ioutil.WriteFile(fmt.Sprintf("%s.len", input.archivePath), lengthContents, 0644); err != nil {
 			return nil
 		}
-		defer sha1sumFile.Close()
-		if _, err := fmt.Fprintf(
-			sha1sumFile,
+		hashContents := []byte(fmt.Sprintf(
 			"%s *%s.tar.gz\n",
 			input.Hash(),
-			input.Hash(),
-		); err != nil {
-			return err
+			path.Base(input.archivePath),
+		))
+		if err := ioutil.WriteFile(fmt.Sprintf("%s.sha1", input.archivePath), hashContents, 0644); err != nil {
+			return nil
 		}
+		input.Commit(int64(len(input.tarfile.Bytes())))
 	}
-	// Write the Runner part of the input.
-	{
+	if input.persistMode == LiteralPersistRunner {
 		if err := os.MkdirAll(path.Dir(input.path), 0755); err != nil {
 			return err
 		}
@@ -406,44 +426,69 @@ func (input *inMemoryInput) Persist() error {
 			return err
 		}
 		defer sha1sumFile.Close()
+		var totalSize int64
 		for filename, contents := range *input.files {
 			filePath := path.Join(input.path, filename)
 			if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
 				return err
 			}
-			f, err := os.Create(path.Join(filePath))
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			if _, err := f.Write(contents); err != nil {
+			totalSize += int64(len(contents))
+			if err := ioutil.WriteFile(filePath, contents, 0644); err != nil {
 				return err
 			}
 			hash := sha1.New()
 			if _, err := hash.Write(contents); err != nil {
 				return err
 			}
-			if _, err = fmt.Fprintf(
+			written, err := fmt.Fprintf(
 				sha1sumFile,
 				"%0x *%s/%s\n",
 				hash.Sum(nil),
-				input.Hash(),
+				input.Hash()[2:],
 				filename,
-			); err != nil {
+			)
+			if err != nil {
 				return err
 			}
+			totalSize += int64(written)
 		}
+		input.Commit(totalSize)
 	}
 	return nil
 }
 
+// Transmit sends a serialized version of the Input to the runner. It sends a
+// .tar.gz file with the Content-SHA1 header with the hexadecimal
+// representation of its SHA-1 hash.
+func (input *inMemoryInput) Transmit(w http.ResponseWriter) error {
+	fd, err := os.Open(input.archivePath)
+	if err != nil {
+		return err
+	}
+	defer fd.Close()
+	w.Header().Add("Content-Type", "application/x-gzip")
+	w.Header().Add("Content-SHA1", input.hash)
+	w.Header().Add(
+		"X-Content-Uncompressed-Size", strconv.FormatInt(input.uncompressedSize, 10),
+	)
+	w.WriteHeader(http.StatusOK)
+	_, err = io.Copy(w, fd)
+	return err
+}
+
 func (input *inMemoryInput) Delete() error {
-	os.Remove(fmt.Sprintf("%s.tmp", input.archivePath))
-	os.Remove(fmt.Sprintf("%s.sha1", input.archivePath))
-	os.Remove(input.archivePath)
-	os.RemoveAll(fmt.Sprintf("%s.tmp", input.path))
-	os.Remove(fmt.Sprintf("%s.sha1", input.path))
-	return os.RemoveAll(input.path)
+	if input.persistMode == LiteralPersistGrader {
+		os.Remove(fmt.Sprintf("%s.tmp", input.archivePath))
+		os.Remove(fmt.Sprintf("%s.sha1", input.archivePath))
+		os.Remove(fmt.Sprintf("%s.len", input.archivePath))
+		return os.Remove(input.archivePath)
+	}
+	if input.persistMode == LiteralPersistRunner {
+		os.RemoveAll(fmt.Sprintf("%s.tmp", input.path))
+		os.Remove(fmt.Sprintf("%s.sha1", input.path))
+		return os.RemoveAll(input.path)
+	}
+	return nil
 }
 
 func createTar(buf *bytes.Buffer, files map[string][]byte) error {

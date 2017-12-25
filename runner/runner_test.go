@@ -175,6 +175,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		ctx.Config.Runner.RuntimePath,
+		common.LiteralPersistRunner,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
@@ -560,6 +561,7 @@ func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		ctx.Config.Runner.RuntimePath,
+		common.LiteralPersistRunner,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
@@ -711,6 +713,7 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		ctx.Config.Runner.RuntimePath,
+		common.LiteralPersistRunner,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
@@ -842,6 +845,7 @@ func TestLibinteractive(t *testing.T) {
 			},
 		},
 		ctx.Config.Runner.RuntimePath,
+		common.LiteralPersistRunner,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
