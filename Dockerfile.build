@@ -12,7 +12,6 @@ RUN go test -c github.com/lhchavez/quark/grader -o bin/grader_test
 
 RUN go build --ldflags '-extldflags "-static -lgcrypt -lgpg-error"' -o bin/grader github.com/lhchavez/quark/cmd/grader
 RUN go build --ldflags '-extldflags "-static"' -o bin/validator github.com/lhchavez/quark/cmd/validator
-RUN go build --ldflags '-extldflags "-static"' -o bin/sudo github.com/lhchavez/quark/cmd/sudo
 
 ENV CGO_ENABLED 0
 RUN go build  --ldflags '-extldflags "-static -libc -lpthread"' -o bin/benchmark github.com/lhchavez/quark/cmd/benchmark

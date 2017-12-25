@@ -2,9 +2,6 @@ FROM omegaup/minijail
 
 ADD root/runner /
 
-ADD bin/sudo /usr/bin/
-RUN ["/usr/bin/sudo", "--bootstrap"]
-
 ADD bin/x86_64/runner /usr/bin
 
 VOLUME ["/var/lib/omegaup", "/etc/omegaup/runner", "/var/log/omegaup"]

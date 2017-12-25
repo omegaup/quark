@@ -44,7 +44,6 @@ bin/.binary-stamp: $(SOURCES) bin/.prebuild-stamp Dockerfile.build
 	docker cp $(CONTAINER):/go/bin/benchmark bin/x86_64/benchmark
 	docker cp $(CONTAINER):/go/bin/runner bin/x86_64/runner
 	docker cp $(CONTAINER):/go/bin/grader bin/x86_64/grader
-	docker cp $(CONTAINER):/go/bin/sudo bin/x86_64/sudo
 	docker cp $(CONTAINER):/go/bin/validator bin/x86_64/validator
 	docker cp $(CONTAINER):/go/bin/common_test-armhf bin/armhf/common_test
 	docker cp $(CONTAINER):/go/bin/runner_test-armhf bin/armhf/runner_test
