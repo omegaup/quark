@@ -82,7 +82,7 @@ func processRun(
 	attemptID uint64,
 	runCtx *grader.RunContext,
 ) *processRunStatus {
-	runnerName := PeerName(r)
+	runnerName := peerName(r)
 	// TODO: make this a per-attempt directory so we can only commit directories
 	// that will be not retried.
 	gradeDir := runCtx.GradeDir
@@ -221,7 +221,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 	mux.HandleFunc("/monitoring/benchmark/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		ctx := context()
-		runnerName := PeerName(r)
+		runnerName := peerName(r)
 		f, err := os.OpenFile("benchmark.txt", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
 		if err != nil {
 			ctx.Log.Error("Failed to open benchmark file", "err", err)
@@ -353,7 +353,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 	mux.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		ctx := context()
-		runnerName := PeerName(r)
+		runnerName := peerName(r)
 		ctx.Log.Debug("requesting run", "proto", r.Proto, "client", runnerName)
 
 		runCtx, _, ok := runs.GetRun(

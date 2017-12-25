@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// An UpstreamError represents an error that comes from the frontend.
 type UpstreamError struct {
 	HTTPStatusCode int
 	Contents       []byte
@@ -21,20 +22,27 @@ func (e *UpstreamError) Error() string {
 	return fmt.Sprintf("http %d", e.HTTPStatusCode)
 }
 
+// A QueuedMessage is a message that may be broadcast to relevant Subscribers.
+// It also performs latency analysis.
 type QueuedMessage struct {
 	time    time.Time
 	metrics Metrics
 	message *Message
 }
 
+// Processed signals that this message has been processed and has been enqueued
+// in all the relevant Subscribers' queues.
 func (m *QueuedMessage) Processed() {
 	m.metrics.ObserveProcessMessageLatency(time.Since(m.time))
 }
 
+// Dispatched signals that this message has been dispatched. It is used to
+// perform latency analysis.
 func (m *QueuedMessage) Dispatched() {
 	m.metrics.ObserveDispatchMessageLatency(time.Since(m.time))
 }
 
+// A Message is a message that will be broadcast to Subscribers.
 type Message struct {
 	Contest string `json:"contest,omitempty"`
 	Problem string `json:"problem,omitempty"`
@@ -43,6 +51,7 @@ type Message struct {
 	Message string `json:"message"`
 }
 
+// A ValidateFilterResponse holds the results of a Validate request.
 type ValidateFilterResponse struct {
 	User         string   `json:"user"`
 	Admin        bool     `json:"admin"`
@@ -50,6 +59,7 @@ type ValidateFilterResponse struct {
 	ContestAdmin []string `json:"contest_admin"`
 }
 
+// Metrics is the interface needed to publish performance metrics.
 type Metrics interface {
 	IncrementWebSocketsCount(delta int)
 	IncrementSSECount(delta int)
@@ -59,6 +69,7 @@ type Metrics interface {
 	ObserveProcessMessageLatency(latency time.Duration)
 }
 
+// A Broadcaster can send messages to Subscribers.
 type Broadcaster struct {
 	ctx         *common.Context
 	subscribers map[*Subscriber]struct{}
@@ -69,6 +80,7 @@ type Broadcaster struct {
 	metrics     Metrics
 }
 
+// NewBroadcaster returns a new Broadcaster.
 func NewBroadcaster(ctx *common.Context, metrics Metrics) *Broadcaster {
 	return &Broadcaster{
 		ctx:         ctx,
@@ -91,6 +103,9 @@ func (b *Broadcaster) remove(s *Subscriber) {
 	}
 }
 
+// Run is the main Broadcaster loop. It listens for
+// subscribe/unsubscribe/deauth events to manage the Subscribers, as well as
+// new incoming messages that will be sent to all matching Subscribers.
 func (b *Broadcaster) Run() {
 	for {
 		select {
@@ -137,10 +152,13 @@ func (b *Broadcaster) Run() {
 	}
 }
 
+// Deauthenticate removes all the Subscribers belonging to the provided user
+// from the Broadcaster.
 func (b *Broadcaster) Deauthenticate(user string) {
 	b.deauth <- user
 }
 
+// Broadcast delivers the provided message to all matching Subscribers.
 func (b *Broadcaster) Broadcast(message *Message) bool {
 	queuedMessage := &QueuedMessage{
 		time:    time.Now(),
@@ -159,6 +177,7 @@ func (b *Broadcaster) Broadcast(message *Message) bool {
 	}
 }
 
+// Subscribe adds one subscriber to the Broadcaster.
 func (b *Broadcaster) Subscribe(subscriber *Subscriber) bool {
 	select {
 	case b.subscribe <- subscriber:
@@ -171,6 +190,7 @@ func (b *Broadcaster) Subscribe(subscriber *Subscriber) bool {
 	}
 }
 
+// Unsubscribe removes one subscriber from the Broadcaster.
 func (b *Broadcaster) Unsubscribe(subscriber *Subscriber) bool {
 	select {
 	case b.unsubscribe <- subscriber:
@@ -183,6 +203,8 @@ func (b *Broadcaster) Unsubscribe(subscriber *Subscriber) bool {
 	}
 }
 
+// A Subscriber represents a user that wishes to receive broadcast
+// notifications.
 type Subscriber struct {
 	authToken       string
 	user            string
@@ -197,6 +219,7 @@ type Subscriber struct {
 	transport Transport
 }
 
+// NewSubscriber creates a new Subscriber.
 func NewSubscriber(
 	ctx *common.Context,
 	client *http.Client,
@@ -279,10 +302,13 @@ func NewSubscriber(
 	return s, nil
 }
 
+// Send returns the send channel, where messages can be added to.
 func (s *Subscriber) Send() chan<- *QueuedMessage {
 	return s.send
 }
 
+// Matches returns whether the provided message should be sent to the current
+// subscriber.
 func (s *Subscriber) Matches(msg *Message) bool {
 	for _, filter := range s.filters {
 		if filter.Matches(msg, s) {
@@ -292,6 +318,9 @@ func (s *Subscriber) Matches(msg *Message) bool {
 	return false
 }
 
+// Run loops waiting for one of three events to happen: connection closure, a
+// new message is ready to be delivered to this subscriber, and periodic ping
+// ticks.
 func (s *Subscriber) Run() {
 	s.transport.Init(s.close)
 	go s.transport.ReadLoop()

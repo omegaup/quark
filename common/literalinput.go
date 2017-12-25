@@ -20,11 +20,20 @@ import (
 	"strings"
 )
 
+// LiteralPersistMode indicates whether the LiteralInputFactory should persist
+// the input for the runner, grader, or neither.
 type LiteralPersistMode int
 
 const (
+	// LiteralPersistNone indicates that the input should not be persisted.
 	LiteralPersistNone LiteralPersistMode = iota
+
+	// LiteralPersistGrader indicates that the input will be persisted with the
+	// grader format.
 	LiteralPersistGrader
+
+	// LiteralPersistRunner indicates that the input will be persisted with the
+	// runner format.
 	LiteralPersistRunner
 )
 

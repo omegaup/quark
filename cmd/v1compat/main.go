@@ -72,7 +72,7 @@ func newCsvSettingsLoader(path string) (*csvSettingsLoader, error) {
 	rowIdx := 1
 	for {
 		row, err := csvReader.Read()
-		rowIdx += 1
+		rowIdx++
 		if err != nil {
 			if err == io.EOF {
 				break

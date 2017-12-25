@@ -258,25 +258,25 @@ func main() {
 	}
 }
 
-// ChannelBuffer is a buffer that implementats io.Reader, io.Writer, and
+// channelBuffer is a buffer that implementats io.Reader, io.Writer, and
 // io.WriterTo. Write() stores the incoming slices in a []byte channel, which
 // are then consumed when either Read() or WriteTo() are called.
-type ChannelBuffer struct {
+type channelBuffer struct {
 	chunks       chan []byte
 	currentChunk []byte
 }
 
-func NewChannelBuffer() *ChannelBuffer {
-	return &ChannelBuffer{
+func newChannelBuffer() *channelBuffer {
+	return &channelBuffer{
 		chunks: make(chan []byte, 0),
 	}
 }
 
-func (cb *ChannelBuffer) CloseChannel() {
+func (cb *channelBuffer) closeChannel() {
 	close(cb.chunks)
 }
 
-func (cb *ChannelBuffer) Write(buf []byte) (int, error) {
+func (cb *channelBuffer) Write(buf []byte) (int, error) {
 	// Copy the buffer since we cannot guarantee that the caller will not write
 	// to it again while we are waiting for the other end to read from it.
 	innerbuf := make([]byte, len(buf))
@@ -286,7 +286,7 @@ func (cb *ChannelBuffer) Write(buf []byte) (int, error) {
 	return len(innerbuf), nil
 }
 
-func (cb *ChannelBuffer) WriteTo(w io.Writer) (int64, error) {
+func (cb *channelBuffer) WriteTo(w io.Writer) (int64, error) {
 	totalWritten := int64(0)
 	for {
 		if cb.currentChunk == nil {
@@ -310,7 +310,7 @@ func (cb *ChannelBuffer) WriteTo(w io.Writer) (int64, error) {
 	}
 }
 
-func (cb *ChannelBuffer) Close() error {
+func (cb *channelBuffer) Close() error {
 	// If there are any chunks remaining, they should be drained before
 	// returning.  The other goroutine should eventually close the channel.
 	for _ = range cb.chunks {
@@ -318,7 +318,7 @@ func (cb *ChannelBuffer) Close() error {
 	return nil
 }
 
-func (cb *ChannelBuffer) Read(buf []byte) (int, error) {
+func (cb *channelBuffer) Read(buf []byte) (int, error) {
 	if cb.currentChunk == nil {
 		c, ok := <-cb.chunks
 		if !ok {
@@ -390,8 +390,8 @@ func gradeAndUploadResults(
 	run *common.Run,
 	finished chan<- error,
 ) error {
-	requestBody := NewChannelBuffer()
-	defer requestBody.CloseChannel()
+	requestBody := newChannelBuffer()
+	defer requestBody.closeChannel()
 	multipartWriter := multipart.NewWriter(requestBody)
 	defer multipartWriter.Close()
 	go func() {
@@ -430,12 +430,12 @@ func gradeAndUploadResults(
 		result.Score = 1.0
 		result.ContestScore = result.MaxScore
 
-		for i, _ := range result.Groups {
+		for i := range result.Groups {
 			group := &result.Groups[i]
 			group.Score = group.MaxScore
 			group.ContestScore = group.MaxScore * result.ContestScore
 
-			for j, _ := range group.Cases {
+			for j := range group.Cases {
 				caseResult := &group.Cases[j]
 				caseResult.Score = caseResult.MaxScore
 				caseResult.ContestScore = caseResult.MaxScore * result.ContestScore

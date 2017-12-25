@@ -47,28 +47,40 @@ func init() {
 	prometheus.MustRegister(dispatchLatencySummary)
 }
 
+// PrometheusMetrics is an implementation of broadcaster.Metrics that sends its
+// events to Prometheus.
 type PrometheusMetrics struct{}
 
+// IncrementWebSocketsCount increments the number of concurrently open WebSockets by delta.
 func (*PrometheusMetrics) IncrementWebSocketsCount(delta int) {
 	webSocketsGauge.Add(float64(delta))
 }
 
+// IncrementSSECount increments the number of concurrently open Server-Side
+// Events requests by delta.
 func (*PrometheusMetrics) IncrementSSECount(delta int) {
 	sseGauge.Add(float64(delta))
 }
 
+// IncrementChannelDropCount increases the number of channels that were dropped by one.
 func (*PrometheusMetrics) IncrementChannelDropCount() {
 	channelDropCounter.Inc()
 }
 
+// IncrementMessagesCount increases the number of messages that have been
+// processed by one.
 func (*PrometheusMetrics) IncrementMessagesCount() {
 	messagesCounter.Inc()
 }
 
+// ObserveDispatchMessageLatency adds the provided message dispatch latency to
+// the summary.
 func (*PrometheusMetrics) ObserveDispatchMessageLatency(latency time.Duration) {
 	dispatchLatencySummary.Observe(latency.Seconds())
 }
 
+// ObserveProcessMessageLatency adds the provided message process latehcy to
+// the summary.
 func (*PrometheusMetrics) ObserveProcessMessageLatency(latency time.Duration) {
 	processLatencySummary.Observe(latency.Seconds())
 }

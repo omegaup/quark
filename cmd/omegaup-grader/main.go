@@ -40,6 +40,7 @@ type processRunStatus struct {
 	retry  bool
 }
 
+// A ResponseStruct represents the result of a run request.
 type ResponseStruct struct {
 	Results  string
 	Logs     string
@@ -66,12 +67,11 @@ func context() *grader.Context {
 	return globalContext.Load().(*grader.Context)
 }
 
-func PeerName(r *http.Request) string {
+func peerName(r *http.Request) string {
 	if *insecure {
 		return r.RemoteAddr
-	} else {
-		return r.TLS.PeerCertificates[0].Subject.CommonName
 	}
+	return r.TLS.PeerCertificates[0].Subject.CommonName
 }
 
 func readGzippedFile(filename string) (string, error) {
