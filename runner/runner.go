@@ -75,9 +75,10 @@ type binary struct {
 }
 
 type intermediateRunResult struct {
-	name       string
-	runMeta    *RunMetadata
-	binaryType binaryType
+	name           string
+	runMeta        *RunMetadata
+	binaryType     binaryType
+	generatedFiles []string
 }
 
 type outputOnlyFile struct {
@@ -650,7 +651,7 @@ func Grade(
 					if bin.binaryType == binaryValidator {
 						continue
 					}
-					go func(bin *binary) {
+					go func(bin *binary, caseData *common.CaseSettings) {
 						var inputPath string
 						if bin.receiveInput {
 							inputPath = path.Join(
@@ -704,8 +705,7 @@ func Grade(
 								"err", err,
 							)
 						}
-						generatedFiles = append(
-							generatedFiles,
+						generatedFiles := []string{
 							path.Join(
 								bin.outputPathPrefix,
 								fmt.Sprintf("%s.out", caseData.Name),
@@ -718,10 +718,15 @@ func Grade(
 								bin.outputPathPrefix,
 								fmt.Sprintf("%s.meta", caseData.Name),
 							),
-						)
+						}
 						ctx.EventCollector.Add(singleBinary)
-						metaChan <- intermediateRunResult{bin.name, runMeta, bin.binaryType}
-					}(bin)
+						metaChan <- intermediateRunResult{
+							bin.name,
+							runMeta,
+							bin.binaryType,
+							generatedFiles,
+						}
+					}(bin, &caseData)
 				}
 				var parentMetadata *RunMetadata
 				chosenMetadata := RunMetadata{
@@ -734,6 +739,7 @@ func Grade(
 				var totalMemory int64
 				for i := 0; i < regularBinaryCount; i++ {
 					intermediateResult := <-metaChan
+					generatedFiles = append(generatedFiles, intermediateResult.generatedFiles...)
 					if regularBinaryCount != 1 {
 						// Only populate invidualMeta if there is more than one binary.
 						individualMeta[intermediateResult.name] = *intermediateResult.runMeta
