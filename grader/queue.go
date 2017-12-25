@@ -2,6 +2,7 @@ package grader
 
 import (
 	"compress/gzip"
+	"container/list"
 	"encoding/json"
 	"fmt"
 	"github.com/inconshreveable/log15"
@@ -10,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,6 +39,183 @@ const (
 	// DefaultQueueName is the default queue name.
 	DefaultQueueName = "default"
 )
+
+// A EphemeralRunRequest represents a client's request to run some code.
+type EphemeralRunRequest struct {
+	Source   string               `json:"source"`
+	Language string               `json:"language"`
+	Input    *common.LiteralInput `json:"input"`
+}
+
+// EphemeralRunManager handles a queue of recently-submitted ephemeral runs.
+// This has a fixed maximum size with a last-in, first-out eviction policy.
+type EphemeralRunManager struct {
+	sync.Mutex
+	evictList *list.List
+	ctx       *Context
+	paths     map[string]struct{}
+	totalSize int64
+	sizeLimit int64
+}
+
+type ephemeralRunEntry struct {
+	path string
+	size int64
+}
+
+func directorySize(root string) (result int64, err error) {
+	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			// Bail out the whole operation upon the first error.
+			return err
+		}
+		result += info.Size()
+		return nil
+	})
+
+	return
+}
+
+// NewEphemeralRunManager returns a new EphemeralRunManager.
+func NewEphemeralRunManager(ctx *Context) *EphemeralRunManager {
+	return &EphemeralRunManager{
+		evictList: list.New(),
+		ctx:       ctx,
+		paths:     make(map[string]struct{}),
+		sizeLimit: ctx.Config.Grader.Ephemeral.EphemeralSizeLimit,
+	}
+}
+
+// Initialize goes through the past ephemeral runs in order to add them to the
+// FIFO cache.
+func (mgr *EphemeralRunManager) Initialize() error {
+	ephemeralPath := path.Join(mgr.ctx.Config.Grader.RuntimePath, "ephemeral")
+
+	if err := os.MkdirAll(ephemeralPath, 0755); err != nil {
+		return err
+	}
+
+	dir, err := os.Open(ephemeralPath)
+	if err != nil {
+		return err
+	}
+
+	entryNames, err := dir.Readdirnames(0)
+	if err != nil {
+		return err
+	}
+
+	var firstErr error
+	for _, entryName := range entryNames {
+		entryPath := path.Join(ephemeralPath, entryName)
+		size, err := directorySize(entryPath)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			// This errored out. Let's try to remove the directory since it's not
+			// going to participate in the total size.
+			if err = os.RemoveAll(entryPath); err != nil {
+				mgr.ctx.Log.Error(
+					"Failed to remove directory during initialization",
+					"entry", entryPath,
+					"err", err,
+				)
+			}
+			continue
+		}
+
+		if err = mgr.add(&ephemeralRunEntry{
+			path: entryPath,
+			size: size,
+		}); err != nil {
+			mgr.ctx.Log.Error(
+				"Failed to add entry to manager",
+				"entry", entryPath,
+				"err", err,
+			)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+
+	return firstErr
+}
+
+// SetEphemeral makes a RunContext ephemeral. It does this by setting its
+// runtime path to be in the ephemeral subdirectory.
+func (mgr *EphemeralRunManager) SetEphemeral(runCtx *RunContext) (string, error) {
+	ephemeralPath := path.Join(mgr.ctx.Config.Grader.RuntimePath, "ephemeral")
+
+	var err error
+	if runCtx.GradeDir, err = ioutil.TempDir(ephemeralPath, ""); err != nil {
+		return "", err
+	}
+	return path.Base(runCtx.GradeDir), nil
+}
+
+// Commit adds the files produced by the RunContext into the FIFO cache,
+// potentially evicting older runs in the process.
+func (mgr *EphemeralRunManager) Commit(runCtx *RunContext) error {
+	size, err := directorySize(runCtx.GradeDir)
+	if err != nil {
+		return err
+	}
+
+	return mgr.add(&ephemeralRunEntry{
+		path: runCtx.GradeDir,
+		size: size,
+	})
+}
+
+// Get returns the filesystem path for a previous ephemeral run, and whether or
+// not it actually exists.
+func (mgr *EphemeralRunManager) Get(token string) (string, bool) {
+	ephemeralPath := path.Join(mgr.ctx.Config.Grader.RuntimePath, "ephemeral")
+
+	mgr.Lock()
+	defer mgr.Unlock()
+
+	entryPath := path.Join(ephemeralPath, token)
+	_, ok := mgr.paths[entryPath]
+	if !ok {
+		return "", false
+	}
+	return entryPath, true
+}
+
+func (mgr *EphemeralRunManager) String() string {
+	return fmt.Sprintf("{Size=%d, Count=%d}", mgr.totalSize, len(mgr.paths))
+}
+
+func (mgr *EphemeralRunManager) add(entry *ephemeralRunEntry) error {
+	mgr.Lock()
+	defer mgr.Unlock()
+
+	for mgr.evictList.Len() > 0 && mgr.totalSize+entry.size > mgr.sizeLimit {
+		element := mgr.evictList.Back()
+		evictedEntry := element.Value.(*ephemeralRunEntry)
+
+		if err := os.RemoveAll(evictedEntry.path); err != nil {
+			return err
+		}
+		mgr.totalSize -= evictedEntry.size
+		mgr.evictList.Remove(element)
+		delete(mgr.paths, evictedEntry.path)
+
+		mgr.ctx.Log.Info(
+			"Evicting a run",
+			"entry", evictedEntry,
+		)
+	}
+
+	mgr.evictList.PushFront(entry)
+	mgr.paths[entry.path] = struct{}{}
+	mgr.totalSize += entry.size
+
+	return nil
+}
 
 // RunInfo holds the necessary data of a Run, even after the RunContext is
 // gone.
@@ -67,7 +246,10 @@ type RunContext struct {
 	Config         *common.Config
 
 	// A flag to be able to atomically close the RunContext exactly once.
-	closed int32
+	closedFlag int32
+	// A flag to be able to atomically mark the RunContext as running exactly
+	// once.
+	runningFlag int32
 	// A reference to the Input so that it is not evicted while RunContext is
 	// still active
 	input common.Input
@@ -76,6 +258,9 @@ type RunContext struct {
 	queue   *Queue
 	context *common.Context
 	monitor *InflightMonitor
+
+	// A channel that will be closed once the run is ready.
+	running chan struct{}
 
 	// A channel that will be closed once the run is ready.
 	ready chan struct{}
@@ -112,8 +297,9 @@ func NewEmptyRunContext(ctx *Context) *RunContext {
 			CreationTime: time.Now(),
 			Priority:     QueuePriorityNormal,
 		},
-		tries: ctx.Config.Grader.MaxGradeRetries,
-		ready: make(chan struct{}),
+		tries:   ctx.Config.Grader.MaxGradeRetries,
+		running: make(chan struct{}),
+		ready:   make(chan struct{}),
 	}
 }
 
@@ -132,7 +318,7 @@ func (run *RunContext) Debug() error {
 // Close finalizes the run, stores its results in the filesystem, and releases
 // any resources associated with the RunContext.
 func (run *RunContext) Close() {
-	if atomic.SwapInt32(&run.closed, 1) != 0 {
+	if atomic.SwapInt32(&run.closedFlag, 1) != 0 {
 		run.Log.Warn("Attempting to close an already closed run")
 		return
 	}
@@ -258,6 +444,12 @@ func (run *RunContext) String() string {
 	)
 }
 
+// Running returns a channel that will be closed when the RunContext is picked up
+// by a runner.
+func (run *RunContext) Running() <-chan struct{} {
+	return run.running
+}
+
 // Ready returns a channel that will be closed when the RunContext is ready.
 func (run *RunContext) Ready() <-chan struct{} {
 	return run.ready
@@ -380,6 +572,9 @@ func (monitor *InflightMonitor) Add(
 	run *RunContext,
 	runner string,
 ) *InflightRun {
+	if atomic.SwapInt32(&run.runningFlag, 1) == 0 {
+		close(run.running)
+	}
 	monitor.Lock()
 	defer monitor.Unlock()
 	inflight := &InflightRun{

@@ -21,7 +21,10 @@ func newGraderContext() (*Context, error) {
 				"\"Logging\": {\"File\": \"stderr\"}, "+
 				"\"Tracing\": {\"Enabled\": false}, "+
 				"\"InputManager\": {\"CacheSize\": 1024}, "+
-				"\"Grader\": {\"RuntimePath\": %q} "+
+				"\"Grader\": {"+
+				"  \"RuntimePath\": %q, "+
+				"  \"Ephemeral\": {\"EphemeralSizeLimit\": 1024}"+
+				"}"+
 				"}",
 			dirname,
 		),

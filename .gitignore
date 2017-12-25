@@ -21,6 +21,10 @@ _cgo_export.*
 
 _testmain.go
 bindata.go
+cmd/omegaup-grader/data/dist/ephemeral/index.js*
+
+node_modules/
+yarn-error.log
 
 *.exe
 *.test

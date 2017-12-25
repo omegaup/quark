@@ -1,6 +1,6 @@
 package main
 
-//go:generate go-bindata -nomemcopy data/...
+//go:generate go-bindata -nomemcopy data/dist/...
 
 import (
 	"bytes"
@@ -169,6 +169,16 @@ func main() {
 
 	setupMetrics(ctx)
 	ctx.Log.Info("omegaUp grader started")
+	{
+		mux := http.NewServeMux()
+		registerEphemeralHandlers(mux)
+		go common.RunServer(
+			&ctx.Config.Grader.Ephemeral.TLS,
+			mux,
+			fmt.Sprintf(":%d", ctx.Config.Grader.Ephemeral.Port),
+			ctx.Config.Grader.Ephemeral.Proxied,
+		)
+	}
 
 	mux := http.DefaultServeMux
 	if ctx.Config.Grader.V1.Enabled {

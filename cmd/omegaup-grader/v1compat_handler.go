@@ -140,6 +140,10 @@ func v1CompatBroadcastRun(
 		Problem: run.ProblemName,
 		Public:  false,
 	}
+	if run.ID == 0 {
+		// Ephemeral run. No need to broadcast.
+		return nil
+	}
 	if run.Contest != nil {
 		message.Contest = *run.Contest
 	}

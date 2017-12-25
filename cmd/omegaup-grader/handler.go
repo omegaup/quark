@@ -214,7 +214,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 			Asset:     Asset,
 			AssetDir:  AssetDir,
 			AssetInfo: AssetInfo,
-			Prefix:    "data",
+			Prefix:    "data/dist/admin",
 		},
 	}))
 

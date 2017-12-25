@@ -42,6 +42,16 @@ type V1Config struct {
 	WriteResults     bool
 }
 
+// GraderEphemeralConfig represents the configuration for the Grader web interface.
+type GraderEphemeralConfig struct {
+	EphemeralSizeLimit int64
+	PingPeriod         time.Duration
+	Port               uint16
+	Proxied            bool
+	TLS                TLSConfig // only used if Proxied == false
+	WriteDeadline      time.Duration
+}
+
 // GraderConfig represents the configuration for the Grader.
 type GraderConfig struct {
 	ChannelLength   int
@@ -50,6 +60,7 @@ type GraderConfig struct {
 	MaxGradeRetries int
 	BroadcasterURL  string
 	V1              V1Config
+	Ephemeral       GraderEphemeralConfig
 	WriteGradeFiles bool // TODO(lhchavez): Remove once migration is done.
 }
 
@@ -150,6 +161,17 @@ var defaultConfig = Config{
 			SendBroadcast:    true,
 			UpdateDatabase:   true,
 			WriteResults:     true,
+		},
+		Ephemeral: GraderEphemeralConfig{
+			EphemeralSizeLimit: 1024 * 1024 * 1024, // 1 GB
+			Port:               36663,
+			PingPeriod:         time.Duration(30) * time.Second,
+			Proxied:            true,
+			TLS: TLSConfig{
+				CertFile: "/etc/omegaup/grader/web-certificate.pem",
+				KeyFile:  "/etc/omegaup/grader/web-key.pem",
+			},
+			WriteDeadline: time.Duration(5) * time.Second,
 		},
 		WriteGradeFiles: true,
 	},
