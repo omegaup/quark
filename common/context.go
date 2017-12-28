@@ -7,6 +7,7 @@ import (
 	"github.com/inconshreveable/log15"
 	"io"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -225,14 +226,17 @@ func NewContext(config *Config) (*Context, error) {
 	} else if context.Config.Logging.File == "stderr" {
 		context.handler = log15.StderrHandler
 	} else {
-		handler, err := log15.FileHandler(
-			context.Config.Logging.File,
-			log15.LogfmtFormat(),
-		)
+		// Open a file for appending and redirect stderr/stdout to it. This helps
+		// the panic messages to also appear in the log.
+		f, err := os.OpenFile(context.Config.Logging.File, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
 			return nil, err
 		}
-		context.handler = handler
+		defer f.Close()
+		if err = syscall.Dup2(int(f.Fd()), int(os.Stderr.Fd())); err != nil {
+			return nil, err
+		}
+		context.handler = log15.StreamHandler(os.Stderr, log15.LogfmtFormat())
 	}
 	level, err := log15.LvlFromString(context.Config.Logging.Level)
 	if err != nil {
