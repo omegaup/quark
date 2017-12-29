@@ -42,7 +42,7 @@ func loadContext() error {
 	}
 	defer f.Close()
 
-	ctx, err := common.NewContextFromReader(f)
+	ctx, err := common.NewContextFromReader(f, "broadcaster")
 	if err != nil {
 		return err
 	}

@@ -9,7 +9,7 @@ import (
 func newTestingContext() *Context {
 	ctx, err := NewContextFromReader(bytes.NewBufferString(
 		"{\"Logging\": {\"File\": \"stderr\"}, \"Tracing\": {\"Enabled\": false}}",
-	))
+	), "common")
 	if err != nil {
 		panic(err)
 	}

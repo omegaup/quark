@@ -20,7 +20,7 @@ func newTestInputManager(sizeLimit int64) *InputManager {
 	config.Tracing.Enabled = false
 	config.InputManager.CacheSize = sizeLimit
 
-	ctx, err := NewContext(&config)
+	ctx, err := NewContext(&config, "common")
 	if err != nil {
 		panic(err)
 	}

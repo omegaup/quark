@@ -212,8 +212,10 @@ func NewConfig(reader io.Reader) (*Config, error) {
 }
 
 // NewContext creates a new Context from the specified Config. This also
-// creates a Logger.
-func NewContext(config *Config) (*Context, error) {
+// creates a Logger. The role is just an arbitrary string that will be used to
+// disambiguate process names in the tracing in case multiple roles run from
+// the same host (e.g. grader and runner in the development VM).
+func NewContext(config *Config, role string) (*Context, error) {
 	var context = Context{
 		Config:  *config,
 		Metrics: &NoOpMetrics{},
@@ -284,7 +286,10 @@ func NewContext(config *Config) (*Context, error) {
 	if err != nil {
 		hostname = "main"
 	}
-	context.EventFactory = NewEventFactory(hostname, "main")
+	context.EventFactory = NewEventFactory(
+		fmt.Sprintf("%s (%s)", hostname, role),
+		"main",
+	)
 	context.EventFactory.Register(context.EventCollector)
 
 	return &context, nil
@@ -292,12 +297,12 @@ func NewContext(config *Config) (*Context, error) {
 
 // NewContextFromReader creates a new Context from the specified reader. This
 // also creates a Logger.
-func NewContextFromReader(reader io.Reader) (*Context, error) {
+func NewContextFromReader(reader io.Reader, role string) (*Context, error) {
 	config, err := NewConfig(reader)
 	if err != nil {
 		return nil, err
 	}
-	return NewContext(config)
+	return NewContext(config, role)
 }
 
 // Close releases all resources owned by the context.

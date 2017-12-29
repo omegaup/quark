@@ -37,7 +37,7 @@ func main() {
 	config.Runner.RuntimePath = *runtimePath
 	config.Tracing.Enabled = false
 
-	ctx, err := common.NewContext(&config)
+	ctx, err := common.NewContext(&config, "benchmark")
 	if err != nil {
 		panic(err)
 	}

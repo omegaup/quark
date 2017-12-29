@@ -127,7 +127,7 @@ func newRunnerContext() (*common.Context, error) {
 	config.Tracing.Enabled = false
 	config.InputManager.CacheSize = 1024
 	config.Runner.RuntimePath = dirname
-	ctx, err := common.NewContext(&config)
+	ctx, err := common.NewContext(&config, "runner")
 	if err != nil {
 		return nil, err
 	}

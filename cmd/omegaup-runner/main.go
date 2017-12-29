@@ -65,7 +65,7 @@ func loadContext() error {
 		}
 	}
 
-	ctx, err := common.NewContext(config)
+	ctx, err := common.NewContext(config, "runner")
 	if err != nil {
 		return err
 	}
