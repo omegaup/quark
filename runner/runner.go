@@ -93,13 +93,6 @@ func extraParentFlags(language string) []string {
 	return []string{}
 }
 
-func normalizedLanguage(language string) string {
-	if language == "cpp11" {
-		return "cpp"
-	}
-	return language
-}
-
 func normalizedSourceFiles(
 	runRoot string,
 	lang string,
@@ -302,7 +295,7 @@ func Grade(
 			if name == interactive.Main {
 				continue
 			}
-			iface, ok := langIface[normalizedLanguage(run.Language)]
+			iface, ok := langIface[common.LanguageFileExtension(run.Language)]
 			if !ok {
 				runResult.Verdict = "CE"
 				compileError := fmt.Sprintf("libinteractive does not support language '%s'", run.Language)
@@ -348,14 +341,14 @@ func Grade(
 				input.Path(),
 				fmt.Sprintf(
 					"interactive/Main.%s",
-					normalizedLanguage(interactive.ParentLang),
+					common.LanguageFileExtension(interactive.ParentLang),
 				),
 			),
 			path.Join(
 				runRoot,
 				fmt.Sprintf(
 					"Main/bin/Main.%s",
-					normalizedLanguage(interactive.ParentLang),
+					common.LanguageFileExtension(interactive.ParentLang),
 				),
 			),
 		); err != nil {
@@ -364,9 +357,9 @@ func Grade(
 		for name, langIface := range interactive.Interfaces {
 			var lang string
 			if name == "Main" {
-				lang = normalizedLanguage(interactive.ParentLang)
+				lang = common.LanguageFileExtension(interactive.ParentLang)
 			} else {
-				lang = normalizedLanguage(run.Language)
+				lang = common.LanguageFileExtension(run.Language)
 			}
 			for filename, contents := range langIface[lang].Files {
 				sourcePath := path.Join(
@@ -399,7 +392,7 @@ func Grade(
 					"%s/bin/%s.%s",
 					name,
 					interactive.ModuleName,
-					normalizedLanguage(run.Language),
+					common.LanguageFileExtension(run.Language),
 				),
 			)
 			err := ioutil.WriteFile(sourcePath, []byte(run.Source), 0644)
@@ -432,7 +425,7 @@ func Grade(
 		}
 		mainSourcePath := path.Join(
 			mainBinPath,
-			fmt.Sprintf("Main.%s", normalizedLanguage(run.Language)),
+			fmt.Sprintf("Main.%s", common.LanguageFileExtension(run.Language)),
 		)
 		err := ioutil.WriteFile(mainSourcePath, []byte(run.Source), 0644)
 		if err != nil {

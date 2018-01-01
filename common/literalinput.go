@@ -137,6 +137,14 @@ func validateInterface(interfaceName string) error {
 	return nil
 }
 
+// LanguageFileExtension returns the file extension for a particular language.
+func LanguageFileExtension(language string) string {
+	if language == "cpp11" {
+		return "cpp"
+	}
+	return language
+}
+
 // LiteralInputFactory is an InputFactory that will return an Input version of
 // the specified LiteralInput when asked for an input.
 type LiteralInputFactory struct {
@@ -186,7 +194,7 @@ func NewLiteralInputFactory(
 			limits := DefaultValidatorLimits
 			validator.CustomValidator.Limits = &limits
 		}
-	case "token", "token-caseless":
+	case "token", "token-caseless", "literal":
 		factory.settings.Validator.Name = validator.Name
 	case "token-numeric":
 		factory.settings.Validator.Name = validator.Name
@@ -285,6 +293,7 @@ func NewLiteralInputFactory(
 		if err := validateInterface(interactive.ModuleName); err != nil {
 			return nil, err
 		}
+		interactive.ParentLang = LanguageFileExtension(interactive.ParentLang)
 		factory.files[fmt.Sprintf("interactive/Main.%s", interactive.ParentLang)] =
 			[]byte(interactive.MainSource)
 		factory.files[fmt.Sprintf("interactive/%s.idl", interactive.ModuleName)] =
