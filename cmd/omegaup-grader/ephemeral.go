@@ -53,6 +53,7 @@ func (h *runHandler) addAndWaitForRun(
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 	runs *grader.Queue,
 ) error {
+	ctx.Metrics.CounterAdd("grader_ephemeral_runs_total", 1)
 	ctx.Log.Debug("Adding new run", "run", ephemeralRunRequest)
 	if err := h.validateRequest(ctx, ephemeralRunRequest); err != nil {
 		ctx.Log.Error("Invalid request", "err", err)
