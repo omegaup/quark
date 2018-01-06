@@ -17,3 +17,6 @@ button[type="submit"]:disabled img, button[type="submit"] span {
 button[type="submit"] img, button[type="submit"]:disabled span {
 	display: none;
 }
+input[type="file"] {
+	display: none;
+}

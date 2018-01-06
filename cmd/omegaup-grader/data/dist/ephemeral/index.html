@@ -11,9 +11,11 @@
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/goldenlayout.min.js"></script>
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.10.1/min/vs/loader.js"></script>
+
 		<link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/css/goldenlayout-base.css" />
 		<link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/css/goldenlayout-dark-theme.css" />
 		<link type="text/css" rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" integrity="sha384-PsH8R72JQ3SOdhVi3uxftmaW6Vc51MKb0q5P2rRUpPvrszuE4W1povHYgTpBfshb" crossorigin="anonymous" />
+		<link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" />
 		<link type="text/css" rel="stylesheet" href="style.css" />
 		<script src="index.js"></script>
 	</head>
@@ -21,6 +23,15 @@
 		<nav class="navbar navbar-dark bg-dark py-0">
 			<span class="navbar-brand">omegaUp ephemeral grader<sup>&alpha;</sup></span>
 			<form class="form-inline my-2 my-lg-0">
+				<label for="upload">
+					<a class="btn btn-secondary btn-sm mr-sm-2" role="button">
+						<span class="fa fa-upload" title="Upload" aria-hidden="true"></span>
+					</a>
+				</label>
+				<input id="upload" type="file" accept=".zip">
+				<a class="btn btn-secondary btn-sm mr-sm-2" id="download" role="button">
+					<span class="fa fa-file-archive-o" title="Download" aria-hidden="true" id="download-label"></span>
+				</a>
 				<select class="form-control form-control-sm mr-sm-2" id="language">
 					<option value="cpp11">C++</option>
 					<option value="cs">C#</option>

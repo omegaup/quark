@@ -2,6 +2,7 @@ export function vuexGet(store, name) {
   if (typeof store.getters[name] !== 'undefined') return store.getters[name];
   var o = store.state;
   for (let p of name.split('.')) {
+    if (typeof o === 'undefined') return undefined;
     if (!o.hasOwnProperty(p)) return undefined;
     o = o[p];
   }
@@ -14,6 +15,7 @@ export function vuexSet(store, name, value) {
 
 export const languageMonacoModelMapping = {
   cpp11: 'cpp',
+  cpp: 'cpp',
   cs: 'csharp',
   java: 'java',
   lua: 'lua',
@@ -29,6 +31,7 @@ export const languageMonacoModelMapping = {
 
 export const languageExtensionMapping = {
   cpp11: 'cpp',
+  cpp: 'cpp',
   cs: 'cs',
   java: 'java',
   lua: 'lua',

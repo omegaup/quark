@@ -60,6 +60,14 @@ func (h *runHandler) addAndWaitForRun(
 		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
+	maxScore := 0.0
+	for _, literalCase := range ephemeralRunRequest.Input.Cases {
+		if literalCase.Weight == nil {
+			maxScore += 1
+		} else {
+			maxScore += *literalCase.Weight
+		}
+	}
 	inputFactory, err := common.NewLiteralInputFactory(
 		ephemeralRunRequest.Input,
 		ctx.Config.Grader.RuntimePath,
@@ -98,7 +106,7 @@ func (h *runHandler) addAndWaitForRun(
 	runCtx := grader.NewEmptyRunContext(ctx)
 	runCtx.Run.InputHash = inputFactory.Hash()
 	runCtx.Run.Language = ephemeralRunRequest.Language
-	runCtx.Run.MaxScore = 100
+	runCtx.Run.MaxScore = maxScore
 	runCtx.Run.Source = ephemeralRunRequest.Source
 	runCtx.Priority = grader.QueuePriorityEphemeral
 	ephemeralToken, err := h.ephemeralRunManager.SetEphemeral(runCtx)

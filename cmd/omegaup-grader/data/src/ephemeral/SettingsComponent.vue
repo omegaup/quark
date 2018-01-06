@@ -42,7 +42,7 @@
       <div class="form-group col-md-6" v-if="validator == 'custom'">
         <label for="inputValidatorLanguage">Language</label>
         <select class="form-control" id="inputValidatorLanguage" v-model="validatorLanguage">
-          <option value="cpp11">C++</option>
+          <option value="cpp">C++</option>
           <option value="py">Python</option>
         </select>
       </div>
