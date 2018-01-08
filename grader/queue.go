@@ -9,6 +9,7 @@ import (
 	"github.com/lhchavez/quark/common"
 	"github.com/lhchavez/quark/runner"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
@@ -53,6 +54,7 @@ type EphemeralRunManager struct {
 	sync.Mutex
 	evictList *list.List
 	ctx       *Context
+	rand      *rand.Rand
 	paths     map[string]struct{}
 	totalSize int64
 	sizeLimit int64
@@ -81,6 +83,7 @@ func NewEphemeralRunManager(ctx *Context) *EphemeralRunManager {
 	return &EphemeralRunManager{
 		evictList: list.New(),
 		ctx:       ctx,
+		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
 		paths:     make(map[string]struct{}),
 		sizeLimit: ctx.Config.Grader.Ephemeral.EphemeralSizeLimit,
 	}
@@ -143,13 +146,36 @@ func (mgr *EphemeralRunManager) Initialize() error {
 	return firstErr
 }
 
+func (mgr *EphemeralRunManager) tempDir() (name string, err error) {
+	ephemeralPath := path.Join(mgr.ctx.Config.Grader.RuntimePath, "ephemeral")
+	buf := make([]byte, 10)
+
+	for i := 0; i < 10000; i++ {
+		mgr.rand.Read(buf)
+		try := path.Join(ephemeralPath, fmt.Sprintf("%x", buf))
+		err = os.Mkdir(try, 0700)
+		if os.IsExist(err) {
+			continue
+		}
+		if os.IsNotExist(err) {
+			if _, err := os.Stat(ephemeralPath); os.IsNotExist(err) {
+				return "", err
+			}
+		}
+		if err == nil {
+			name = try
+		}
+		break
+	}
+
+	return
+}
+
 // SetEphemeral makes a RunContext ephemeral. It does this by setting its
 // runtime path to be in the ephemeral subdirectory.
 func (mgr *EphemeralRunManager) SetEphemeral(runCtx *RunContext) (string, error) {
-	ephemeralPath := path.Join(mgr.ctx.Config.Grader.RuntimePath, "ephemeral")
-
 	var err error
-	if runCtx.GradeDir, err = ioutil.TempDir(ephemeralPath, ""); err != nil {
+	if runCtx.GradeDir, err = mgr.tempDir(); err != nil {
 		return "", err
 	}
 	return path.Base(runCtx.GradeDir), nil
