@@ -442,9 +442,9 @@ func (*OmegajailSandbox) Run(
 		}
 	case "kp", "kj":
 		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/js"),
+			"-S", path.Join(omegajailPath, "scripts/karel"),
 			"-b", path.Join(omegajailPath, "root-js") + ",/opt/nodejs",
-			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "run", fmt.Sprintf("%s.kx", target),
+			"--", "/opt/nodejs/karel.wasm", fmt.Sprintf("%s.kx", target),
 		}
 	case "hs":
 		params = []string{
@@ -613,6 +613,12 @@ func parseMetaFile(
 		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVMEstimatedSize)
 	} else if lang == "cs" {
 		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.ClrVMEstimatedSize)
+	} else if lang == "kj" || lang == "kp" {
+		// Karel programs have a unique exit status per each one of the failure
+		// modes. Map 1 (INSTRUCTION) to TLE.
+		if meta.ExitStatus == 1 {
+			meta.Verdict = "TLE"
+		}
 	}
 	if limits != nil &&
 		limits.MemoryLimit > 0 &&
