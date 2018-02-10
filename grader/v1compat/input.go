@@ -304,6 +304,23 @@ func getLibinteractiveSettings(
 	return &settings, nil
 }
 
+func parseTestplan(contents string) (map[string]float64, error) {
+	rawCaseWeights := make(map[string]float64)
+	testplanRe := regexp.MustCompile(`^\s*([^# \t]+)\s+([0-9.]+).*$`)
+	for _, line := range strings.Split(contents, "\n") {
+		m := testplanRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		var err error
+		rawCaseWeights[m[1]], err = strconv.ParseFloat(m[2], 64)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return rawCaseWeights, nil
+}
+
 // CreateArchiveFromGit creates an archive that can be sent to a Runner as an
 // Input from a git repository.
 func CreateArchiveFromGit(
@@ -355,10 +372,25 @@ func CreateArchiveFromGit(
 
 	var walkErr error
 	var uncompressedSize int64
-	rawCaseWeights := make(map[string]float64)
+	var rawCaseWeights map[string]float64
+	var hasTestPlan bool
 	var libinteractiveIdlContents []byte
 	var libinteractiveModuleName string
 	var libinteractiveParentLang string
+	if testplanEntry := tree.EntryByName("testplan"); testplanEntry != nil && testplanEntry.Type == git.ObjectBlob {
+		blob, err := repository.LookupBlob(testplanEntry.Id)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer blob.Free()
+		rawCaseWeights, err = parseTestplan(string(blob.Contents()))
+		if err != nil {
+			return nil, 0, err
+		}
+		hasTestPlan = true
+	} else {
+		rawCaseWeights = make(map[string]float64)
+	}
 	tree.Walk(func(parent string, entry *git.TreeEntry) int {
 		untrimmedPath := path.Join(parent, entry.Name)
 		if strings.HasPrefix(untrimmedPath, "interactive/") {
@@ -411,25 +443,6 @@ func CreateArchiveFromGit(
 			}
 			return 0
 		}
-		if untrimmedPath == "testplan" && entry.Type == git.ObjectBlob {
-			var blob *git.Blob
-			blob, walkErr = repository.LookupBlob(entry.Id)
-			if walkErr != nil {
-				return -1
-			}
-			defer blob.Free()
-			testplanRe := regexp.MustCompile(`^\s*([^# \t]+)\s+([0-9.]+).*$`)
-			for _, line := range strings.Split(string(blob.Contents()), "\n") {
-				m := testplanRe.FindStringSubmatch(line)
-				if m == nil {
-					continue
-				}
-				rawCaseWeights[m[1]], walkErr = strconv.ParseFloat(m[2], 64)
-				if walkErr != nil {
-					return -1
-				}
-			}
-		}
 		if strings.HasPrefix(untrimmedPath, "validator.") &&
 			settings.Validator.Name == "custom" &&
 			entry.Type == git.ObjectBlob {
@@ -462,6 +475,11 @@ func CreateArchiveFromGit(
 		if strings.HasPrefix(entryPath, "in/") {
 			caseName := strings.TrimSuffix(strings.TrimPrefix(entryPath, "in/"), ".in")
 			if _, ok := rawCaseWeights[caseName]; !ok {
+				// If a test plan is present, it should mention all cases.
+				if hasTestPlan {
+					walkErr = fmt.Errorf("Case not found in testplan: %s", caseName)
+					return -1
+				}
 				rawCaseWeights[caseName] = 1.0
 			}
 		}
