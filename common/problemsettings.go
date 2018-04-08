@@ -84,12 +84,21 @@ type ProblemSettings struct {
 }
 
 var (
-	// DefaultValidatorLimits specifies the default limits for a problem.
+	// DefaultValidatorLimits specifies the default limits for a validator.
 	DefaultValidatorLimits = LimitsSettings{
 		ExtraWallTime:        0,                 // 0s
 		MemoryLimit:          256 * 1024 * 1024, // 256MB
 		OutputLimit:          10 * 1024,         // 10k
 		OverallWallTimeLimit: 5000,              // 5s
 		TimeLimit:            1000,              // 1s
+	}
+
+	// DefaultLimits specifies the default limits for a problem.
+	DefaultLimits = LimitsSettings{
+		ExtraWallTime:        0,                // 0s
+		MemoryLimit:          32 * 1024 * 1024, // 32MB
+		OutputLimit:          10 * 1024,        // 10k
+		OverallWallTimeLimit: 60000,            // 60s
+		TimeLimit:            1000,             // 1s
 	}
 )
