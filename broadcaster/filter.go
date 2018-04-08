@@ -2,6 +2,7 @@ package broadcaster
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -61,7 +62,30 @@ func (f *ProblemFilter) String() string {
 func (f *ProblemFilter) Matches(msg *Message, subscriber *Subscriber) bool {
 	return msg.Problem == f.problem && (subscriber.admin || msg.Public ||
 		(subscriber.user != "" && msg.User == subscriber.user) ||
-		mapContains(subscriber.problemAdminMap, msg.Problem))
+		stringMapContains(subscriber.problemAdminMap, msg.Problem))
+}
+
+// A ProblemsetFilter is a Filter that only allows Messages that are associated
+// with a particular problemset.
+type ProblemsetFilter struct {
+	Filter
+	problemset int
+	token      string
+}
+
+func (f *ProblemsetFilter) String() string {
+	if f.token != "" {
+		return fmt.Sprintf("problemset/%d/%s", f.problemset, f.token)
+	}
+	return fmt.Sprintf("problemset/%d", f.problemset)
+}
+
+// Matches returns whether the current ProblemsetFilter matches the provided
+// message/subscriber combination.
+func (f *ProblemsetFilter) Matches(msg *Message, subscriber *Subscriber) bool {
+	return msg.Problemset == f.problemset && (subscriber.admin || msg.Public ||
+		(subscriber.user != "" && msg.User == subscriber.user) ||
+		intMapContains(subscriber.problemsetAdminMap, msg.Problemset))
 }
 
 // A ContestFilter is a Filter that only allows Messages that are associated
@@ -84,7 +108,7 @@ func (f *ContestFilter) String() string {
 func (f *ContestFilter) Matches(msg *Message, subscriber *Subscriber) bool {
 	return msg.Contest == f.contest && (subscriber.admin || msg.Public ||
 		(subscriber.user != "" && msg.User == subscriber.user) ||
-		mapContains(subscriber.contestAdminMap, msg.Contest))
+		stringMapContains(subscriber.contestAdminMap, msg.Contest))
 }
 
 // NewFilter parses the provided filter stirng and constructs a new Filter
@@ -112,6 +136,17 @@ func NewFilter(filter string) (Filter, error) {
 		if len(tokens) == 3 {
 			return &ProblemFilter{problem: tokens[2]}, nil
 		}
+	case "problemset":
+		problemsetId, err := strconv.Atoi(tokens[2])
+		if err != nil {
+			return nil, err
+		}
+		switch len(tokens) {
+		case 3:
+			return &ProblemsetFilter{problemset: problemsetId}, nil
+		case 4:
+			return &ProblemsetFilter{problemset: problemsetId, token: tokens[3]}, nil
+		}
 	case "contest":
 		switch len(tokens) {
 		case 3:
@@ -123,7 +158,12 @@ func NewFilter(filter string) (Filter, error) {
 	return nil, fmt.Errorf(errorString, filter)
 }
 
-func mapContains(m map[string]struct{}, k string) bool {
+func stringMapContains(m map[string]struct{}, k string) bool {
+	_, ok := m[k]
+	return ok
+}
+
+func intMapContains(m map[int]struct{}, k int) bool {
 	_, ok := m[k]
 	return ok
 }

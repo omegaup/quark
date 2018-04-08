@@ -44,19 +44,21 @@ func (m *QueuedMessage) Dispatched() {
 
 // A Message is a message that will be broadcast to Subscribers.
 type Message struct {
-	Contest string `json:"contest,omitempty"`
-	Problem string `json:"problem,omitempty"`
-	User    string `json:"user,omitempty"`
-	Public  bool   `json:"public"`
-	Message string `json:"message"`
+	Contest    string `json:"contest,omitempty"`
+	Problemset int    `json:"problemset,omitempty"`
+	Problem    string `json:"problem,omitempty"`
+	User       string `json:"user,omitempty"`
+	Public     bool   `json:"public"`
+	Message    string `json:"message"`
 }
 
 // A ValidateFilterResponse holds the results of a Validate request.
 type ValidateFilterResponse struct {
-	User         string   `json:"user"`
-	Admin        bool     `json:"admin"`
-	ProblemAdmin []string `json:"problem_admin"`
-	ContestAdmin []string `json:"contest_admin"`
+	User            string   `json:"user"`
+	Admin           bool     `json:"admin"`
+	ProblemAdmin    []string `json:"problem_admin"`
+	ContestAdmin    []string `json:"contest_admin"`
+	ProblemsetAdmin []int    `json:"problemset_admin"`
 }
 
 // Metrics is the interface needed to publish performance metrics.
@@ -206,12 +208,13 @@ func (b *Broadcaster) Unsubscribe(subscriber *Subscriber) bool {
 // A Subscriber represents a user that wishes to receive broadcast
 // notifications.
 type Subscriber struct {
-	authToken       string
-	user            string
-	admin           bool
-	problemAdminMap map[string]struct{}
-	contestAdminMap map[string]struct{}
-	filters         []Filter
+	authToken          string
+	user               string
+	admin              bool
+	problemAdminMap    map[string]struct{}
+	contestAdminMap    map[string]struct{}
+	problemsetAdminMap map[int]struct{}
+	filters            []Filter
 
 	ctx       *common.Context
 	close     chan struct{}
@@ -229,14 +232,15 @@ func NewSubscriber(
 	transport Transport,
 ) (*Subscriber, error) {
 	s := &Subscriber{
-		ctx:             ctx,
-		authToken:       authToken,
-		problemAdminMap: make(map[string]struct{}),
-		contestAdminMap: make(map[string]struct{}),
-		filters:         make([]Filter, 0),
-		close:           make(chan struct{}, 0),
-		send:            make(chan *QueuedMessage, ctx.Config.Broadcaster.ChannelLength),
-		transport:       transport,
+		ctx:                ctx,
+		authToken:          authToken,
+		problemAdminMap:    make(map[string]struct{}),
+		contestAdminMap:    make(map[string]struct{}),
+		problemsetAdminMap: make(map[int]struct{}),
+		filters:            make([]Filter, 0),
+		close:              make(chan struct{}, 0),
+		send:               make(chan *QueuedMessage, ctx.Config.Broadcaster.ChannelLength),
+		transport:          transport,
 	}
 
 	for _, filter := range strings.Split(filterString, ",") {
@@ -297,6 +301,10 @@ func NewSubscriber(
 
 	for _, contestAdmin := range msg.ContestAdmin {
 		s.contestAdminMap[contestAdmin] = struct{}{}
+	}
+
+	for _, problemsetAdmin := range msg.ProblemsetAdmin {
+		s.problemsetAdminMap[problemsetAdmin] = struct{}{}
 	}
 
 	return s, nil
