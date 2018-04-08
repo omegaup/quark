@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/lhchavez/quark/common"
+	"github.com/omegaup/quark/common"
 	"io"
 	"net/http"
 	"net/url"

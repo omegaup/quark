@@ -2,7 +2,7 @@ package runner
 
 import (
 	"fmt"
-	"github.com/lhchavez/quark/common"
+	"github.com/omegaup/quark/common"
 	"io"
 	"math"
 	"strconv"

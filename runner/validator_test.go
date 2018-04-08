@@ -3,7 +3,7 @@ package runner
 import (
 	"bufio"
 	"bytes"
-	"github.com/lhchavez/quark/common"
+	"github.com/omegaup/quark/common"
 	"testing"
 )
 

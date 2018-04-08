@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/inconshreveable/log15"
-	"github.com/lhchavez/quark/common"
-	"github.com/lhchavez/quark/runner"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/runner"
 	"os"
 )
 

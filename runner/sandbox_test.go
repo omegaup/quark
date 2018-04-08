@@ -3,7 +3,7 @@ package runner
 import (
 	"bytes"
 	"fmt"
-	"github.com/lhchavez/quark/common"
+	"github.com/omegaup/quark/common"
 	"os"
 	"testing"
 )

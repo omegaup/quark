@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/lhchavez/quark/common"
-	"github.com/lhchavez/quark/runner"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/runner"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/load"

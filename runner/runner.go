@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/lhchavez/quark/common"
+	"github.com/omegaup/quark/common"
 	"github.com/vincent-petithory/dataurl"
 	"io"
 	"io/ioutil"

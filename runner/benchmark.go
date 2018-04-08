@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"compress/bzip2"
 	"encoding/base64"
-	"github.com/lhchavez/quark/common"
+	"github.com/omegaup/quark/common"
 	"io"
 	"sync"
 )

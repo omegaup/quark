@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/lhchavez/quark/common"
-	"github.com/lhchavez/quark/runner"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/runner"
 	"os"
 )
 

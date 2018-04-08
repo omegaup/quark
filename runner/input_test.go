@@ -2,7 +2,7 @@ package runner
 
 import (
 	"encoding/base64"
-	"github.com/lhchavez/quark/common"
+	"github.com/omegaup/quark/common"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"

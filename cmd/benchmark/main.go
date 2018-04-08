@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"github.com/lhchavez/quark/common"
-	"github.com/lhchavez/quark/runner"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/runner"
 	"io/ioutil"
 	"os"
 )

@@ -1,7 +1,7 @@
 package grader
 
 import (
-	"github.com/lhchavez/quark/common"
+	"github.com/omegaup/quark/common"
 	"io"
 	"io/ioutil"
 	"os/exec"

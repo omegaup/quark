@@ -72,11 +72,11 @@ bin/.runner-stamp: $(BINARIES) bin/.minijail-stamp Dockerfile.runner $(RUNNER_FI
 
 bin/.coverage-stamp: $(SOURCES)
 	mkdir -p bin/coverage
-	go test -coverprofile=bin/coverage/common.out github.com/lhchavez/quark/common
+	go test -coverprofile=bin/coverage/common.out github.com/omegaup/quark/common
 	go tool cover -html=bin/coverage/common.out -o bin/coverage/common.html
-	go test -coverprofile=bin/coverage/runner.out github.com/lhchavez/quark/runner
+	go test -coverprofile=bin/coverage/runner.out github.com/omegaup/quark/runner
 	go tool cover -html=bin/coverage/runner.out -o bin/coverage/runner.html
-	go test -coverprofile=bin/coverage/grader.out github.com/lhchavez/quark/grader
+	go test -coverprofile=bin/coverage/grader.out github.com/omegaup/quark/grader
 	go tool cover -html=bin/coverage/grader.out -o bin/coverage/grader.html
 	touch $@
 

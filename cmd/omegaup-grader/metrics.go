@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/lhchavez/quark/grader"
+	"github.com/omegaup/quark/grader"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/load"
