@@ -16,10 +16,10 @@ func TestParseTestplan(t *testing.T) {
 	for name, expectedWeight := range expectedCaseWeights {
 		weight, ok := rawCaseWeights[name]
 		if !ok {
-			t.Errorf("rawCaseWeights[%q] is missing, want %q", name, expectedWeight)
+			t.Errorf("rawCaseWeights[%q] is missing, want %f", name, expectedWeight)
 		}
 		if expectedWeight != weight {
-			t.Errorf("rawCaseWeights[%q] == %q, want %q", name, weight, expectedWeight)
+			t.Errorf("rawCaseWeights[%q] == %f, want %f", name, weight, expectedWeight)
 		}
 	}
 }
