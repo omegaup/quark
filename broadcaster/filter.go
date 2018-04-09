@@ -137,15 +137,15 @@ func NewFilter(filter string) (Filter, error) {
 			return &ProblemFilter{problem: tokens[2]}, nil
 		}
 	case "problemset":
-		problemsetId, err := strconv.Atoi(tokens[2])
+		problemsetID, err := strconv.Atoi(tokens[2])
 		if err != nil {
 			return nil, err
 		}
 		switch len(tokens) {
 		case 3:
-			return &ProblemsetFilter{problemset: problemsetId}, nil
+			return &ProblemsetFilter{problemset: problemsetID}, nil
 		case 4:
-			return &ProblemsetFilter{problemset: problemsetId, token: tokens[3]}, nil
+			return &ProblemsetFilter{problemset: problemsetID, token: tokens[3]}, nil
 		}
 	case "contest":
 		switch len(tokens) {

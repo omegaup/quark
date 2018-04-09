@@ -63,7 +63,7 @@ func (h *runHandler) addAndWaitForRun(
 	maxScore := 0.0
 	for _, literalCase := range ephemeralRunRequest.Input.Cases {
 		if literalCase.Weight == nil {
-			maxScore += 1
+			maxScore++
 		} else {
 			maxScore += *literalCase.Weight
 		}

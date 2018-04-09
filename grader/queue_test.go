@@ -248,7 +248,7 @@ func newListener() *listener {
 		processed: 0,
 	}
 	go func() {
-		for _ = range l.c {
+		for range l.c {
 			l.processed++
 		}
 		close(l.done)

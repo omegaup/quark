@@ -313,7 +313,7 @@ func (cb *channelBuffer) WriteTo(w io.Writer) (int64, error) {
 func (cb *channelBuffer) Close() error {
 	// If there are any chunks remaining, they should be drained before
 	// returning.  The other goroutine should eventually close the channel.
-	for _ = range cb.chunks {
+	for range cb.chunks {
 	}
 	return nil
 }
