@@ -28,6 +28,13 @@ type CaseResult struct {
 	IndividualMeta map[string]RunMetadata `json:"individual_meta,omitempty"`
 }
 
+// Normalize rounds all floating-point values to the nearest multiple of 1/1024.
+func (c *CaseResult) Normalize() {
+	c.Score = normalize(c.Score)
+	c.ContestScore = normalize(c.ContestScore)
+	c.MaxScore = normalize(c.MaxScore)
+}
+
 // A GroupResult represents the sub-results of a specific group of test cases.
 type GroupResult struct {
 	Group        string       `json:"group"`
@@ -35,6 +42,17 @@ type GroupResult struct {
 	ContestScore float64      `json:"contest_score"`
 	MaxScore     float64      `json:"max_score"`
 	Cases        []CaseResult `json:"cases"`
+}
+
+// Normalize rounds all floating-point values to the nearest multiple of 1/1024.
+func (g *GroupResult) Normalize() {
+	g.Score = normalize(g.Score)
+	g.ContestScore = normalize(g.ContestScore)
+	g.MaxScore = normalize(g.MaxScore)
+
+	for _, c := range g.Cases {
+		c.Normalize()
+	}
 }
 
 // A RunResult represents the results of a run.
@@ -50,6 +68,17 @@ type RunResult struct {
 	Memory       int64                  `json:"memory"`
 	JudgedBy     string                 `json:"judged_by,omitempty"`
 	Groups       []GroupResult          `json:"groups"`
+}
+
+// Normalize rounds all floating-point values to the nearest multiple of 1/1024.
+func (r *RunResult) Normalize() {
+	r.Score = normalize(r.Score)
+	r.ContestScore = normalize(r.ContestScore)
+	r.MaxScore = normalize(r.MaxScore)
+
+	for _, g := range r.Groups {
+		g.Normalize()
+	}
 }
 
 type binaryType int
@@ -239,6 +268,7 @@ func Grade(
 		Verdict:  "JE",
 		MaxScore: run.MaxScore,
 	}
+	defer runResult.Normalize()
 	if !sandbox.Supported() {
 		return runResult, errors.New("Sandbox not supported")
 	}
@@ -1090,4 +1120,9 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// normalize rounds floating-point values to the nearest multiple of 1/1024.
+func normalize(f float64) float64 {
+	return math.Round(f*1024) / 1024.0
 }
