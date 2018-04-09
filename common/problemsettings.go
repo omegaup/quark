@@ -60,9 +60,17 @@ func (c ByCaseName) Less(i, j int) bool { return c[i].Name < c[j].Name }
 
 // GroupSettings contains the information of the test case groups.
 type GroupSettings struct {
-	Cases  []CaseSettings
-	Name   string
-	Weight float64
+	Cases []CaseSettings
+	Name  string
+}
+
+// Weight returns the sum of the individual case weights.
+func (g *GroupSettings) Weight() float64 {
+	weight := 0.0
+	for _, c := range g.Cases {
+		weight += c.Weight
+	}
+	return weight
 }
 
 // A ByGroupName represents a list of GroupSettings associated with a problem

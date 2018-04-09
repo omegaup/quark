@@ -814,7 +814,7 @@ func Grade(
 		}
 		groupResults[i] = GroupResult{
 			Group:    group.Name,
-			MaxScore: runResult.MaxScore * group.Weight,
+			MaxScore: runResult.MaxScore * group.Weight(),
 			Score:    0,
 			Cases:    caseResults,
 		}

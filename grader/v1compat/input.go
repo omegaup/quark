@@ -535,7 +535,6 @@ func CreateArchiveFromGit(
 
 	// Generate the group/case settings.
 	cases := make(map[string][]common.CaseSettings)
-	groupWeights := make(map[string]float64)
 	totalWeight := 0.0
 	for _, weight := range rawCaseWeights {
 		totalWeight += weight
@@ -543,10 +542,6 @@ func CreateArchiveFromGit(
 	for caseName, weight := range rawCaseWeights {
 		components := strings.SplitN(caseName, ".", 2)
 		groupName := components[0]
-		if _, ok := groupWeights[groupName]; !ok {
-			groupWeights[groupName] = 0
-		}
-		groupWeights[groupName] += weight / totalWeight
 		if _, ok := cases[groupName]; !ok {
 			cases[groupName] = make([]common.CaseSettings, 0)
 		}
@@ -559,9 +554,8 @@ func CreateArchiveFromGit(
 	for groupName, cases := range cases {
 		sort.Sort(common.ByCaseName(cases))
 		settings.Cases = append(settings.Cases, common.GroupSettings{
-			Cases:  cases,
-			Name:   groupName,
-			Weight: groupWeights[groupName],
+			Cases: cases,
+			Name:  groupName,
 		})
 	}
 	sort.Sort(common.ByGroupName(settings.Cases))

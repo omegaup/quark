@@ -272,14 +272,10 @@ func NewLiteralInputFactory(
 	factory.settings.Cases = make([]GroupSettings, 0)
 	for name, g := range groups {
 		group := GroupSettings{
-			Name:   name,
-			Weight: 0,
-			Cases:  g,
+			Name:  name,
+			Cases: g,
 		}
 		sort.Sort(ByCaseName(group.Cases))
-		for _, c := range g {
-			group.Weight += c.Weight
-		}
 		factory.settings.Cases = append(factory.settings.Cases, group)
 	}
 	sort.Sort(ByGroupName(factory.settings.Cases))
