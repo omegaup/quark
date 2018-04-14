@@ -135,6 +135,7 @@ func (h *runHandler) addAndWaitForRun(
 	defer multipartWriter.Close()
 
 	w.Header().Set("Content-Type", multipartWriter.FormDataContentType())
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("X-OmegaUp-EphemeralToken", ephemeralToken)
 	w.WriteHeader(http.StatusOK)
 
