@@ -191,7 +191,7 @@ type InputManager struct {
 	evictList *list.List
 	ctx       *Context
 	totalSize int64
-	sizeLimit int64
+	sizeLimit Byte
 }
 
 // inputEntry represents an entry in the InputManager.
@@ -380,7 +380,7 @@ func (mgr *InputManager) Reserve(size int64) {
 // reserveLocked evicts elements as necessary so that the current commited size
 // plus the specified size is below the allowed limit.
 func (mgr *InputManager) reserveLocked(size int64) {
-	for mgr.evictList.Len() > 0 && mgr.totalSize+size > mgr.sizeLimit {
+	for mgr.evictList.Len() > 0 && mgr.totalSize+size > mgr.sizeLimit.Bytes() {
 		element := mgr.evictList.Back()
 		evictedInput := element.Value.(Input)
 

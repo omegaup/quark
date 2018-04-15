@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-func newTestInputManager(sizeLimit int64) *InputManager {
+func newTestInputManager(sizeLimit Byte) *InputManager {
 	config := DefaultConfig()
 	config.Logging.File = "stderr"
 	config.Tracing.Enabled = false
@@ -93,12 +93,12 @@ func (factory *testCachedInputFactory) GetInputHash(
 }
 
 func TestInputManagerSerializability(t *testing.T) {
-	inputManager := newTestInputManager(1024)
+	inputManager := newTestInputManager(Kibibyte)
 	inputManager.MarshalJSON()
 }
 
 func TestInputManager(t *testing.T) {
-	inputManager := newTestInputManager(1024)
+	inputManager := newTestInputManager(Kibibyte)
 
 	if inputManager.Size() != 0 {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 0)
@@ -178,7 +178,7 @@ func TestPreloadInputs(t *testing.T) {
 			t.Fatalf("ioutil.WriteFile failed with %q", err)
 		}
 	}
-	inputManager := newTestInputManager(1024)
+	inputManager := newTestInputManager(Kibibyte)
 	if err := inputManager.PreloadInputs(
 		dirname,
 		&testCachedInputFactory{path: dirname},

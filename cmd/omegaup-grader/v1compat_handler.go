@@ -65,7 +65,7 @@ func v1CompatUpdateDatabase(
 			run.Result.Verdict,
 			run.Result.Time*1000,
 			run.Result.Time*1000,
-			run.Result.Memory,
+			run.Result.Memory.Bytes(),
 			run.Result.Score,
 			run.Result.ContestScore,
 			run.Result.JudgedBy,
@@ -85,7 +85,7 @@ func v1CompatUpdateDatabase(
 				run_id = ?;`,
 			run.Result.Verdict,
 			run.Result.Time*1000,
-			run.Result.Memory,
+			run.Result.Memory.Bytes(),
 			run.Result.Score,
 			run.Result.ContestScore,
 			run.Result.JudgedBy,
@@ -148,20 +148,20 @@ func v1CompatBroadcastRun(
 		message.Contest = *run.Contest
 	}
 	type serializedRun struct {
-		User         string  `json:"username"`
-		Contest      *string `json:"contest_alias,omitempty"`
-		Problem      string  `json:"alias"`
-		GUID         string  `json:"guid"`
-		Runtime      float64 `json:"runtime"`
-		Penalty      float64 `json:"penalty"`
-		Memory       int64   `json:"memory"`
-		Score        float64 `json:"score"`
-		ContestScore float64 `json:"contest_score"`
-		Status       string  `json:"status"`
-		Verdict      string  `json:"verdict"`
-		SubmitDelay  float64 `json:"submit_delay"`
-		Time         float64 `json:"time"`
-		Language     string  `json:"language"`
+		User         string      `json:"username"`
+		Contest      *string     `json:"contest_alias,omitempty"`
+		Problem      string      `json:"alias"`
+		GUID         string      `json:"guid"`
+		Runtime      float64     `json:"runtime"`
+		Penalty      float64     `json:"penalty"`
+		Memory       common.Byte `json:"memory"`
+		Score        float64     `json:"score"`
+		ContestScore float64     `json:"contest_score"`
+		Status       string      `json:"status"`
+		Verdict      string      `json:"verdict"`
+		SubmitDelay  float64     `json:"submit_delay"`
+		Time         float64     `json:"time"`
+		Language     string      `json:"language"`
 	}
 	type runFinishedMessage struct {
 		Message string        `json:"message"`
@@ -319,7 +319,11 @@ func v1CompatNewRunContext(
 		return nil, "", nil, err
 	}
 
-	settings.Limits.MemoryLimit *= 1024
+	settings.Limits.MemoryLimit *= common.Kibibyte
+	settings.Limits.ExtraWallTime *= common.Duration(time.Millisecond)
+	settings.Limits.OverallWallTimeLimit *= common.Duration(time.Millisecond)
+	settings.Limits.TimeLimit *= common.Duration(time.Millisecond)
+	validatorLimits.TimeLimit *= common.Duration(time.Millisecond)
 
 	if settings.Validator.Name == "custom" {
 		if validatorLimits.ExtraWallTime < settings.Limits.ExtraWallTime {

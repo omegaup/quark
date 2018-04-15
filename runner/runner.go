@@ -65,7 +65,7 @@ type RunResult struct {
 	MaxScore     float64                `json:"max_score"`
 	Time         float64                `json:"time"`
 	WallTime     float64                `json:"wall_time"`
-	Memory       int64                  `json:"memory"`
+	Memory       common.Byte            `json:"memory"`
 	JudgedBy     string                 `json:"judged_by,omitempty"`
 	Groups       []GroupResult          `json:"groups"`
 }
@@ -759,7 +759,7 @@ func Grade(
 				var finalVerdict = "OK"
 				var totalTime float64
 				var totalWallTime float64
-				var totalMemory int64
+				var totalMemory common.Byte
 				for i := 0; i < regularBinaryCount; i++ {
 					intermediateResult := <-metaChan
 					generatedFiles = append(generatedFiles, intermediateResult.generatedFiles...)
@@ -785,7 +785,7 @@ func Grade(
 							totalWallTime,
 							intermediateResult.runMeta.WallTime,
 						)
-						totalMemory += max64(totalMemory, intermediateResult.runMeta.Memory)
+						totalMemory += common.MaxBytes(totalMemory, intermediateResult.runMeta.Memory)
 					}
 				}
 				close(metaChan)
@@ -831,7 +831,7 @@ func Grade(
 			runResult.Verdict = worseVerdict(runResult.Verdict, runMeta.Verdict)
 			runResult.Time += runMeta.Time
 			runResult.WallTime += runMeta.WallTime
-			runResult.Memory = max64(runResult.Memory, runMeta.Memory)
+			runResult.Memory = common.MaxBytes(runResult.Memory, runMeta.Memory)
 
 			// TODO: change CaseResult to split original metadatas and final metadata
 			caseResults[j] = CaseResult{

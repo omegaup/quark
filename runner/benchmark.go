@@ -179,7 +179,7 @@ int main() {
 type BenchmarkResult struct {
 	Time     float64
 	WallTime float64
-	Memory   int64
+	Memory   common.Byte
 }
 
 // BenchmarkResults represents the results of running the whole suite of

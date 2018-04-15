@@ -34,15 +34,18 @@ func (h *runHandler) validateRequest(
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 ) error {
 	// Silently apply some caps.
-	if ephemeralRunRequest.Input.Limits.TimeLimit > ctx.Config.Grader.Ephemeral.CaseTimeLimit.Milliseconds() {
-		ephemeralRunRequest.Input.Limits.TimeLimit = ctx.Config.Grader.Ephemeral.CaseTimeLimit.Milliseconds()
-	}
-	if ephemeralRunRequest.Input.Limits.OverallWallTimeLimit > ctx.Config.Grader.Ephemeral.OverallWallTimeLimit.Milliseconds() {
-		ephemeralRunRequest.Input.Limits.OverallWallTimeLimit = ctx.Config.Grader.Ephemeral.OverallWallTimeLimit.Milliseconds()
-	}
-	if ephemeralRunRequest.Input.Limits.MemoryLimit > ctx.Config.Grader.Ephemeral.MemoryLimit {
-		ephemeralRunRequest.Input.Limits.MemoryLimit = ctx.Config.Grader.Ephemeral.MemoryLimit
-	}
+	ephemeralRunRequest.Input.Limits.TimeLimit = common.MinDuration(
+		ctx.Config.Grader.Ephemeral.CaseTimeLimit,
+		ephemeralRunRequest.Input.Limits.TimeLimit,
+	)
+	ephemeralRunRequest.Input.Limits.OverallWallTimeLimit = common.MinDuration(
+		ctx.Config.Grader.Ephemeral.OverallWallTimeLimit,
+		ephemeralRunRequest.Input.Limits.OverallWallTimeLimit,
+	)
+	ephemeralRunRequest.Input.Limits.MemoryLimit = common.MinBytes(
+		ctx.Config.Grader.Ephemeral.MemoryLimit,
+		ephemeralRunRequest.Input.Limits.MemoryLimit,
+	)
 	return nil
 }
 

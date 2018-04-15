@@ -77,22 +77,22 @@ type EphemeralRunManager struct {
 	ctx       *Context
 	rand      *rand.Rand
 	paths     map[string]struct{}
-	totalSize int64
-	sizeLimit int64
+	totalSize common.Byte
+	sizeLimit common.Byte
 }
 
 type ephemeralRunEntry struct {
 	path string
-	size int64
+	size common.Byte
 }
 
-func directorySize(root string) (result int64, err error) {
+func directorySize(root string) (result common.Byte, err error) {
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// Bail out the whole operation upon the first error.
 			return err
 		}
-		result += info.Size()
+		result += common.Byte(info.Size())
 		return nil
 	})
 

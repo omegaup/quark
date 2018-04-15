@@ -1,12 +1,16 @@
 package common
 
+import (
+	"time"
+)
+
 // LimitsSettings represents runtime limits for the Input.
 type LimitsSettings struct {
-	ExtraWallTime        int64
-	MemoryLimit          int64
-	OutputLimit          int64
-	OverallWallTimeLimit int64
-	TimeLimit            int64
+	ExtraWallTime        Duration
+	MemoryLimit          Byte
+	OutputLimit          Byte
+	OverallWallTimeLimit Duration
+	TimeLimit            Duration
 }
 
 // ValidatorSettings represents the options used to validate outputs.
@@ -94,19 +98,19 @@ type ProblemSettings struct {
 var (
 	// DefaultValidatorLimits specifies the default limits for a validator.
 	DefaultValidatorLimits = LimitsSettings{
-		ExtraWallTime:        0,                 // 0s
-		MemoryLimit:          256 * 1024 * 1024, // 256MB
-		OutputLimit:          10 * 1024,         // 10k
-		OverallWallTimeLimit: 5000,              // 5s
-		TimeLimit:            1000,              // 1s
+		ExtraWallTime:        Duration(0),
+		MemoryLimit:          Byte(256) * Mebibyte,
+		OutputLimit:          Byte(10) * Kibibyte,
+		OverallWallTimeLimit: Duration(time.Duration(5) * time.Second),
+		TimeLimit:            Duration(time.Duration(1) * time.Second),
 	}
 
 	// DefaultLimits specifies the default limits for a problem.
 	DefaultLimits = LimitsSettings{
-		ExtraWallTime:        0,                // 0s
-		MemoryLimit:          32 * 1024 * 1024, // 32MB
-		OutputLimit:          10 * 1024,        // 10k
-		OverallWallTimeLimit: 60000,            // 60s
-		TimeLimit:            1000,             // 1s
+		ExtraWallTime:        Duration(0),
+		MemoryLimit:          Byte(32) * Mebibyte,
+		OutputLimit:          Byte(10) * Kibibyte,
+		OverallWallTimeLimit: Duration(time.Duration(1) * time.Minute),
+		TimeLimit:            Duration(time.Duration(1) * time.Second),
 	}
 )

@@ -85,14 +85,14 @@ func (preloader *inputPreloader) release() {
 
 // RunMetadata represents the results of an execution.
 type RunMetadata struct {
-	Verdict    string  `json:"verdict"`
-	ExitStatus int     `json:"exit_status,omitempty"`
-	Time       float64 `json:"time"`
-	SystemTime float64 `json:"sys_time"`
-	WallTime   float64 `json:"wall_time"`
-	Memory     int64   `json:"memory"`
-	Signal     *string `json:"signal,omitempty"`
-	Syscall    *string `json:"syscall,omitempty"`
+	Verdict    string      `json:"verdict"`
+	ExitStatus int         `json:"exit_status,omitempty"`
+	Time       float64     `json:"time"`
+	SystemTime float64     `json:"sys_time"`
+	WallTime   float64     `json:"wall_time"`
+	Memory     common.Byte `json:"memory"`
+	Signal     *string     `json:"signal,omitempty"`
+	Syscall    *string     `json:"syscall,omitempty"`
 }
 
 func (m *RunMetadata) String() string {
@@ -103,7 +103,7 @@ func (m *RunMetadata) String() string {
 		m.Time,
 		m.SystemTime,
 		m.WallTime,
-		float64(m.Memory)/1024.0/1024.0,
+		m.Memory.Mebibytes(),
 	)
 	if m.Signal != nil {
 		metadata += fmt.Sprintf(", Signal: %s", *m.Signal)
@@ -168,8 +168,8 @@ func (*OmegajailSandbox) Compile(
 		"-1", outputFile,
 		"-2", errorFile,
 		"-M", metaFile,
-		"-t", strconv.Itoa(ctx.Config.Runner.CompileTimeLimit * 1000),
-		"-O", strconv.Itoa(ctx.Config.Runner.CompileOutputLimit),
+		"-t", strconv.FormatInt(int64(ctx.Config.Runner.CompileTimeLimit.Milliseconds()), 10),
+		"-O", strconv.FormatInt(ctx.Config.Runner.CompileOutputLimit.Bytes(), 10),
 	}
 
 	inputFlags := make([]string, 0)
@@ -351,9 +351,9 @@ func (*OmegajailSandbox) Run(
 		"-1", outputFile,
 		"-2", errorFile,
 		"-M", metaFile,
-		"-t", strconv.FormatInt(timeLimit, 10),
-		"-w", strconv.FormatInt(limits.ExtraWallTime, 10),
-		"-O", strconv.FormatInt(limits.OutputLimit, 10),
+		"-t", strconv.FormatInt(int64(timeLimit.Milliseconds()), 10),
+		"-w", strconv.FormatInt(int64(limits.ExtraWallTime.Milliseconds()), 10),
+		"-O", strconv.FormatInt(limits.OutputLimit.Bytes(), 10),
 	}
 
 	extraOmegajailFlags := make([]string, 2*len(extraMountPoints))
@@ -399,9 +399,12 @@ func (*OmegajailSandbox) Run(
 	}
 
 	// 16MB + memory limit to prevent some RTE
-	memoryLimit := 16*1024*1024 + limits.MemoryLimit
+	memoryLimit := common.Byte(16)*common.Mebibyte + limits.MemoryLimit
 	// "640MB should be enough for anybody"
-	hardLimit := strconv.FormatInt(min64(640*1024*1024, memoryLimit), 10)
+	hardLimit := strconv.FormatInt(
+		common.MinBytes(common.Byte(640)*common.Mebibyte, memoryLimit).Bytes(),
+		10,
+	)
 
 	var params []string
 
@@ -570,7 +573,8 @@ func parseMetaFile(
 			meta.WallTime, _ = strconv.ParseFloat(tokens[1], 64)
 			meta.WallTime /= 1e6
 		case "mem":
-			meta.Memory, _ = strconv.ParseInt(tokens[1], 10, 64)
+			memoryBytes, _ := strconv.ParseInt(tokens[1], 10, 64)
+			meta.Memory = common.Byte(memoryBytes)
 		case "signal":
 			meta.Signal = &tokens[1]
 		case "signal_number":
@@ -610,9 +614,9 @@ func parseMetaFile(
 	}
 
 	if lang == "java" {
-		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.JavaVMEstimatedSize)
+		meta.Memory = common.MaxBytes(0, meta.Memory-ctx.Config.Runner.JavaVMEstimatedSize)
 	} else if lang == "cs" {
-		meta.Memory = max64(0, meta.Memory-ctx.Config.Runner.ClrVMEstimatedSize)
+		meta.Memory = common.MaxBytes(0, meta.Memory-ctx.Config.Runner.ClrVMEstimatedSize)
 	} else if lang == "kj" || lang == "kp" {
 		// Karel programs have a unique exit status per each one of the failure
 		// modes. Map 1 (INSTRUCTION) to TLE.
@@ -655,18 +659,4 @@ func isJavaMLE(ctx *common.Context, errorFilePath *string) bool {
 	}
 
 	return false
-}
-
-func min64(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }

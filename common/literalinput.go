@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // LiteralPersistMode indicates whether the LiteralInputFactory should persist
@@ -76,11 +77,11 @@ type LiteralInteractiveSettings struct {
 // Default values for some of the settings.
 var (
 	DefaultLiteralLimitSettings = LimitsSettings{
-		TimeLimit:            1000,     // 1s
-		MemoryLimit:          67108864, // 64MB
-		OverallWallTimeLimit: 5000,     // 5s
-		ExtraWallTime:        0,        // 0s
-		OutputLimit:          10240,    // 10k
+		TimeLimit:            Duration(time.Duration(1) * time.Second),
+		MemoryLimit:          Byte(64) * Mebibyte,
+		OverallWallTimeLimit: Duration(time.Duration(5) * time.Second),
+		ExtraWallTime:        Duration(0),
+		OutputLimit:          Byte(10) * Kibibyte,
 	}
 
 	DefaultLiteralValidatorSettings = LiteralValidatorSettings{
@@ -209,23 +210,23 @@ func NewLiteralInputFactory(
 
 	// Limits
 	if input.Limits != nil {
-		factory.settings.Limits.TimeLimit = min(
+		factory.settings.Limits.TimeLimit = MinDuration(
 			input.Limits.TimeLimit,
 			DefaultLiteralLimitSettings.TimeLimit,
 		)
-		factory.settings.Limits.MemoryLimit = min(
+		factory.settings.Limits.MemoryLimit = MinBytes(
 			input.Limits.MemoryLimit,
 			DefaultLiteralLimitSettings.MemoryLimit,
 		)
-		factory.settings.Limits.OverallWallTimeLimit = min(
+		factory.settings.Limits.OverallWallTimeLimit = MinDuration(
 			input.Limits.OverallWallTimeLimit,
 			DefaultLiteralLimitSettings.OverallWallTimeLimit,
 		)
-		factory.settings.Limits.ExtraWallTime = min(
+		factory.settings.Limits.ExtraWallTime = MinDuration(
 			input.Limits.ExtraWallTime,
 			DefaultLiteralLimitSettings.ExtraWallTime,
 		)
-		factory.settings.Limits.OutputLimit = min(
+		factory.settings.Limits.OutputLimit = MinBytes(
 			input.Limits.OutputLimit,
 			DefaultLiteralLimitSettings.OutputLimit,
 		)
@@ -527,11 +528,4 @@ func createTar(buf *bytes.Buffer, files map[string][]byte) error {
 	}
 
 	return nil
-}
-
-func min(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
 }

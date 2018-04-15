@@ -8,8 +8,11 @@ import (
 	"github.com/inconshreveable/log15"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
+	"unicode"
 )
 
 // Duration is identical to time.Duration, except it can implements the
@@ -37,6 +40,14 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return nil
 	}
+	if unicode.IsDigit(rune(data[0])) {
+		val, err := strconv.ParseFloat(string(data), 64)
+		if err != nil {
+			return nil
+		}
+		*d = Duration(time.Duration(val*1e9) * time.Nanosecond)
+		return nil
+	}
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
 		return errors.New("time: invalid duration " + string(data))
 	}
@@ -49,8 +60,138 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 }
 
 // Milliseconds returns the duration as an integer millisecond count.
-func (d Duration) Milliseconds() int64 {
-	return time.Duration(d).Nanoseconds() / 1000000
+func (d Duration) Milliseconds() float64 {
+	return float64(d) / float64(time.Millisecond)
+}
+
+// MinDuration returns the smaller of x or y.
+func MinDuration(x, y Duration) Duration {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+// MaxDuration returns the larger of x or y.
+func MaxDuration(x, y Duration) Duration {
+	if x > y {
+		return x
+	}
+	return y
+}
+
+// A Byte is a unit of digital information.
+type Byte int64
+
+const (
+	// Kibibyte is 1024 Bytes.
+	Kibibyte = Byte(1024)
+
+	// Mebibyte is 1024 Kibibytes.
+	Mebibyte = Byte(1024) * Kibibyte
+
+	// Gibibyte is 1024 Mebibytes.
+	Gibibyte = Byte(1024) * Mebibyte
+
+	// Tebibyte is 1024 Gibibytes.
+	Tebibyte = Byte(1024) * Gibibyte
+)
+
+// MinBytes returns the smaller of x or y.
+func MinBytes(x, y Byte) Byte {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+// MaxBytes returns the larger of x or y.
+func MaxBytes(x, y Byte) Byte {
+	if x > y {
+		return x
+	}
+	return y
+}
+
+// Bytes returns the Byte as an integer number of bytes.
+func (b Byte) Bytes() int64 {
+	return int64(b)
+}
+
+// Kibibytes returns the Byte as an floating point number of Kibibytes.
+func (b Byte) Kibibytes() float64 {
+	return float64(b) / float64(Kibibyte)
+}
+
+// Mebibytes returns the Byte as an floating point number of Mebibytes.
+func (b Byte) Mebibytes() float64 {
+	return float64(b) / float64(Mebibyte)
+}
+
+// Gibibytes returns the Byte as an floating point number of Gibibytes.
+func (b Byte) Gibibytes() float64 {
+	return float64(b) / float64(Gibibyte)
+}
+
+// Tebibytes returns the Byte as an floating point number of Tebibytes.
+func (b Byte) Tebibytes() float64 {
+	return float64(b) / float64(Tebibyte)
+}
+
+// MarshalJSON implements the json.Marshaler interface. The result is an
+// integer number of bytes.
+func (b Byte) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("%d", b.Bytes())), nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface. The result can be
+// an integer number of bytes, or a quoted string that MarshalJSON() can
+// understand.
+func (b *Byte) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return nil
+	}
+	if unicode.IsDigit(rune(data[0])) {
+		val, err := strconv.ParseInt(string(data), 10, 64)
+		if err != nil {
+			return nil
+		}
+		*b = Byte(val)
+		return nil
+	}
+	unquoted := string(data)
+	if len(unquoted) < 3 || unquoted[0] != '"' || unquoted[len(unquoted)-1] != '"' {
+		return errors.New("byte: invalid byte " + unquoted)
+	}
+	unquoted = unquoted[1 : len(unquoted)-1]
+	suffixPos := strings.IndexFunc(unquoted, func(c rune) bool {
+		return c != '.' && !unicode.IsDigit(c)
+	})
+	if suffixPos == -1 {
+		suffixPos = len(unquoted)
+	}
+	parsed, err := strconv.ParseFloat(unquoted[:suffixPos], 64)
+	if err != nil {
+		return err
+	}
+	unit := Byte(1)
+	switch string(unquoted[suffixPos:]) {
+	case "TiB":
+		unit = Tebibyte
+	case "GiB":
+		unit = Gibibyte
+	case "MiB":
+		unit = Mebibyte
+	case "KiB":
+		unit = Kibibyte
+	case "B":
+	case "":
+		unit = Byte(1)
+	default:
+		return errors.New("byte: invalid byte " + string(data))
+	}
+	*b = Byte(parsed * float64(unit))
+	return nil
 }
 
 // BroadcasterConfig represents the configuration for the Broadcaster.
@@ -69,7 +210,7 @@ type BroadcasterConfig struct {
 
 // InputManagerConfig represents the configuration for the InputManager.
 type InputManagerConfig struct {
-	CacheSize int64
+	CacheSize Byte
 }
 
 // V1Config represents the configuration for the V1-compatibility shim for the
@@ -86,10 +227,10 @@ type V1Config struct {
 
 // GraderEphemeralConfig represents the configuration for the Grader web interface.
 type GraderEphemeralConfig struct {
-	EphemeralSizeLimit   int64
+	EphemeralSizeLimit   Byte
 	CaseTimeLimit        Duration
 	OverallWallTimeLimit Duration
-	MemoryLimit          int64
+	MemoryLimit          Byte
 	PingPeriod           Duration
 	Port                 uint16
 	Proxied              bool
@@ -119,10 +260,10 @@ type TLSConfig struct {
 type RunnerConfig struct {
 	GraderURL           string
 	RuntimePath         string
-	CompileTimeLimit    int
-	CompileOutputLimit  int
-	ClrVMEstimatedSize  int64
-	JavaVMEstimatedSize int64
+	CompileTimeLimit    Duration
+	CompileOutputLimit  Byte
+	ClrVMEstimatedSize  Byte
+	JavaVMEstimatedSize Byte
 	PreserveFiles       bool
 }
 
@@ -183,7 +324,7 @@ var defaultConfig = Config{
 		DataSourceName: "./omegaup.db",
 	},
 	InputManager: InputManagerConfig{
-		CacheSize: 1024 * 1024 * 1024, // 1 GiB
+		CacheSize: Gibibyte,
 	},
 	Logging: LoggingConfig{
 		File:  "/var/log/omegaup/service.log",
@@ -208,10 +349,10 @@ var defaultConfig = Config{
 			WriteResults:     true,
 		},
 		Ephemeral: GraderEphemeralConfig{
-			EphemeralSizeLimit:   1024 * 1024 * 1024, // 1 GB
+			EphemeralSizeLimit:   Gibibyte,
 			CaseTimeLimit:        Duration(time.Duration(10) * time.Second),
 			OverallWallTimeLimit: Duration(time.Duration(10) * time.Second),
-			MemoryLimit:          1024 * 1024 * 1024, // 1 GB
+			MemoryLimit:          Gibibyte,
 			Port:                 36663,
 			PingPeriod:           Duration(time.Duration(30) * time.Second),
 			Proxied:              true,
@@ -226,10 +367,10 @@ var defaultConfig = Config{
 	Runner: RunnerConfig{
 		RuntimePath:         "/var/lib/omegaup/runner",
 		GraderURL:           "https://omegaup.com:11302",
-		CompileTimeLimit:    30,
-		CompileOutputLimit:  10 * 1024 * 1024, // 10 MiB
-		ClrVMEstimatedSize:  20 * 1024 * 1024, // 20 MiB
-		JavaVMEstimatedSize: 30 * 1024 * 1024, // 30 MiB
+		CompileTimeLimit:    Duration(time.Duration(30) * time.Second),
+		CompileOutputLimit:  Byte(10) * Mebibyte,
+		ClrVMEstimatedSize:  Byte(20) * Mebibyte,
+		JavaVMEstimatedSize: Byte(30) * Mebibyte,
 		PreserveFiles:       false,
 	},
 	TLS: TLSConfig{

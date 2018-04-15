@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"time"
 )
 
 var (
@@ -21,6 +22,30 @@ var (
 	repositoryRoot = flag.String("repository-root", "",
 		"Path where the .git repositories are located")
 )
+
+func mustParseBytes(s string) common.Byte {
+	ret, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return common.Byte(ret)
+}
+
+func mustParseKibibytes(s string) common.Byte {
+	ret, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return common.Byte(ret * 1024)
+}
+
+func mustParseMilliseconds(s string) common.Duration {
+	ret, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return common.Duration(time.Duration(ret) * time.Millisecond)
+}
 
 func mustParseInt64(s string) int64 {
 	ret, err := strconv.ParseInt(s, 10, 64)
@@ -82,33 +107,33 @@ func newCsvSettingsLoader(path string) (*csvSettingsLoader, error) {
 		}
 		loader.settings[row[colMapping["alias"]]] = &common.ProblemSettings{
 			Limits: common.LimitsSettings{
-				ExtraWallTime:        mustParseInt64(row[colMapping["extra_wall_time"]]),
-				MemoryLimit:          mustParseInt64(row[colMapping["memory_limit"]]) * 1024,
-				OutputLimit:          mustParseInt64(row[colMapping["output_limit"]]),
-				OverallWallTimeLimit: mustParseInt64(row[colMapping["overall_wall_time_limit"]]),
-				TimeLimit:            mustParseInt64(row[colMapping["time_limit"]]),
+				ExtraWallTime:        mustParseMilliseconds(row[colMapping["extra_wall_time"]]),
+				MemoryLimit:          mustParseKibibytes(row[colMapping["memory_limit"]]),
+				OutputLimit:          mustParseBytes(row[colMapping["output_limit"]]),
+				OverallWallTimeLimit: mustParseMilliseconds(row[colMapping["overall_wall_time_limit"]]),
+				TimeLimit:            mustParseMilliseconds(row[colMapping["time_limit"]]),
 			},
 			Slow: mustParseInt64(row[colMapping["slow"]]) == 1,
 			Validator: common.ValidatorSettings{
 				Name: row[colMapping["validator"]],
 				Limits: &common.LimitsSettings{
-					ExtraWallTime: max64(
+					ExtraWallTime: common.MaxDuration(
 						common.DefaultValidatorLimits.ExtraWallTime,
-						mustParseInt64(row[colMapping["extra_wall_time"]]),
+						mustParseMilliseconds(row[colMapping["extra_wall_time"]]),
 					),
-					MemoryLimit: max64(
+					MemoryLimit: common.MaxBytes(
 						common.DefaultValidatorLimits.MemoryLimit,
-						mustParseInt64(row[colMapping["memory_limit"]])*1024,
+						mustParseKibibytes(row[colMapping["memory_limit"]]),
 					),
-					OutputLimit: max64(
+					OutputLimit: common.MaxBytes(
 						common.DefaultValidatorLimits.OutputLimit,
-						mustParseInt64(row[colMapping["output_limit"]]),
+						mustParseBytes(row[colMapping["output_limit"]]),
 					),
-					OverallWallTimeLimit: max64(
+					OverallWallTimeLimit: common.MaxDuration(
 						common.DefaultValidatorLimits.OverallWallTimeLimit,
-						mustParseInt64(row[colMapping["overall_wall_time_limit"]]),
+						mustParseMilliseconds(row[colMapping["overall_wall_time_limit"]]),
 					),
-					TimeLimit: mustParseInt64(row[colMapping["validator_time_limit"]]),
+					TimeLimit: mustParseMilliseconds(row[colMapping["validator_time_limit"]]),
 				},
 			},
 		}

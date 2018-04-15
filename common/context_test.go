@@ -60,3 +60,39 @@ func TestDuration(t *testing.T) {
 		t.Errorf("expected %v got %v", d1.String(), d2.String())
 	}
 }
+
+func TestByte(t *testing.T) {
+	testTable := []struct {
+		str      string
+		expected Byte
+	}{
+		{"1", Byte(1)},
+		{"\"10\"", Byte(10)},
+		{"\"100B\"", Byte(100)},
+		{"\"0.5KiB\"", Byte(512)},
+		{"\"1KiB\"", Kibibyte},
+		{"\"1MiB\"", Mebibyte},
+		{"\"1GiB\"", Gibibyte},
+		{"\"1TiB\"", Tebibyte},
+	}
+	for _, entry := range testTable {
+		var b Byte
+		if err := b.UnmarshalJSON([]byte(entry.str)); err != nil {
+			t.Fatalf(err.Error())
+		}
+		if entry.expected != b {
+			t.Errorf("expected %v got %v", entry.expected, b)
+		}
+		marshaled, err := b.MarshalJSON()
+		if err != nil {
+			t.Fatalf(err.Error())
+		}
+		var b2 Byte
+		if err := b2.UnmarshalJSON(marshaled); err != nil {
+			t.Fatalf(err.Error())
+		}
+		if entry.expected != b2 {
+			t.Errorf("expected %v got %v", entry.expected, b2)
+		}
+	}
+}
