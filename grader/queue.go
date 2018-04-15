@@ -23,6 +23,9 @@ import (
 // those in a lower priority queue.
 type QueuePriority int
 
+// QueueEventType represents the type of event that just occurred.
+type QueueEventType int
+
 const (
 	// QueuePriorityHigh represents a QueuePriority with high priority.
 	QueuePriorityHigh = QueuePriority(0)
@@ -39,6 +42,24 @@ const (
 
 	// DefaultQueueName is the default queue name.
 	DefaultQueueName = "default"
+
+	// QueueEventTypeManagerAdded represents when a run is added to the QueueManager.
+	QueueEventTypeManagerAdded QueueEventType = iota
+
+	// QueueEventTypeManagerRemoved represents when a run is removed from the QueueManager.
+	QueueEventTypeManagerRemoved
+
+	// QueueEventTypeQueueAdded represents when a run is added to a Queue.
+	QueueEventTypeQueueAdded
+
+	// QueueEventTypeQueueRemoved represents when a run is removed from a Qeuue.
+	QueueEventTypeQueueRemoved
+
+	// QueueEventTypeRetried represents when a run is retried.
+	QueueEventTypeRetried
+
+	// QueueEventTypeAbandoned represents when a run is abandoned due to too many retries.
+	QueueEventTypeAbandoned
 )
 
 // A EphemeralRunRequest represents a client's request to run some code.
@@ -257,6 +278,7 @@ type RunInfo struct {
 	PenaltyType string
 
 	CreationTime time.Time
+	QueueTime    time.Time
 }
 
 // RunContext is a wrapper around a RunInfo. This is used when a Run is sitting
@@ -280,10 +302,11 @@ type RunContext struct {
 	// still active
 	input common.Input
 
-	tries   int
-	queue   *Queue
-	context *common.Context
-	monitor *InflightMonitor
+	tries        int
+	queue        *Queue
+	queueManager *QueueManager
+	context      *common.Context
+	monitor      *InflightMonitor
 
 	// A channel that will be closed once the run is ready.
 	running chan struct{}
@@ -348,6 +371,13 @@ func (run *RunContext) Close() {
 		run.Log.Warn("Attempting to close an already closed run")
 		return
 	}
+	defer func() {
+		run.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(run.CreationTime),
+			Priority: run.Priority,
+			Type:     QueueEventTypeManagerRemoved,
+		})
+	}()
 	var postProcessor *RunPostProcessor
 	if run.monitor != nil {
 		postProcessor = run.monitor.PostProcessor
@@ -483,9 +513,10 @@ func (run *RunContext) Ready() <-chan struct{} {
 
 // Queue represents a RunContext queue with three discrete priorities.
 type Queue struct {
-	Name  string
-	runs  [QueueCount]chan *RunContext
-	ready chan struct{}
+	Name         string
+	runs         [QueueCount]chan *RunContext
+	ready        chan struct{}
+	queueManager *QueueManager
 }
 
 // GetRun dequeues a RunContext from the queue and adds it to the global
@@ -515,6 +546,13 @@ func (queue *Queue) GetRun(
 
 // AddRun adds a new RunContext to the current Queue.
 func (queue *Queue) AddRun(run *RunContext) {
+	run.queueManager = queue.queueManager
+	run.queueManager.AddEvent(&QueueEvent{
+		Delta:    time.Now().Sub(run.CreationTime),
+		Priority: run.Priority,
+		Type:     QueueEventTypeManagerAdded,
+	})
+
 	// TODO(lhchavez): Add async events for queue operations.
 	// Add new runs to the normal priority by default.
 	queue.enqueueBlocking(run)
@@ -528,6 +566,12 @@ func (queue *Queue) enqueueBlocking(run *RunContext) {
 	run.queue = queue
 	queue.runs[run.Priority] <- run
 	queue.ready <- struct{}{}
+	run.QueueTime = time.Now()
+	queue.queueManager.AddEvent(&QueueEvent{
+		Delta:    time.Now().Sub(run.CreationTime),
+		Priority: run.Priority,
+		Type:     QueueEventTypeQueueAdded,
+	})
 }
 
 // enqueue adds a run to the queue, returns true if possible.
@@ -634,7 +678,18 @@ func (monitor *InflightMonitor) timeout(
 	timeout chan<- struct{},
 ) {
 	run.context.Log.Error("run timed out. retrying", "context", run)
-	if !run.Requeue(false) {
+	if run.Requeue(false) {
+		run.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(run.CreationTime),
+			Priority: run.Priority,
+			Type:     QueueEventTypeRetried,
+		})
+	} else {
+		run.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(run.CreationTime),
+			Priority: run.Priority,
+			Type:     QueueEventTypeAbandoned,
+		})
 		run.context.Log.Error("run timed out too many times. giving up")
 	}
 	timeout <- struct{}{}
@@ -664,6 +719,11 @@ func (monitor *InflightMonitor) Remove(attemptID uint64) {
 	defer monitor.Unlock()
 	inflight, ok := monitor.mapping[attemptID]
 	if ok {
+		inflight.run.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(inflight.run.QueueTime),
+			Priority: inflight.run.Priority,
+			Type:     QueueEventTypeQueueRemoved,
+		})
 		inflight.run.monitor = nil
 		select {
 		// Try to signal that the run has been connected.
@@ -779,11 +839,26 @@ func (postProcessor *RunPostProcessor) Close() {
 	close(postProcessor.finishedRuns)
 }
 
+// QueueEvent represents an event that happens from the QueueManager's perspective.
+type QueueEvent struct {
+	Delta    time.Duration
+	Priority QueuePriority
+	Type     QueueEventType
+}
+
+type queueEventListener struct {
+	listener *chan<- *QueueEvent
+	added    *chan struct{}
+}
+
 // QueueManager is an expvar-friendly manager for Queues.
 type QueueManager struct {
 	sync.Mutex
 	mapping       map[string]*Queue
 	channelLength int
+	events        chan *QueueEvent
+	listenerChan  chan queueEventListener
+	listeners     []chan<- *QueueEvent
 }
 
 // QueueInfo has information about one queue.
@@ -796,8 +871,12 @@ func NewQueueManager(channelLength int) *QueueManager {
 	manager := &QueueManager{
 		mapping:       make(map[string]*Queue),
 		channelLength: channelLength,
+		events:        make(chan *QueueEvent, 1),
+		listenerChan:  make(chan queueEventListener, 1),
+		listeners:     make([]chan<- *QueueEvent, 0),
 	}
 	manager.Add(DefaultQueueName)
+	go manager.run()
 	return manager
 }
 
@@ -805,8 +884,9 @@ func NewQueueManager(channelLength int) *QueueManager {
 // specified name and returns it.
 func (manager *QueueManager) Add(name string) *Queue {
 	queue := &Queue{
-		Name:  name,
-		ready: make(chan struct{}, QueueCount*manager.channelLength),
+		Name:         name,
+		ready:        make(chan struct{}, QueueCount*manager.channelLength),
+		queueManager: manager,
 	}
 	for r := range queue.runs {
 		queue.runs[r] = make(chan *RunContext, manager.channelLength)
@@ -852,4 +932,49 @@ func (manager *QueueManager) GetQueueInfo() map[string]QueueInfo {
 // purposes.
 func (manager *QueueManager) MarshalJSON() ([]byte, error) {
 	return json.MarshalIndent(manager.GetQueueInfo(), "", "  ")
+}
+
+// AddEventListener registers a listener for event notifications.
+func (manager *QueueManager) AddEventListener(c chan<- *QueueEvent) {
+	added := make(chan struct{}, 0)
+	manager.listenerChan <- queueEventListener{
+		listener: &c,
+		added:    &added,
+	}
+	select {
+	case <-added:
+	}
+}
+
+// AddEvent adds an event and broadcasts it to all the listeners.
+func (manager *QueueManager) AddEvent(event *QueueEvent) {
+	manager.events <- event
+}
+
+// Close terminates the event listener goroutine.
+func (manager *QueueManager) Close() {
+	close(manager.events)
+}
+
+func (manager *QueueManager) run() {
+	for {
+		select {
+		case wrappedListener := <-manager.listenerChan:
+			manager.listeners = append(
+				manager.listeners,
+				*wrappedListener.listener,
+			)
+			close(*wrappedListener.added)
+		case event, ok := <-manager.events:
+			if !ok {
+				for _, listener := range manager.listeners {
+					close(listener)
+				}
+				return
+			}
+			for _, listener := range manager.listeners {
+				listener <- event
+			}
+		}
+	}
 }

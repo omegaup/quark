@@ -66,4 +66,5 @@ func NewContext(reader io.Reader) (*Context, error) {
 
 // Close releases all resources owned by the context.
 func (context *Context) Close() {
+	context.QueueManager.Close()
 }

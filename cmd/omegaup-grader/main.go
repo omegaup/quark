@@ -129,6 +129,41 @@ func (fs *wrappedFileSystem) Open(name string) (http.File, error) {
 	return nil, os.ErrNotExist
 }
 
+func queEventsProcessor(events <-chan *grader.QueueEvent) {
+	ctx := context()
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+
+			switch event.Type {
+			case grader.QueueEventTypeManagerAdded:
+				ctx.Metrics.GaugeAdd("grader_queue_total_length", 1)
+			case grader.QueueEventTypeManagerRemoved:
+				ctx.Metrics.GaugeAdd("grader_queue_total_length", -1)
+				ctx.Metrics.SummaryObserve("grader_queue_delay_seconds", event.Delta.Seconds())
+			case grader.QueueEventTypeQueueRemoved:
+				switch event.Priority {
+				case grader.QueuePriorityEphemeral:
+					ctx.Metrics.SummaryObserve("grader_queue_ephemeral_delay_seconds", event.Delta.Seconds())
+				case grader.QueuePriorityLow:
+					ctx.Metrics.SummaryObserve("grader_queue_low_delay_seconds", event.Delta.Seconds())
+				case grader.QueuePriorityNormal:
+					ctx.Metrics.SummaryObserve("grader_queue_normal_delay_seconds", event.Delta.Seconds())
+				case grader.QueuePriorityHigh:
+					ctx.Metrics.SummaryObserve("grader_queue_high_delay_seconds", event.Delta.Seconds())
+				}
+			case grader.QueueEventTypeRetried:
+				ctx.Metrics.GaugeAdd("grader_runs_retry", 1)
+			case grader.QueueEventTypeAbandoned:
+				ctx.Metrics.GaugeAdd("grader_runs_abandoned", 1)
+			}
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -179,6 +214,10 @@ func main() {
 			ctx.Config.Grader.Ephemeral.Proxied,
 		)
 	}
+
+	queueEventsChan := make(chan *grader.QueueEvent, 1)
+	context().QueueManager.AddEventListener(queueEventsChan)
+	go queEventsProcessor(queueEventsChan)
 
 	mux := http.DefaultServeMux
 	if ctx.Config.Grader.V1.Enabled {

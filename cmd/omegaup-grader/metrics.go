@@ -54,6 +54,30 @@ var (
 			Help:      "The length of the queue",
 			Name:      "queue_total_length",
 		}),
+		"grader_queue_ephemeral_length": prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "quark",
+			Subsystem: "grader",
+			Help:      "The length of the ephemeral queue",
+			Name:      "queue_ephemeral_length",
+		}),
+		"grader_queue_low_length": prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "quark",
+			Subsystem: "grader",
+			Help:      "The length of the low-priority queue",
+			Name:      "queue_low_length",
+		}),
+		"grader_queue_normal_length": prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "quark",
+			Subsystem: "grader",
+			Help:      "The length of the normal-priority queue",
+			Name:      "queue_normal_length",
+		}),
+		"grader_queue_high_length": prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "quark",
+			Subsystem: "grader",
+			Help:      "The length of the high-priority queue",
+			Name:      "queue_high_length",
+		}),
 	}
 
 	counters = map[string]prometheus.Counter{
@@ -75,6 +99,12 @@ var (
 			Help:      "Number of runs that were retried",
 			Name:      "runs_retry",
 		}),
+		"grader_runs_abandoned": prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "quark",
+			Subsystem: "grader",
+			Help:      "Number of runs that were abandoned",
+			Name:      "runs_abandoned",
+		}),
 		"grader_runs_je": prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: "quark",
 			Subsystem: "grader",
@@ -89,6 +119,13 @@ var (
 			Subsystem:  "grader",
 			Help:       "The duration of a run in any queue",
 			Name:       "queue_delay_seconds",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+		}),
+		"grader_queue_ephemeral_delay_seconds": prometheus.NewSummary(prometheus.SummaryOpts{
+			Namespace:  "quark",
+			Subsystem:  "grader",
+			Help:       "The duration of a run in the ephemeral queue",
+			Name:       "queue_ephemeral_delay_seconds",
 			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		}),
 		"grader_queue_low_delay_seconds": prometheus.NewSummary(prometheus.SummaryOpts{

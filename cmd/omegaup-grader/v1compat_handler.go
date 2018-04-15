@@ -225,16 +225,6 @@ func v1CompatRunPostProcessor(
 ) {
 	ctx := context()
 	for run := range finishedRuns {
-		ctx.Metrics.GaugeAdd("grader_queue_total_length", -1)
-		delay := time.Now().Sub(run.CreationTime).Seconds()
-		ctx.Metrics.SummaryObserve("grader_queue_delay_seconds", delay)
-		if run.Priority == grader.QueuePriorityLow {
-			ctx.Metrics.SummaryObserve("grader_queue_low_delay_seconds", delay)
-		} else if run.Priority == grader.QueuePriorityNormal {
-			ctx.Metrics.SummaryObserve("grader_queue_normal_delay_seconds", delay)
-		} else if run.Priority == grader.QueuePriorityHigh {
-			ctx.Metrics.SummaryObserve("grader_queue_high_delay_seconds", delay)
-		}
 		if run.Result.Verdict == "JE" {
 			ctx.Metrics.CounterAdd("grader_runs_je", 1)
 		}
@@ -408,7 +398,6 @@ func v1CompatInjectRuns(
 			runCtx.Priority = priority
 		}
 		ctx.Log.Info("RunContext", "runCtx", runCtx)
-		ctx.Metrics.GaugeAdd("grader_queue_total_length", 1)
 		ctx.Metrics.CounterAdd("grader_runs_total", 1)
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
