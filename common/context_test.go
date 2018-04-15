@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestingContext() *Context {
@@ -43,4 +44,19 @@ func TestConfigSerializability(t *testing.T) {
 	ctx := newTestingContext()
 	defer ctx.Close()
 	ctx.Config.String()
+}
+
+func TestDuration(t *testing.T) {
+	d1 := Duration(time.Duration(30) * time.Second)
+	serialized, err := d1.MarshalJSON()
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	var d2 Duration
+	if err = d2.UnmarshalJSON(serialized); err != nil {
+		t.Fatalf(err.Error())
+	}
+	if d1 != d2 {
+		t.Errorf("expected %v got %v", d1.String(), d2.String())
+	}
 }

@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/inconshreveable/log15"
 	"io"
@@ -11,18 +12,59 @@ import (
 	"time"
 )
 
+// Duration is identical to time.Duration, except it can implements the
+// json.Marshaler interface with time.Duration.String() and
+// time.Duration.ParseDuration().
+type Duration time.Duration
+
+// String returns a string representing the duration in the form "72h3m0.5s".
+// Leading zero units are omitted. As a special case, durations less than one
+// second format use a smaller unit (milli-, micro-, or nanoseconds) to ensure
+// that the leading digit is non-zero. The zero duration formats as 0s.
+func (d Duration) String() string {
+	return time.Duration(d).String()
+}
+
+// MarshalJSON implements the json.Marshaler interface. The duration is a quoted
+// string in RFC 3339 format, with sub-second precision added if present.
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", d.String())), nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface. The duration is
+// expected to be a quoted string that time.ParseDuration() can understand.
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return nil
+	}
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return errors.New("time: invalid duration " + string(data))
+	}
+	parsed, err := time.ParseDuration(string(data[1 : len(data)-1]))
+	if err != nil {
+		return err
+	}
+	*d = Duration(parsed)
+	return nil
+}
+
+// Milliseconds returns the duration as an integer millisecond count.
+func (d Duration) Milliseconds() int64 {
+	return time.Duration(d).Nanoseconds() / 1000000
+}
+
 // BroadcasterConfig represents the configuration for the Broadcaster.
 type BroadcasterConfig struct {
 	ChannelLength           int
 	EventsPort              uint16
 	FrontendURL             string
-	PingPeriod              time.Duration
+	PingPeriod              Duration
 	Port                    uint16
 	Proxied                 bool
 	ScoreboardUpdateSecret  string
-	ScoreboardUpdateTimeout time.Duration
+	ScoreboardUpdateTimeout Duration
 	TLS                     TLSConfig // only used if Proxied == false
-	WriteDeadline           time.Duration
+	WriteDeadline           Duration
 }
 
 // InputManagerConfig represents the configuration for the InputManager.
@@ -44,12 +86,15 @@ type V1Config struct {
 
 // GraderEphemeralConfig represents the configuration for the Grader web interface.
 type GraderEphemeralConfig struct {
-	EphemeralSizeLimit int64
-	PingPeriod         time.Duration
-	Port               uint16
-	Proxied            bool
-	TLS                TLSConfig // only used if Proxied == false
-	WriteDeadline      time.Duration
+	EphemeralSizeLimit   int64
+	CaseTimeLimit        Duration
+	OverallWallTimeLimit Duration
+	MemoryLimit          int64
+	PingPeriod           Duration
+	Port                 uint16
+	Proxied              bool
+	TLS                  TLSConfig // only used if Proxied == false
+	WriteDeadline        Duration
 }
 
 // GraderConfig represents the configuration for the Grader.
@@ -122,16 +167,16 @@ var defaultConfig = Config{
 		ChannelLength:           10,
 		EventsPort:              22291,
 		FrontendURL:             "https://omegaup.com",
-		PingPeriod:              time.Duration(30) * time.Second,
+		PingPeriod:              Duration(time.Duration(30) * time.Second),
 		Port:                    32672,
 		Proxied:                 true,
 		ScoreboardUpdateSecret:  "secret",
-		ScoreboardUpdateTimeout: time.Duration(10) * time.Second,
+		ScoreboardUpdateTimeout: Duration(time.Duration(10) * time.Second),
 		TLS: TLSConfig{
 			CertFile: "/etc/omegaup/broadcaster/certificate.pem",
 			KeyFile:  "/etc/omegaup/broadcaster/key.pem",
 		},
-		WriteDeadline: time.Duration(5) * time.Second,
+		WriteDeadline: Duration(time.Duration(5) * time.Second),
 	},
 	Db: DbConfig{
 		Driver:         "sqlite3",
@@ -163,15 +208,18 @@ var defaultConfig = Config{
 			WriteResults:     true,
 		},
 		Ephemeral: GraderEphemeralConfig{
-			EphemeralSizeLimit: 1024 * 1024 * 1024, // 1 GB
-			Port:               36663,
-			PingPeriod:         time.Duration(30) * time.Second,
-			Proxied:            true,
+			EphemeralSizeLimit:   1024 * 1024 * 1024, // 1 GB
+			CaseTimeLimit:        Duration(time.Duration(10) * time.Second),
+			OverallWallTimeLimit: Duration(time.Duration(10) * time.Second),
+			MemoryLimit:          1024 * 1024 * 1024, // 1 GB
+			Port:                 36663,
+			PingPeriod:           Duration(time.Duration(30) * time.Second),
+			Proxied:              true,
 			TLS: TLSConfig{
 				CertFile: "/etc/omegaup/grader/web-certificate.pem",
 				KeyFile:  "/etc/omegaup/grader/web-key.pem",
 			},
-			WriteDeadline: time.Duration(5) * time.Second,
+			WriteDeadline: Duration(time.Duration(5) * time.Second),
 		},
 		WriteGradeFiles: true,
 	},

@@ -333,7 +333,7 @@ func (s *Subscriber) Run() {
 	s.transport.Init(s.close)
 	go s.transport.ReadLoop()
 
-	ticker := time.NewTicker(s.ctx.Config.Broadcaster.PingPeriod)
+	ticker := time.NewTicker(time.Duration(s.ctx.Config.Broadcaster.PingPeriod))
 	defer func() {
 		ticker.Stop()
 		s.ctx.Log.Info(

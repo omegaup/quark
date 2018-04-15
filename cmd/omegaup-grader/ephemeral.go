@@ -34,14 +34,14 @@ func (h *runHandler) validateRequest(
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 ) error {
 	// Silently apply some caps.
-	if ephemeralRunRequest.Input.Limits.TimeLimit > 10000 {
-		ephemeralRunRequest.Input.Limits.TimeLimit = 10000
+	if ephemeralRunRequest.Input.Limits.TimeLimit > ctx.Config.Grader.Ephemeral.CaseTimeLimit.Milliseconds() {
+		ephemeralRunRequest.Input.Limits.TimeLimit = ctx.Config.Grader.Ephemeral.CaseTimeLimit.Milliseconds()
 	}
-	if ephemeralRunRequest.Input.Limits.OverallWallTimeLimit > 10000 {
-		ephemeralRunRequest.Input.Limits.OverallWallTimeLimit = 10000
+	if ephemeralRunRequest.Input.Limits.OverallWallTimeLimit > ctx.Config.Grader.Ephemeral.OverallWallTimeLimit.Milliseconds() {
+		ephemeralRunRequest.Input.Limits.OverallWallTimeLimit = ctx.Config.Grader.Ephemeral.OverallWallTimeLimit.Milliseconds()
 	}
-	if ephemeralRunRequest.Input.Limits.MemoryLimit > 1*1024*1024*1024 {
-		ephemeralRunRequest.Input.Limits.MemoryLimit = 1 * 1024 * 1024 * 1024
+	if ephemeralRunRequest.Input.Limits.MemoryLimit > ctx.Config.Grader.Ephemeral.MemoryLimit {
+		ephemeralRunRequest.Input.Limits.MemoryLimit = ctx.Config.Grader.Ephemeral.MemoryLimit
 	}
 	return nil
 }

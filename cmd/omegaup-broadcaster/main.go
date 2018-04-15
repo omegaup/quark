@@ -148,13 +148,13 @@ func updateScoreboardLoop(
 			eventSet[contestAlias] = false
 			heap.Push(&events, &updateScoreboardEvent{
 				contestAlias: contestAlias,
-				deadline:     time.Now().Add(ctx.Config.Broadcaster.ScoreboardUpdateTimeout),
+				deadline:     time.Now().Add(time.Duration(ctx.Config.Broadcaster.ScoreboardUpdateTimeout)),
 			})
 			if len(events) == 1 {
 				if !timer.Stop() {
 					<-timer.C
 				}
-				timer.Reset(ctx.Config.Broadcaster.ScoreboardUpdateTimeout)
+				timer.Reset(time.Duration(ctx.Config.Broadcaster.ScoreboardUpdateTimeout))
 			}
 
 			updateScoreboardForContest(
@@ -277,7 +277,7 @@ func main() {
 
 			transport = broadcaster.NewWebSocketTransport(
 				conn,
-				ctx.Config.Broadcaster.WriteDeadline,
+				time.Duration(ctx.Config.Broadcaster.WriteDeadline),
 			)
 		}
 
