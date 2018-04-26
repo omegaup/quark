@@ -302,8 +302,7 @@ let store = new Vuex.Store({
       state.dirty = true;
     },
     InteractiveLanguage(state, value) {
-      if (value == 'cpp')
-        value = 'cpp11';
+      if (value == 'cpp') value = 'cpp11';
       state.request.input.interactive.language = value;
       state.dirty = true;
     },
@@ -337,9 +336,9 @@ let store = new Vuex.Store({
         language: 'cpp11',
         input: {
           limits: {
-            TimeLimit: 1000, // 1s
+            TimeLimit: 1.0, // 1s
             MemoryLimit: 67108864, // 64MB
-            OverallWallTimeLimit: 5000, // 5s
+            OverallWallTimeLimit: 5.0, // 5s
             ExtraWallTime: 0, // 0s
             OutputLimit: 10240, // 10k
           },
@@ -1093,6 +1092,15 @@ function onHashChanged() {
         onFilesZipReady(null);
         return;
       }
+      request.input.limits.ExtraWallTime = Util.parseDuration(
+        request.input.limits.ExtraWallTime
+      );
+      request.input.limits.OverallWallTimeLimit = Util.parseDuration(
+        request.input.limits.OverallWallTimeLimit
+      );
+      request.input.limits.TimeLimit = Util.parseDuration(
+        request.input.limits.TimeLimit
+      );
       store.commit('request', request);
       fetch('run/' + token + '/details.json')
         .then(response => {

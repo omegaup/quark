@@ -86,26 +86,26 @@ export default {
   computed: {
     timeLimit: {
       get() {
-        return this.store.state.request.input.limits.TimeLimit / 1000.0;
+        return this.store.state.request.input.limits.TimeLimit;
       },
       set(value) {
-        this.store.commit('TimeLimit', value * 1000);
+        this.store.commit('TimeLimit', Number.parseFloat(value));
       },
     },
     overallWallTimeLimit: {
       get() {
-        return this.store.state.request.input.limits.OverallWallTimeLimit / 1000.0;
+        return this.store.state.request.input.limits.OverallWallTimeLimit;
       },
       set(value) {
-        this.store.commit('OverallWallTimeLimit', value * 1000);
+        this.store.commit('OverallWallTimeLimit', Number.parseFloat(value));
       },
     },
     extraWallTime: {
       get() {
-        return this.store.state.request.input.limits.ExtraWallTime / 1000.0;
+        return this.store.state.request.input.limits.ExtraWallTime;
       },
       set(value) {
-        this.store.commit('ExtraWallTime', value * 1000);
+        this.store.commit('ExtraWallTime', Number.parseFloat(value));
       },
     },
     memoryLimit: {

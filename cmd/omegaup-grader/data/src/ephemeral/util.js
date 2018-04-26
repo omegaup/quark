@@ -13,6 +13,25 @@ export function vuexSet(store, name, value) {
   store.commit(name, value);
 }
 
+export function parseDuration(value) {
+  if (typeof(value) === 'number') {
+    return value;
+  }
+
+  let scale = 1.0;
+  if (value.indexOf('ns') === value.length - 2) {
+    scale = 1e-9;
+  } else if (
+    value.indexOf('us') === value.length - 2 ||
+    value.indexOf('µs') === value.length - 2
+  ) {
+    scale = 1e-6;
+  } else if (value.indexOf('ms') === value.length - 2) {
+    scale = 1e-3;
+  }
+  return scale * parseFloat(value);
+}
+
 export const languageMonacoModelMapping = {
   cpp11: 'cpp',
   cpp: 'cpp',
