@@ -77,11 +77,11 @@ type LiteralInteractiveSettings struct {
 // Default values for some of the settings.
 var (
 	DefaultLiteralLimitSettings = LimitsSettings{
-		TimeLimit:            Duration(time.Duration(1) * time.Second),
-		MemoryLimit:          Byte(64) * Mebibyte,
-		OverallWallTimeLimit: Duration(time.Duration(5) * time.Second),
+		TimeLimit:            Duration(time.Duration(10) * time.Second),
+		MemoryLimit:          Gibibyte + Gibibyte/2,
+		OverallWallTimeLimit: Duration(time.Duration(10) * time.Second),
 		ExtraWallTime:        Duration(0),
-		OutputLimit:          Byte(10) * Kibibyte,
+		OutputLimit:          Byte(2) * Mebibyte,
 	}
 
 	DefaultLiteralValidatorSettings = LiteralValidatorSettings{

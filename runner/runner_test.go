@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 )
 
 type expectedResult struct {
@@ -172,6 +173,13 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",
+			},
+			Limits: &common.LimitsSettings{
+				TimeLimit:            common.Duration(time.Second),
+				MemoryLimit:          64 * common.Mebibyte,
+				OverallWallTimeLimit: common.Duration(time.Duration(5) * time.Second),
+				ExtraWallTime:        common.Duration(0),
+				OutputLimit:          10 * common.Kibibyte,
 			},
 		},
 		ctx.Config.Runner.RuntimePath,
