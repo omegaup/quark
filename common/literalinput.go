@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"os"
 	"os/exec"
@@ -43,7 +44,47 @@ const (
 type LiteralCaseSettings struct {
 	Input          string   `json:"in"`
 	ExpectedOutput string   `json:"out"`
-	Weight         *float64 `json:"weight,omitempty"`
+	Weight         *big.Rat `json:"weight"`
+}
+
+// MarshalJSON implements the json.Marshaler interface.
+func (c *LiteralCaseSettings) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Input          string  `json:"in"`
+		ExpectedOutput string  `json:"out"`
+		Weight         float64 `json:"weight"`
+	}{
+		Input:          c.Input,
+		ExpectedOutput: c.ExpectedOutput,
+		Weight:         RationalToFloat(c.Weight),
+	})
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (c *LiteralCaseSettings) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+
+	settings := struct {
+		Input          string   `json:"in"`
+		ExpectedOutput string   `json:"out"`
+		Weight         *float64 `json:"weight"`
+	}{}
+
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return err
+	}
+
+	c.Input = settings.Input
+	c.ExpectedOutput = settings.ExpectedOutput
+	if settings.Weight == nil {
+		c.Weight = big.NewRat(1, 1)
+	} else {
+		c.Weight = FloatToRational(*settings.Weight)
+	}
+
+	return nil
 }
 
 // LiteralCustomValidatorSettings stores the source of the program that will
@@ -238,30 +279,23 @@ func NewLiteralInputFactory(
 	if len(input.Cases) == 0 {
 		return nil, errors.New("empty case list")
 	}
-	totalWeight := 0.0
+	totalWeight := &big.Rat{}
 	for _, c := range input.Cases {
-		if c.Weight == nil {
-			totalWeight++
-		} else {
-			if *c.Weight < 0 {
-				return nil, fmt.Errorf("invalid weight, must be positive: %v", *c.Weight)
-			}
-			totalWeight += *c.Weight
+		if c.Weight.Cmp(&big.Rat{}) < 0 {
+			return nil, fmt.Errorf("invalid weight, must be positive: %v", *c.Weight)
 		}
+		totalWeight.Add(totalWeight, c.Weight)
 	}
-	if totalWeight == 0 {
+	if totalWeight.Cmp(&big.Rat{}) == 0 {
 		return nil, errors.New("weight must be positive")
 	}
 	groups := make(map[string][]CaseSettings)
 	for name, c := range input.Cases {
 		tokens := strings.SplitN(name, ".", 2)
-		weight := 1.0
-		if c.Weight != nil {
-			weight = *c.Weight
-		}
+		weight := new(big.Rat).Add(&big.Rat{}, c.Weight)
 		cs := CaseSettings{
 			Name:   name,
-			Weight: weight / totalWeight,
+			Weight: RationalDiv(weight, totalWeight),
 		}
 		if _, ok := groups[tokens[0]]; !ok {
 			groups[tokens[0]] = make([]CaseSettings, 0)

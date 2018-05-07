@@ -1,7 +1,10 @@
 package common
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"math/big"
 	"math/rand"
 	"sync/atomic"
 	"time"
@@ -18,12 +21,60 @@ func init() {
 
 // A Run represents an omegaUp run.
 type Run struct {
-	AttemptID uint64  `json:"attempt_id"`
-	Source    string  `json:"source"`
-	Language  string  `json:"language"`
-	InputHash string  `json:"input_hash"`
-	MaxScore  float64 `json:"max_score"`
-	Debug     bool    `json:"debug"`
+	AttemptID uint64   `json:"attempt_id"`
+	Source    string   `json:"source"`
+	Language  string   `json:"language"`
+	InputHash string   `json:"input_hash"`
+	MaxScore  *big.Rat `json:"max_score"`
+	Debug     bool     `json:"debug"`
+}
+
+// MarshalJSON implements the json.Marshaler interface.
+func (r *Run) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		AttemptID uint64  `json:"attempt_id"`
+		Source    string  `json:"source"`
+		Language  string  `json:"language"`
+		InputHash string  `json:"input_hash"`
+		MaxScore  float64 `json:"max_score"`
+		Debug     bool    `json:"debug"`
+	}{
+		AttemptID: r.AttemptID,
+		Source:    r.Source,
+		Language:  r.Language,
+		InputHash: r.InputHash,
+		MaxScore:  RationalToFloat(r.MaxScore),
+		Debug:     r.Debug,
+	})
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (r *Run) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+
+	run := struct {
+		AttemptID uint64  `json:"attempt_id"`
+		Source    string  `json:"source"`
+		Language  string  `json:"language"`
+		InputHash string  `json:"input_hash"`
+		MaxScore  float64 `json:"max_score"`
+		Debug     bool    `json:"debug"`
+	}{}
+
+	if err := json.Unmarshal(data, &run); err != nil {
+		return err
+	}
+
+	r.AttemptID = run.AttemptID
+	r.Source = run.Source
+	r.Language = run.Language
+	r.InputHash = run.InputHash
+	r.MaxScore = FloatToRational(run.MaxScore)
+	r.Debug = run.Debug
+
+	return nil
 }
 
 // NewAttemptID allocates a locally-unique AttemptID. A counter is initialized
@@ -34,16 +85,16 @@ func NewAttemptID() uint64 {
 }
 
 // UpdateAttemptID assigns a new AttemptID to a run.
-func (run *Run) UpdateAttemptID() uint64 {
-	run.AttemptID = NewAttemptID()
-	return run.AttemptID
+func (r *Run) UpdateAttemptID() uint64 {
+	r.AttemptID = NewAttemptID()
+	return r.AttemptID
 }
 
-func (run *Run) String() string {
+func (r *Run) String() string {
 	return fmt.Sprintf(
 		"Run{AttemptID:%d Language:%s InputHash:%s}",
-		run.AttemptID,
-		run.Language,
-		run.InputHash,
+		r.AttemptID,
+		r.Language,
+		r.InputHash,
 	)
 }

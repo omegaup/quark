@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -66,8 +67,8 @@ func v1CompatUpdateDatabase(
 			run.Result.Time*1000,
 			run.Result.Time*1000,
 			run.Result.Memory.Bytes(),
-			run.Result.Score,
-			run.Result.ContestScore,
+			common.RationalToFloat(run.Result.Score),
+			common.RationalToFloat(run.Result.ContestScore),
 			run.Result.JudgedBy,
 			run.ID,
 		)
@@ -86,8 +87,8 @@ func v1CompatUpdateDatabase(
 			run.Result.Verdict,
 			run.Result.Time*1000,
 			run.Result.Memory.Bytes(),
-			run.Result.Score,
-			run.Result.ContestScore,
+			common.RationalToFloat(run.Result.Score),
+			common.RationalToFloat(run.Result.ContestScore),
 			run.Result.JudgedBy,
 			run.ID,
 		)
@@ -175,8 +176,8 @@ func v1CompatBroadcastRun(
 			GUID:         run.GUID,
 			Runtime:      run.Result.Time,
 			Memory:       run.Result.Memory,
-			Score:        run.Result.Score,
-			ContestScore: run.Result.ContestScore,
+			Score:        common.RationalToFloat(run.Result.Score),
+			ContestScore: common.RationalToFloat(run.Result.ContestScore),
 			Status:       "ready",
 			Verdict:      run.Result.Verdict,
 			Language:     run.Run.Language,
@@ -357,9 +358,9 @@ func v1CompatNewRunContext(
 		runCtx.PenaltyType = penaltyType.String
 	}
 	if contestPoints.Valid {
-		runCtx.Run.MaxScore = contestPoints.Float64
+		runCtx.Run.MaxScore = common.FloatToRational(contestPoints.Float64)
 	} else {
-		runCtx.Run.MaxScore = 1.0
+		runCtx.Run.MaxScore = big.NewRat(1, 1)
 	}
 	runCtx.Result.MaxScore = runCtx.Run.MaxScore
 	contents, err := ioutil.ReadFile(

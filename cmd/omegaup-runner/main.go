@@ -12,6 +12,7 @@ import (
 	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"math/rand"
 	"mime/multipart"
 	"net"
@@ -427,18 +428,33 @@ func gradeAndUploadResults(
 	if *noop {
 		// The no-op runner judges everything as AC.
 		result.Verdict = "AC"
-		result.Score = 1.0
-		result.ContestScore = result.MaxScore
+		result.Score = big.NewRat(1, 1)
+		result.ContestScore = new(big.Rat).Mul(
+			result.Score,
+			result.MaxScore,
+		)
 
 		for i := range result.Groups {
 			group := &result.Groups[i]
-			group.Score = group.MaxScore
-			group.ContestScore = group.MaxScore * result.ContestScore
+			group.Score = new(big.Rat).Add(
+				&big.Rat{},
+				group.MaxScore,
+			)
+			group.ContestScore = new(big.Rat).Mul(
+				group.MaxScore,
+				result.ContestScore,
+			)
 
 			for j := range group.Cases {
 				caseResult := &group.Cases[j]
-				caseResult.Score = caseResult.MaxScore
-				caseResult.ContestScore = caseResult.MaxScore * result.ContestScore
+				caseResult.Score = new(big.Rat).Add(
+					&big.Rat{},
+					caseResult.MaxScore,
+				)
+				caseResult.ContestScore = new(big.Rat).Mul(
+					caseResult.MaxScore,
+					result.ContestScore,
+				)
 				caseResult.Verdict = "AC"
 
 			}

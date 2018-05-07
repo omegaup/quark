@@ -9,6 +9,7 @@ import (
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"io/ioutil"
+	"math/big"
 	"math/rand"
 	"os"
 	"path"
@@ -338,7 +339,7 @@ func NewEmptyRunContext(ctx *Context) *RunContext {
 		RunInfo: RunInfo{
 			Run: &common.Run{
 				AttemptID: common.NewAttemptID(),
-				MaxScore:  1.0,
+				MaxScore:  big.NewRat(1, 1),
 			},
 			Result: runner.RunResult{
 				Verdict: "JE",

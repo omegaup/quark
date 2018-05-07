@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/omegaup/quark/common"
 	"io/ioutil"
+	"math/big"
 	"os"
 	"path"
 	"strings"
@@ -19,9 +20,9 @@ type expectedResult struct {
 
 type runnerTestCase struct {
 	language, source       string
-	maxScore               float64
+	maxScore               *big.Rat
 	expectedVerdict        string
-	expectedScore          float64
+	expectedScore          *big.Rat
 	expectedCompileResults expectedResult
 	expectedResults        map[string]expectedResult
 }
@@ -167,9 +168,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
 			Cases: map[string]common.LiteralCaseSettings{
-				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
-				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
-				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: &[]float64{2.0}[0]},
+				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",
@@ -199,9 +200,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"py",
 			"print sum(map(int, raw_input().strip().split()))",
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -214,9 +215,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			"ans = sum(map(int, raw_input().strip().split()))\n" +
 				"assert ans <= 3\n" +
 				"print ans",
-			1.0,
+			big.NewRat(1, 1),
 			"RTE",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -227,9 +228,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"py",
 			"print 3",
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -240,9 +241,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"py",
 			"print 2",
-			1.0,
+			big.NewRat(1, 1),
 			"WA",
-			0.0,
+			big.NewRat(0, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"2", "", &RunMetadata{Verdict: "OK"}},
@@ -253,9 +254,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"py",
 			"if",
-			1.0,
+			big.NewRat(1, 1),
 			"CE",
-			0.0,
+			big.NewRat(0, 1),
 			expectedResult{
 				"",
 				`  File "test.py", line 1
@@ -269,9 +270,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"c",
 			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -282,9 +283,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"cpp",
 			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -295,9 +296,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"rb",
 			"puts 3",
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -308,9 +309,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"hs",
 			"main = putStrLn \"3\"",
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -324,9 +325,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			begin
 				writeln ('3');
 			end.`,
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -337,9 +338,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"lua",
 			"a = io.read(\"*n\"); b = io.read(\"*n\"); io.write(a + b)",
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -364,9 +365,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 							Console.WriteLine(l.Sum(x => x));
 					}
 			}`,
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -393,9 +394,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 							Console.WriteLine(l.Sum(x => x));
 					}
 			}`,
-			1.0,
+			big.NewRat(1, 1),
 			"MLE",
-			0.0,
+			big.NewRat(0, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"", "", &RunMetadata{Verdict: "MLE"}},
@@ -418,9 +419,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 					System.out.println(total);
 				}
 			}`,
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -452,9 +453,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 					System.out.println(total);
 				}
 			}`,
-			1.0,
+			big.NewRat(1, 1),
 			"MLE",
-			0.0,
+			big.NewRat(0, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
@@ -473,9 +474,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				"gAAAAAAAEAAAC0gUEAAAAxLjAub3V0VVQFAAP8t4ZYdXgLAAEE6AMAAAToAwAAUEsBAh4DCg" +
 				"AAAAAA56JRSFc5PQMCAAAAAgAAAAcAGAAAAAAAAQAAALSBhAAAADEuMS5vdXRVVAUAA7LWxF" +
 				"Z1eAsAAQToAwAABOgDAABQSwUGAAAAAAMAAwDlAAAAxwAAAAAA",
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -491,9 +492,9 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 					System.out.println('3');
 				}
 			}`,
-			1.0,
+			big.NewRat(1, 1),
 			"CE",
-			0,
+			big.NewRat(0, 1),
 			expectedResult{
 				"",
 				"\nClass `Main` not found. Make sure your class is named `Main` and outside all packages",
@@ -529,11 +530,11 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				rte,
 			)
 		}
-		if results.Score != rte.expectedScore {
+		if results.Score.Cmp(rte.expectedScore) != 0 {
 			t.Errorf(
-				"results.Score = %v, expected %v",
-				results.Score,
-				rte.expectedScore,
+				"results.Score = %s, expected %s",
+				results.Score.String(),
+				rte.expectedScore.String(),
 			)
 		}
 	}
@@ -553,9 +554,9 @@ func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
 			Cases: map[string]common.LiteralCaseSettings{
-				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
-				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: &[]float64{1.0}[0]},
-				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: &[]float64{2.0}[0]},
+				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",
@@ -585,9 +586,9 @@ func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"c",
 			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -598,9 +599,9 @@ func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"cpp",
 			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -614,9 +615,9 @@ func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
 			begin
 				writeln ('3');
 			end.`,
-			1.0,
+			big.NewRat(1, 1),
 			"PA",
-			0.25,
+			big.NewRat(1, 4),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -652,11 +653,11 @@ func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
 				rte,
 			)
 		}
-		if results.Score != rte.expectedScore {
+		if results.Score.Cmp(rte.expectedScore) != 0 {
 			t.Errorf(
-				"results.Score = %v, expected %v",
-				results.Score,
-				rte.expectedScore,
+				"results.Score = %s, expected %s",
+				results.Score.String(),
+				rte.expectedScore.String(),
 			)
 		}
 	}
@@ -714,7 +715,7 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			<despliega tipo="POSICION"></despliega>
 		</programa>
 	</programas>
-</ejecucion>`, ExpectedOutput: expectedOutput, Weight: &[]float64{1.0}[0]},
+</ejecucion>`, ExpectedOutput: expectedOutput, Weight: big.NewRat(1, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",
@@ -744,9 +745,9 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				termina-ejecucion
 			finalizar-programa
 			`,
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
@@ -755,9 +756,9 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		{
 			"kj",
 			"class program { program () { while (!nextToABeeper()) move(); turnoff(); } }",
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
@@ -791,11 +792,11 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				rte,
 			)
 		}
-		if results.Score != rte.expectedScore {
+		if results.Score.Cmp(rte.expectedScore) != 0 {
 			t.Errorf(
-				"results.Score = %v, expected %v",
-				results.Score,
-				rte.expectedScore,
+				"results.Score = %s, expected %s",
+				results.Score.String(),
+				rte.expectedScore.String(),
 			)
 		}
 	}
@@ -822,8 +823,8 @@ func TestLibinteractive(t *testing.T) {
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
 			Cases: map[string]common.LiteralCaseSettings{
-				"0": {Input: "1 2", ExpectedOutput: "3"},
-				"1": {Input: "2 3", ExpectedOutput: "5"},
+				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",
@@ -878,9 +879,9 @@ func TestLibinteractive(t *testing.T) {
 					cout << A + B << endl;
 				}
 			`,
-			1.0,
+			big.NewRat(1, 1),
 			"CE",
-			0.0,
+			big.NewRat(0, 1),
 			expectedResult{
 				"",
 				`  File "test.py", line 1
@@ -902,9 +903,9 @@ func TestLibinteractive(t *testing.T) {
 					return -1;
 				}
 			`,
-			1.0,
+			big.NewRat(1, 1),
 			"WA",
-			0.0,
+			big.NewRat(0, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"-1", "", &RunMetadata{Verdict: "OK"}},
@@ -922,9 +923,9 @@ func TestLibinteractive(t *testing.T) {
 					return x;
 				}
 			`,
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -945,9 +946,9 @@ func TestLibinteractive(t *testing.T) {
 					}
 				}
 			`,
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -957,9 +958,9 @@ func TestLibinteractive(t *testing.T) {
 		{
 			"py",
 			"def sum(A, B):\n  return A + B\ndef identity(x):\n  return x",
-			1.0,
+			big.NewRat(1, 1),
 			"AC",
-			1.0,
+			big.NewRat(1, 1),
 			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
 			map[string]expectedResult{
 				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
@@ -992,11 +993,11 @@ func TestLibinteractive(t *testing.T) {
 				rte.expectedVerdict,
 			)
 		}
-		if results.Score != rte.expectedScore {
+		if results.Score.Cmp(rte.expectedScore) != 0 {
 			t.Errorf(
-				"results.Score = %v, expected %v",
-				results.Score,
-				rte.expectedScore,
+				"results.Score = %s, expected %s",
+				results.Score.String(),
+				rte.expectedScore.String(),
 			)
 		}
 	}

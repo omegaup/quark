@@ -60,5 +60,6 @@ func main() {
 		)
 	}
 
-	fmt.Printf("%.2f\n", score)
+	floatScore, _ := score.Float64()
+	fmt.Printf("%.2f\n", floatScore)
 }

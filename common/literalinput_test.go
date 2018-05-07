@@ -2,6 +2,7 @@ package common
 
 import (
 	"io/ioutil"
+	"math/big"
 	"os"
 	"testing"
 )
@@ -19,8 +20,8 @@ func TestLiteralInput(t *testing.T) {
 	AplusB, err := NewLiteralInputFactory(
 		&LiteralInput{
 			Cases: map[string]LiteralCaseSettings{
-				"0": {Input: "1 2", ExpectedOutput: "3"},
-				"1": {Input: "2 3", ExpectedOutput: "5"},
+				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},
 			Validator: &LiteralValidatorSettings{
 				Name: "token-numeric",

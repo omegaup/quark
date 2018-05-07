@@ -2,6 +2,7 @@ package grader
 
 import (
 	"github.com/omegaup/quark/common"
+	"math/big"
 	"os"
 	"testing"
 )
@@ -65,8 +66,8 @@ func TestQueue(t *testing.T) {
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
 			Cases: map[string]common.LiteralCaseSettings{
-				"0": {Input: "1 2", ExpectedOutput: "3"},
-				"1": {Input: "2 3", ExpectedOutput: "5"},
+				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",
@@ -156,8 +157,8 @@ func TestQueuePriorities(t *testing.T) {
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
 			Cases: map[string]common.LiteralCaseSettings{
-				"0": {Input: "1 2", ExpectedOutput: "3"},
-				"1": {Input: "2 3", ExpectedOutput: "5"},
+				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
 				Name: "token-numeric",

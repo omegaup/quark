@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"github.com/omegaup/quark/common"
 	"io"
+	"math/big"
 	"sync"
 )
 
@@ -218,7 +219,7 @@ func RunHostBenchmark(
 			Source:    benchmarkCase.source,
 			Language:  benchmarkCase.language,
 			InputHash: benchmarkCase.hash,
-			MaxScore:  1.0,
+			MaxScore:  big.NewRat(1, 1),
 			Debug:     false,
 		}
 		results, err := Grade(ctx, nil, &run, input, sandbox)

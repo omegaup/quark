@@ -3,6 +3,7 @@ package runner
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/omegaup/quark/common"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"math/big"
 	"os"
 	"path"
 	"strconv"
@@ -21,38 +23,116 @@ import (
 type CaseResult struct {
 	Verdict        string                 `json:"verdict"`
 	Name           string                 `json:"name"`
-	Score          float64                `json:"score"`
-	ContestScore   float64                `json:"contest_score"`
-	MaxScore       float64                `json:"max_score"`
+	Score          *big.Rat               `json:"score"`
+	ContestScore   *big.Rat               `json:"contest_score"`
+	MaxScore       *big.Rat               `json:"max_score"`
 	Meta           RunMetadata            `json:"meta"`
 	IndividualMeta map[string]RunMetadata `json:"individual_meta,omitempty"`
 }
 
-// Normalize rounds all floating-point values to the nearest multiple of 1/1024.
-func (c *CaseResult) Normalize() {
-	c.Score = normalize(c.Score)
-	c.ContestScore = normalize(c.ContestScore)
-	c.MaxScore = normalize(c.MaxScore)
+// MarshalJSON implements the json.Marshaler interface.
+func (c *CaseResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Verdict        string                 `json:"verdict"`
+		Name           string                 `json:"name"`
+		Score          float64                `json:"score"`
+		ContestScore   float64                `json:"contest_score"`
+		MaxScore       float64                `json:"max_score"`
+		Meta           RunMetadata            `json:"meta"`
+		IndividualMeta map[string]RunMetadata `json:"individual_meta,omitempty"`
+	}{
+		Verdict:        c.Verdict,
+		Name:           c.Name,
+		Score:          common.RationalToFloat(c.Score),
+		ContestScore:   common.RationalToFloat(c.ContestScore),
+		MaxScore:       common.RationalToFloat(c.MaxScore),
+		Meta:           c.Meta,
+		IndividualMeta: c.IndividualMeta,
+	})
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (c *CaseResult) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+
+	result := struct {
+		Verdict        string                 `json:"verdict"`
+		Name           string                 `json:"name"`
+		Score          float64                `json:"score"`
+		ContestScore   float64                `json:"contest_score"`
+		MaxScore       float64                `json:"max_score"`
+		Meta           RunMetadata            `json:"meta"`
+		IndividualMeta map[string]RunMetadata `json:"individual_meta,omitempty"`
+	}{}
+
+	if err := json.Unmarshal(data, &result); err != nil {
+		return err
+	}
+
+	c.Verdict = result.Verdict
+	c.Name = result.Name
+	c.Score = common.FloatToRational(result.Score)
+	c.ContestScore = common.FloatToRational(result.ContestScore)
+	c.MaxScore = common.FloatToRational(result.MaxScore)
+	c.Meta = result.Meta
+	c.IndividualMeta = result.IndividualMeta
+
+	return nil
 }
 
 // A GroupResult represents the sub-results of a specific group of test cases.
 type GroupResult struct {
 	Group        string       `json:"group"`
-	Score        float64      `json:"score"`
-	ContestScore float64      `json:"contest_score"`
-	MaxScore     float64      `json:"max_score"`
+	Score        *big.Rat     `json:"score"`
+	ContestScore *big.Rat     `json:"contest_score"`
+	MaxScore     *big.Rat     `json:"max_score"`
 	Cases        []CaseResult `json:"cases"`
 }
 
-// Normalize rounds all floating-point values to the nearest multiple of 1/1024.
-func (g *GroupResult) Normalize() {
-	g.Score = normalize(g.Score)
-	g.ContestScore = normalize(g.ContestScore)
-	g.MaxScore = normalize(g.MaxScore)
+// MarshalJSON implements the json.Marshaler interface.
+func (g *GroupResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Group        string       `json:"group"`
+		Score        float64      `json:"score"`
+		ContestScore float64      `json:"contest_score"`
+		MaxScore     float64      `json:"max_score"`
+		Cases        []CaseResult `json:"cases"`
+	}{
+		Group:        g.Group,
+		Score:        common.RationalToFloat(g.Score),
+		ContestScore: common.RationalToFloat(g.ContestScore),
+		MaxScore:     common.RationalToFloat(g.MaxScore),
+		Cases:        g.Cases,
+	})
+}
 
-	for _, c := range g.Cases {
-		c.Normalize()
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (g *GroupResult) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(data, []byte("null")) {
+		return nil
 	}
+
+	result := struct {
+		Group        string       `json:"group"`
+		Score        float64      `json:"score"`
+		ContestScore float64      `json:"contest_score"`
+		MaxScore     float64      `json:"max_score"`
+		Cases        []CaseResult `json:"cases"`
+	}{}
+
+	if err := json.Unmarshal(data, &result); err != nil {
+		return err
+	}
+
+	g.Group = result.Group
+	g.Score = common.FloatToRational(result.Score)
+	g.ContestScore = common.FloatToRational(result.ContestScore)
+	g.MaxScore = common.FloatToRational(result.MaxScore)
+	g.Cases = result.Cases
+
+	return nil
 }
 
 // A RunResult represents the results of a run.
@@ -60,9 +140,9 @@ type RunResult struct {
 	Verdict      string                 `json:"verdict"`
 	CompileError *string                `json:"compile_error,omitempty"`
 	CompileMeta  map[string]RunMetadata `json:"compile_meta"`
-	Score        float64                `json:"score"`
-	ContestScore float64                `json:"contest_score"`
-	MaxScore     float64                `json:"max_score"`
+	Score        *big.Rat               `json:"score"`
+	ContestScore *big.Rat               `json:"contest_score"`
+	MaxScore     *big.Rat               `json:"max_score"`
 	Time         float64                `json:"time"`
 	WallTime     float64                `json:"wall_time"`
 	Memory       common.Byte            `json:"memory"`
@@ -70,15 +150,72 @@ type RunResult struct {
 	Groups       []GroupResult          `json:"groups"`
 }
 
-// Normalize rounds all floating-point values to the nearest multiple of 1/1024.
-func (r *RunResult) Normalize() {
-	r.Score = normalize(r.Score)
-	r.ContestScore = normalize(r.ContestScore)
-	r.MaxScore = normalize(r.MaxScore)
+// MarshalJSON implements the json.Marshaler interface.
+func (r *RunResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Verdict      string                 `json:"verdict"`
+		CompileError *string                `json:"compile_error,omitempty"`
+		CompileMeta  map[string]RunMetadata `json:"compile_meta"`
+		Score        float64                `json:"score"`
+		ContestScore float64                `json:"contest_score"`
+		MaxScore     float64                `json:"max_score"`
+		Time         float64                `json:"time"`
+		WallTime     float64                `json:"wall_time"`
+		Memory       common.Byte            `json:"memory"`
+		JudgedBy     string                 `json:"judged_by,omitempty"`
+		Groups       []GroupResult          `json:"groups"`
+	}{
+		Verdict:      r.Verdict,
+		CompileError: r.CompileError,
+		CompileMeta:  r.CompileMeta,
+		Score:        common.RationalToFloat(r.Score),
+		ContestScore: common.RationalToFloat(r.ContestScore),
+		MaxScore:     common.RationalToFloat(r.MaxScore),
+		Time:         r.Time,
+		WallTime:     r.WallTime,
+		Memory:       r.Memory,
+		JudgedBy:     r.JudgedBy,
+		Groups:       r.Groups,
+	})
+}
 
-	for _, g := range r.Groups {
-		g.Normalize()
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (r *RunResult) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(data, []byte("null")) {
+		return nil
 	}
+
+	result := struct {
+		Verdict      string                 `json:"verdict"`
+		CompileError *string                `json:"compile_error,omitempty"`
+		CompileMeta  map[string]RunMetadata `json:"compile_meta"`
+		Score        float64                `json:"score"`
+		ContestScore float64                `json:"contest_score"`
+		MaxScore     float64                `json:"max_score"`
+		Time         float64                `json:"time"`
+		WallTime     float64                `json:"wall_time"`
+		Memory       common.Byte            `json:"memory"`
+		JudgedBy     string                 `json:"judged_by,omitempty"`
+		Groups       []GroupResult          `json:"groups"`
+	}{}
+
+	if err := json.Unmarshal(data, &result); err != nil {
+		return err
+	}
+
+	r.Verdict = result.Verdict
+	r.CompileError = result.CompileError
+	r.CompileMeta = result.CompileMeta
+	r.Score = common.FloatToRational(result.Score)
+	r.ContestScore = common.FloatToRational(result.ContestScore)
+	r.MaxScore = common.FloatToRational(result.MaxScore)
+	r.Time = result.Time
+	r.WallTime = result.WallTime
+	r.Memory = result.Memory
+	r.JudgedBy = result.JudgedBy
+	r.Groups = result.Groups
+
+	return nil
 }
 
 type binaryType int
@@ -265,10 +402,11 @@ func Grade(
 	sandbox Sandbox,
 ) (*RunResult, error) {
 	runResult := &RunResult{
-		Verdict:  "JE",
-		MaxScore: run.MaxScore,
+		Verdict:      "JE",
+		Score:        &big.Rat{},
+		ContestScore: &big.Rat{},
+		MaxScore:     run.MaxScore,
 	}
-	defer runResult.Normalize()
 	if !sandbox.Supported() {
 		return runResult, errors.New("Sandbox not supported")
 	}
@@ -836,17 +974,28 @@ func Grade(
 			// TODO: change CaseResult to split original metadatas and final metadata
 			caseResults[j] = CaseResult{
 				Name:           caseData.Name,
-				MaxScore:       runResult.MaxScore * caseData.Weight,
 				Verdict:        runMeta.Verdict,
 				Meta:           *runMeta,
 				IndividualMeta: individualMeta,
+
+				Score:        &big.Rat{},
+				ContestScore: &big.Rat{},
+				MaxScore: new(big.Rat).Mul(
+					runResult.MaxScore,
+					caseData.Weight,
+				),
 			}
 		}
 		groupResults[i] = GroupResult{
-			Group:    group.Name,
-			MaxScore: runResult.MaxScore * group.Weight(),
-			Score:    0,
-			Cases:    caseResults,
+			Group: group.Name,
+			Cases: caseResults,
+
+			Score:        &big.Rat{},
+			ContestScore: &big.Rat{},
+			MaxScore: new(big.Rat).Mul(
+				runResult.MaxScore,
+				group.Weight(),
+			),
 		}
 	}
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("run", common.EventEnd))
@@ -855,7 +1004,7 @@ func Grade(
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventBegin))
 	for i, group := range settings.Cases {
 		correct := true
-		score := 0.0
+		score := &big.Rat{}
 		for j, caseData := range group.Cases {
 			caseResults := &groupResults[i].Cases[j]
 			if caseResults.Verdict == "OK" {
@@ -959,15 +1108,20 @@ func Grade(
 						"err", err,
 					)
 				}
-				caseResults.Score = runScore
-				caseResults.ContestScore = runResult.MaxScore * caseResults.Score *
-					caseData.Weight
-				score += runScore * caseData.Weight
-				if runScore == 1 {
+				caseResults.Score.Add(caseResults.Score, runScore)
+				caseResults.ContestScore = new(big.Rat).Mul(
+					new(big.Rat).Mul(runResult.MaxScore, caseData.Weight),
+					caseResults.Score,
+				)
+				score.Add(
+					score,
+					new(big.Rat).Mul(runScore, caseData.Weight),
+				)
+				if runScore.Cmp(big.NewRat(1, 1)) == 0 {
 					caseResults.Verdict = "AC"
 				} else {
 					runResult.Verdict = worseVerdict(runResult.Verdict, "PA")
-					if runScore == 0 {
+					if runScore.Cmp(&big.Rat{}) == 0 {
 						correct = false
 						caseResults.Verdict = "WA"
 					} else {
@@ -979,23 +1133,29 @@ func Grade(
 			}
 		}
 		if correct {
-			groupResults[i].Score = score
-			runResult.Score += groupResults[i].Score
-			groupResults[i].ContestScore = runResult.MaxScore * score
-			runResult.ContestScore += groupResults[i].ContestScore
+			runResult.Score.Add(runResult.Score, score)
+
+			groupResults[i].Score.Add(groupResults[i].Score, score)
+			groupResults[i].ContestScore = new(big.Rat).Mul(
+				runResult.MaxScore,
+				score,
+			)
 		}
 	}
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventEnd))
 
 	runResult.Groups = groupResults
 
-	if runResult.Verdict == "PA" && runResult.Score == 0 {
+	if runResult.Verdict == "PA" && runResult.Score.Cmp(&big.Rat{}) == 0 {
 		runResult.Verdict = "WA"
 	} else if runResult.Verdict == "OK" {
 		runResult.Verdict = "AC"
-		runResult.Score = 1.0
-		runResult.ContestScore = runResult.MaxScore
+		runResult.Score = big.NewRat(1, 1)
 	}
+	runResult.ContestScore = new(big.Rat).Mul(
+		runResult.MaxScore,
+		runResult.Score,
+	)
 
 	ctx.Log.Debug(
 		"Finished running",
@@ -1120,9 +1280,4 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// normalize rounds floating-point values to the nearest multiple of 1/1024.
-func normalize(f float64) float64 {
-	return math.Round(f*1024) / 1024.0
 }

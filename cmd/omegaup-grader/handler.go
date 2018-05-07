@@ -59,7 +59,7 @@ func newRunContext(ctx *grader.Context, db *sql.DB, id int64) (*grader.RunContex
 		runCtx.Contest = &contestName.String
 	}
 	if contestPoints.Valid {
-		runCtx.Run.MaxScore = contestPoints.Float64
+		runCtx.Run.MaxScore = common.FloatToRational(contestPoints.Float64)
 	}
 	runCtx.Result.MaxScore = runCtx.Run.MaxScore
 	contents, err := ioutil.ReadFile(

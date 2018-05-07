@@ -1,6 +1,9 @@
 package common
 
 import (
+	"bytes"
+	"encoding/json"
+	"math/big"
 	"time"
 )
 
@@ -51,7 +54,39 @@ type InteractiveSettings struct {
 // CaseSettings contains the information of a single test case.
 type CaseSettings struct {
 	Name   string
-	Weight float64
+	Weight *big.Rat
+}
+
+// MarshalJSON implements the json.Marshaler interface.
+func (c *CaseSettings) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Name   string
+		Weight float64
+	}{
+		Name:   c.Name,
+		Weight: RationalToFloat(c.Weight),
+	})
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (c *CaseSettings) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+
+	settings := struct {
+		Name   string
+		Weight float64
+	}{}
+
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return err
+	}
+
+	c.Name = settings.Name
+	c.Weight = FloatToRational(settings.Weight)
+
+	return nil
 }
 
 // A ByCaseName represents a list of CaseSettings associated with a group that
@@ -69,10 +104,10 @@ type GroupSettings struct {
 }
 
 // Weight returns the sum of the individual case weights.
-func (g *GroupSettings) Weight() float64 {
-	weight := 0.0
+func (g *GroupSettings) Weight() *big.Rat {
+	weight := &big.Rat{}
 	for _, c := range g.Cases {
-		weight += c.Weight
+		weight.Add(weight, c.Weight)
 	}
 	return weight
 }

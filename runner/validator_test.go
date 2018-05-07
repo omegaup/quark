@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"github.com/omegaup/quark/common"
+	"math/big"
 	"testing"
 )
 
@@ -42,33 +43,33 @@ func TestValidator(t *testing.T) {
 	t1 := 1e-1
 	t6 := 1e-6
 	validatorentries := []struct {
-		expectedScore float64
+		expectedScore *big.Rat
 		got, expect   string
 		settings      VS
 	}{
-		{0.0, "a", "b", VS{Name: "token"}},
-		{1.0, "a", "a", VS{Name: "token"}},
-		{0.0, "A", "a", VS{Name: "token"}},
-		{1.0, "A", "a", VS{Name: "token-caseless"}},
-		{0.0, "A", "b", VS{Name: "token-caseless"}},
-		{1.0, "11\x1f\n", "11\n", VS{Name: "token-caseless"}},
-		{0.0, "1", "2", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "1", "1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "1", "1.1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{0.0, "1", "1.2", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "1.15", "1.20", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "1.24", "1.20", VS{Name: "token-numeric", Tolerance: &t1}},
-		{0.0, "1", "x", VS{Name: "token-numeric", Tolerance: &t1}},
-		{0.0, "x", "1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "x 1", "x 1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "1", "x 1 x", VS{Name: "token-numeric", Tolerance: &t1}},
-		{0.0, "1", "-1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "0 -1", "0 -1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "1e99999999", "1e99999999", VS{Name: "token-numeric", Tolerance: &t1}},
-		{1.0, "0.000002", "0.000003", VS{Name: "token-numeric", Tolerance: &t6}},
-		{0.0, "a a", "a", VS{Name: "token"}},
-		{0.0, "a", "a a", VS{Name: "token"}},
-		{0.5, "0.5", "", VS{Name: "literal"}},
+		{big.NewRat(0, 1), "a", "b", VS{Name: "token"}},
+		{big.NewRat(1, 1), "a", "a", VS{Name: "token"}},
+		{big.NewRat(0, 1), "A", "a", VS{Name: "token"}},
+		{big.NewRat(1, 1), "A", "a", VS{Name: "token-caseless"}},
+		{big.NewRat(0, 1), "A", "b", VS{Name: "token-caseless"}},
+		{big.NewRat(1, 1), "11\x1f\n", "11\n", VS{Name: "token-caseless"}},
+		{big.NewRat(0, 1), "1", "2", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "1", "1", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "1", "1.1", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(0, 1), "1", "1.2", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "1.15", "1.20", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "1.24", "1.20", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(0, 1), "1", "x", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(0, 1), "x", "1", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "x 1", "x 1", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "1", "x 1 x", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(0, 1), "1", "-1", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "0 -1", "0 -1", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "1e99999999", "1e99999999", VS{Name: "token-numeric", Tolerance: &t1}},
+		{big.NewRat(1, 1), "0.000002", "0.000003", VS{Name: "token-numeric", Tolerance: &t6}},
+		{big.NewRat(0, 1), "a a", "a", VS{Name: "token"}},
+		{big.NewRat(0, 1), "a", "a a", VS{Name: "token"}},
+		{big.NewRat(1, 2), "0.5", "", VS{Name: "literal"}},
 	}
 	for _, vet := range validatorentries {
 		gotScore, _, err := CalculateScore(
@@ -80,12 +81,12 @@ func TestValidator(t *testing.T) {
 			t.Errorf("Error comparing values: %q", err)
 			continue
 		}
-		if gotScore != vet.expectedScore {
+		if gotScore.Cmp(vet.expectedScore) != 0 {
 			t.Errorf(
-				"CalculateScore(%v) == %f, expected %f",
+				"CalculateScore(%v) == %s, expected %s",
 				vet,
-				gotScore,
-				vet.expectedScore,
+				gotScore.String(),
+				vet.expectedScore.String(),
 			)
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"github.com/omegaup/quark/common"
 	"io"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -14,7 +15,7 @@ import (
 func CalculateScore(
 	settings *common.ValidatorSettings,
 	expectedOutput, contestantOutput io.Reader,
-) (float64, *TokenMismatch, error) {
+) (*big.Rat, *TokenMismatch, error) {
 	scanFunc := IsNonWhitespace
 	if settings.Name == "token-numeric" {
 		scanFunc = IsNumeric
@@ -23,10 +24,13 @@ func CalculateScore(
 	contestantTokenizer := NewTokenizer(contestantOutput, scanFunc)
 	if settings.Name == "literal" || settings.Name == "custom" {
 		if !contestantTokenizer.Scan() {
-			return 0, nil, io.ErrUnexpectedEOF
+			return &big.Rat{}, nil, io.ErrUnexpectedEOF
 		}
-		value, err := strconv.ParseFloat(contestantTokenizer.Token().Text, 64)
-		return math.Max(0, math.Min(1, value)), nil, err
+		value, err := common.ParseRational(contestantTokenizer.Token().Text)
+		if err != nil {
+			return &big.Rat{}, nil, err
+		}
+		return ratClamp(value, &big.Rat{}, big.NewRat(1, 1)), nil, nil
 	}
 
 	expectedTokenizer := NewTokenizer(expectedOutput, scanFunc)
@@ -46,10 +50,10 @@ func CalculateScore(
 		}
 		if !expectedNext || !contestantNext {
 			if !expectedNext && expectedTokenizer.Err() != nil {
-				return 0, mismatch, expectedTokenizer.Err()
+				return &big.Rat{}, mismatch, expectedTokenizer.Err()
 			}
 			if !contestantNext && contestantTokenizer.Err() != nil {
-				return 0, mismatch, contestantTokenizer.Err()
+				return &big.Rat{}, mismatch, contestantTokenizer.Err()
 			}
 			break
 		}
@@ -68,7 +72,7 @@ func CalculateScore(
 				*settings.Tolerance,
 			)
 		default:
-			return 0, nil, fmt.Errorf("Unknown validator: %q", settings.Name)
+			return &big.Rat{}, nil, fmt.Errorf("Unknown validator: %q", settings.Name)
 		}
 		if !correct {
 			mismatch = &TokenMismatch{
@@ -78,9 +82,9 @@ func CalculateScore(
 		}
 	}
 	if mismatch != nil {
-		return 0.0, mismatch, nil
+		return &big.Rat{}, mismatch, nil
 	}
-	return 1.0, nil, nil
+	return big.NewRat(1, 1), nil, nil
 }
 
 func tokenEquals(a, b string) bool {
@@ -109,4 +113,14 @@ func tokenNumericEquals(a, b string, tolerance float64) bool {
 		return diff <= tolerance*SmallestNormal
 	}
 	return diff/math.Max(math.Abs(af), math.Abs(bf)) <= tolerance
+}
+
+func ratClamp(val, min, max *big.Rat) *big.Rat {
+	if val.Cmp(min) <= 0 {
+		return min
+	}
+	if val.Cmp(max) >= 0 {
+		return max
+	}
+	return val
 }

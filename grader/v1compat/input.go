@@ -11,6 +11,7 @@ import (
 	git "github.com/libgit2/git2go"
 	"github.com/omegaup/quark/common"
 	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"os/exec"
@@ -304,8 +305,8 @@ func getLibinteractiveSettings(
 	return &settings, nil
 }
 
-func parseTestplan(contents string) (map[string]float64, error) {
-	rawCaseWeights := make(map[string]float64)
+func parseTestplan(contents string) (map[string]*big.Rat, error) {
+	rawCaseWeights := make(map[string]*big.Rat)
 	testplanRe := regexp.MustCompile(`^\s*([^# \t]+)\s+([0-9.]+).*$`)
 	for _, line := range strings.Split(contents, "\n") {
 		m := testplanRe.FindStringSubmatch(line)
@@ -313,7 +314,7 @@ func parseTestplan(contents string) (map[string]float64, error) {
 			continue
 		}
 		var err error
-		rawCaseWeights[m[1]], err = strconv.ParseFloat(m[2], 64)
+		rawCaseWeights[m[1]], err = common.ParseRational(m[2])
 		if err != nil {
 			return nil, err
 		}
@@ -372,7 +373,7 @@ func CreateArchiveFromGit(
 
 	var walkErr error
 	var uncompressedSize int64
-	var rawCaseWeights map[string]float64
+	var rawCaseWeights map[string]*big.Rat
 	var hasTestPlan bool
 	var libinteractiveIdlContents []byte
 	var libinteractiveModuleName string
@@ -389,7 +390,7 @@ func CreateArchiveFromGit(
 		}
 		hasTestPlan = true
 	} else {
-		rawCaseWeights = make(map[string]float64)
+		rawCaseWeights = make(map[string]*big.Rat)
 	}
 	tree.Walk(func(parent string, entry *git.TreeEntry) int {
 		untrimmedPath := path.Join(parent, entry.Name)
@@ -480,7 +481,7 @@ func CreateArchiveFromGit(
 					walkErr = fmt.Errorf("Case not found in testplan: %s", caseName)
 					return -1
 				}
-				rawCaseWeights[caseName] = 1.0
+				rawCaseWeights[caseName] = big.NewRat(1, 1)
 			}
 		}
 		switch entry.Type {
@@ -535,9 +536,9 @@ func CreateArchiveFromGit(
 
 	// Generate the group/case settings.
 	cases := make(map[string][]common.CaseSettings)
-	totalWeight := 0.0
+	totalWeight := &big.Rat{}
 	for _, weight := range rawCaseWeights {
-		totalWeight += weight
+		totalWeight.Add(totalWeight, weight)
 	}
 	for caseName, weight := range rawCaseWeights {
 		components := strings.SplitN(caseName, ".", 2)
@@ -547,7 +548,7 @@ func CreateArchiveFromGit(
 		}
 		cases[groupName] = append(cases[groupName], common.CaseSettings{
 			Name:   caseName,
-			Weight: weight / totalWeight,
+			Weight: common.RationalDiv(weight, totalWeight),
 		})
 	}
 	settings.Cases = make([]common.GroupSettings, 0)

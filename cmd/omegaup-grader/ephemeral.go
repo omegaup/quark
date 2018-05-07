@@ -8,6 +8,7 @@ import (
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner"
 	"io"
+	"math/big"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -63,13 +64,9 @@ func (h *runHandler) addAndWaitForRun(
 		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
-	maxScore := 0.0
+	maxScore := &big.Rat{}
 	for _, literalCase := range ephemeralRunRequest.Input.Cases {
-		if literalCase.Weight == nil {
-			maxScore++
-		} else {
-			maxScore += *literalCase.Weight
-		}
+		maxScore.Add(maxScore, literalCase.Weight)
 	}
 	inputFactory, err := common.NewLiteralInputFactory(
 		ephemeralRunRequest.Input,
