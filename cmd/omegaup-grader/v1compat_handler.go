@@ -193,7 +193,7 @@ func v1CompatBroadcastRun(
 		FROM
 			Runs r
 		INNER JOIN
-			Users u ON u.user_id = r.user_id
+			Users u ON u.main_identity_id = r.identity_id
 		WHERE
 			r.run_id = ?;`, run.ID).Scan(
 		&msg.Run.User,
