@@ -87,10 +87,8 @@ func (h *runHandler) addAndWaitForRun(
 			return inputFactoryErr
 		}
 		errorString := inputFactoryErr.Error()
-		fakeResult := &runner.RunResult{
-			Verdict:      "CE",
-			CompileError: &errorString,
-		}
+		fakeResult := runner.NewRunResult("CE", maxScore)
+		fakeResult.CompileError = &errorString
 		if err = json.NewEncoder(resultWriter).Encode(fakeResult); err != nil {
 			ctx.Log.Error("Error sending json", "err", err)
 		}

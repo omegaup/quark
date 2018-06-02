@@ -150,6 +150,16 @@ type RunResult struct {
 	Groups       []GroupResult          `json:"groups"`
 }
 
+// NewRunResult returns a new RunResult.
+func NewRunResult(verdict string, maxScore *big.Rat) *RunResult {
+	return &RunResult{
+		Verdict:      verdict,
+		Score:        &big.Rat{},
+		ContestScore: &big.Rat{},
+		MaxScore:     maxScore,
+	}
+}
+
 // MarshalJSON implements the json.Marshaler interface.
 func (r *RunResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
@@ -401,12 +411,7 @@ func Grade(
 	input common.Input,
 	sandbox Sandbox,
 ) (*RunResult, error) {
-	runResult := &RunResult{
-		Verdict:      "JE",
-		Score:        &big.Rat{},
-		ContestScore: &big.Rat{},
-		MaxScore:     run.MaxScore,
-	}
+	runResult := NewRunResult("JE", run.MaxScore)
 	if !sandbox.Supported() {
 		return runResult, errors.New("Sandbox not supported")
 	}

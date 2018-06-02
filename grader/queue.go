@@ -341,9 +341,7 @@ func NewEmptyRunContext(ctx *Context) *RunContext {
 				AttemptID: common.NewAttemptID(),
 				MaxScore:  big.NewRat(1, 1),
 			},
-			Result: runner.RunResult{
-				Verdict: "JE",
-			},
+			Result:       *runner.NewRunResult("JE", &big.Rat{}),
 			CreationTime: time.Now(),
 			Priority:     QueuePriorityNormal,
 		},

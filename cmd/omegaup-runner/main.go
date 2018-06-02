@@ -419,10 +419,7 @@ func gradeAndUploadResults(
 	if err != nil {
 		// Still try to send the details
 		ctx.Log.Error("Error grading run", "err", err)
-		result = &runner.RunResult{
-			Verdict:  "JE",
-			MaxScore: run.MaxScore,
-		}
+		result = runner.NewRunResult("JE", run.MaxScore)
 	}
 
 	if *noop {
