@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	git "github.com/libgit2/git2go"
+	git "github.com/lhchavez/git2go"
 	"github.com/omegaup/quark/common"
 	"io"
 	"math/big"

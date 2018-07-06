@@ -6,8 +6,8 @@ FROM golang
 RUN apt-get update && apt-get install -y --no-install-recommends libgcrypt-dev libgpg-error-dev pkg-config cmake && rm -rf /var/lib/apt/lists/*
 
 # Get/build all dependencies.
-RUN go get -d github.com/libgit2/git2go
-RUN (cd /go/src/github.com/libgit2/git2go && git checkout next && git submodule update --init && make install)
+RUN go get -d github.com/lhchavez/git2go
+RUN (cd /go/src/github.com/lhchavez/git2go && git checkout next && git submodule update --init && make install)
 RUN go get -d github.com/mattn/go-sqlite3
 RUN go install github.com/mattn/go-sqlite3
 RUN go get github.com/go-sql-driver/mysql
@@ -16,5 +16,5 @@ RUN go get github.com/vincent-petithory/dataurl
 RUN go get github.com/prometheus/client_golang/prometheus
 RUN go get github.com/shirou/gopsutil
 RUN go get golang.org/x/net/http2
-RUN go get -u github.com/jteeuwen/go-bindata/...
+RUN go get -u github.com/go-bindata/go-bindata/...
 RUN go get github.com/elazarl/go-bindata-assetfs/...

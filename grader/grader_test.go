@@ -3,7 +3,7 @@ package grader
 import (
 	"bytes"
 	"fmt"
-	git "github.com/libgit2/git2go"
+	git "github.com/lhchavez/git2go"
 	"io/ioutil"
 	"os"
 	"path"
