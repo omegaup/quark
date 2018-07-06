@@ -7,12 +7,13 @@ import (
 	"github.com/omegaup/quark/runner"
 	"io/ioutil"
 	"os"
+	"sync"
 )
 
 var (
 	runtimePath = flag.String("runtime-path", "", "Override the runtime path")
 	verbose     = flag.Bool("verbose", false, "Verbose logging")
-	ioLock      common.FairMutex
+	ioLock      sync.Mutex
 	omegajail   runner.OmegajailSandbox
 )
 

@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -42,7 +43,7 @@ var (
 	configPath = flag.String("config", "/etc/omegaup/runner/config.json",
 		"Runner configuration file")
 	globalContext atomic.Value
-	ioLock        common.FairMutex
+	ioLock        sync.Mutex
 	inputManager  *common.InputManager
 	sandbox       runner.Sandbox
 )
