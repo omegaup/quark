@@ -44,7 +44,10 @@ func TestDebugContext(t *testing.T) {
 func TestConfigSerializability(t *testing.T) {
 	ctx := newTestingContext()
 	defer ctx.Close()
-	ctx.Config.String()
+	serializedConfig := ctx.Config.String()
+	if len(serializedConfig) == 0 {
+		t.Errorf("Serialized config empty")
+	}
 }
 
 func TestDuration(t *testing.T) {

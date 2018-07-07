@@ -71,7 +71,7 @@ type NormalEvent struct {
 	PID       int                    `json:"pid"`
 	TID       int                    `json:"tid"`
 	Args      map[string]interface{} `json:"args,omitempty"`
-	finalized bool                   `json:"-"`
+	finalized bool
 }
 
 // Finalize marks this Event as having all its post-processing done.

@@ -510,9 +510,9 @@ func gradeRun(
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
 		"grade",
 		common.EventBegin,
-		common.Arg{"id", run.AttemptID},
-		common.Arg{"input", run.InputHash},
-		common.Arg{"language", run.Language},
+		common.Arg{Name: "id", Value: run.AttemptID},
+		common.Arg{Name: "input", Value: run.InputHash},
+		common.Arg{Name: "language", Value: run.Language},
 	))
 	defer func() {
 		ctx.EventCollector.Add(ctx.EventFactory.NewEvent(

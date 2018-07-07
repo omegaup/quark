@@ -688,7 +688,7 @@ func Grade(
 
 		singleCompileEvent := ctx.EventFactory.NewCompleteEvent(
 			b.name,
-			common.Arg{"language", b.language},
+			common.Arg{Name: "language", Value: b.language},
 		)
 		lang := b.language
 		if b.binaryType == binaryValidator && lang == "cpp" {
