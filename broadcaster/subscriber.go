@@ -45,7 +45,7 @@ func (m *QueuedMessage) Dispatched() {
 // A Message is a message that will be broadcast to Subscribers.
 type Message struct {
 	Contest    string `json:"contest,omitempty"`
-	Problemset int    `json:"problemset,omitempty"`
+	Problemset int64  `json:"problemset,omitempty"`
 	Problem    string `json:"problem,omitempty"`
 	User       string `json:"user,omitempty"`
 	Public     bool   `json:"public"`
@@ -58,7 +58,7 @@ type ValidateFilterResponse struct {
 	Admin           bool     `json:"admin"`
 	ProblemAdmin    []string `json:"problem_admin"`
 	ContestAdmin    []string `json:"contest_admin"`
-	ProblemsetAdmin []int    `json:"problemset_admin"`
+	ProblemsetAdmin []int64  `json:"problemset_admin"`
 }
 
 // Metrics is the interface needed to publish performance metrics.
@@ -213,7 +213,7 @@ type Subscriber struct {
 	admin              bool
 	problemAdminMap    map[string]struct{}
 	contestAdminMap    map[string]struct{}
-	problemsetAdminMap map[int]struct{}
+	problemsetAdminMap map[int64]struct{}
 	filters            []Filter
 
 	ctx       *common.Context
@@ -236,7 +236,7 @@ func NewSubscriber(
 		authToken:          authToken,
 		problemAdminMap:    make(map[string]struct{}),
 		contestAdminMap:    make(map[string]struct{}),
-		problemsetAdminMap: make(map[int]struct{}),
+		problemsetAdminMap: make(map[int64]struct{}),
 		filters:            make([]Filter, 0),
 		close:              make(chan struct{}, 0),
 		send:               make(chan *QueuedMessage, ctx.Config.Broadcaster.ChannelLength),

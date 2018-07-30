@@ -271,6 +271,7 @@ type RunInfo struct {
 	ID          int64
 	GUID        string
 	Contest     *string
+	Problemset  *int64
 	ProblemName string
 	Run         *common.Run
 	Result      runner.RunResult

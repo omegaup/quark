@@ -69,7 +69,7 @@ func (f *ProblemFilter) Matches(msg *Message, subscriber *Subscriber) bool {
 // with a particular problemset.
 type ProblemsetFilter struct {
 	Filter
-	problemset int
+	problemset int64
 	token      string
 }
 
@@ -137,15 +137,15 @@ func NewFilter(filter string) (Filter, error) {
 			return &ProblemFilter{problem: tokens[2]}, nil
 		}
 	case "problemset":
-		problemsetID, err := strconv.Atoi(tokens[2])
+		problemset, err := strconv.ParseInt(tokens[2], 10, 64)
 		if err != nil {
 			return nil, err
 		}
 		switch len(tokens) {
 		case 3:
-			return &ProblemsetFilter{problemset: problemsetID}, nil
+			return &ProblemsetFilter{problemset: problemset}, nil
 		case 4:
-			return &ProblemsetFilter{problemset: problemsetID, token: tokens[3]}, nil
+			return &ProblemsetFilter{problemset: problemset, token: tokens[3]}, nil
 		}
 	case "contest":
 		switch len(tokens) {
@@ -163,7 +163,7 @@ func stringMapContains(m map[string]struct{}, k string) bool {
 	return ok
 }
 
-func intMapContains(m map[int]struct{}, k int) bool {
+func intMapContains(m map[int64]struct{}, k int64) bool {
 	_, ok := m[k]
 	return ok
 }

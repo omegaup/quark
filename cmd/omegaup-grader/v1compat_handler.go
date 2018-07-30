@@ -151,6 +151,7 @@ func v1CompatBroadcastRun(
 	type serializedRun struct {
 		User         string      `json:"username"`
 		Contest      *string     `json:"contest_alias,omitempty"`
+		Problemset   *int64      `json:"problemset,omitempty"`
 		Problem      string      `json:"alias"`
 		GUID         string      `json:"guid"`
 		Runtime      float64     `json:"runtime"`
@@ -172,7 +173,8 @@ func v1CompatBroadcastRun(
 		Message: "/run/update/",
 		Run: serializedRun{
 			Contest:      run.Contest,
-			Problem:      message.Problem,
+			Problemset:   run.Problemset,
+			Problem:      run.ProblemName,
 			GUID:         run.GUID,
 			Runtime:      run.Result.Time,
 			Memory:       run.Result.Memory,
@@ -205,6 +207,9 @@ func v1CompatBroadcastRun(
 		return err
 	}
 	message.User = msg.Run.User
+	if run.Problemset != nil {
+		message.Problemset = *run.Problemset
+	}
 
 	marshaled, err := json.Marshal(&msg)
 	if err != nil {
@@ -280,14 +285,15 @@ func v1CompatNewRunContext(
 		guid[2:],
 	)
 	var contestName sql.NullString
+	var problemset sql.NullInt64
 	var penaltyType sql.NullString
 	var contestPoints sql.NullFloat64
 	validatorLimits := common.DefaultValidatorLimits
 	settings := common.ProblemSettings{}
 	err := db.QueryRow(
 		`SELECT
-			r.run_id, c.alias, c.penalty_type, r.language, p.alias, pp.points,
-			p.extra_wall_time, p.memory_limit, p.output_limit,
+			r.run_id, c.alias, r.problemset_id, c.penalty_type, r.language, p.alias,
+			pp.points, p.extra_wall_time, p.memory_limit, p.output_limit,
 			p.overall_wall_time_limit, p.time_limit, p.validator_time_limit, p.slow,
 			p.validator
 		FROM
@@ -303,6 +309,7 @@ func v1CompatNewRunContext(
 			r.guid = ?;`, guid).Scan(
 		&runCtx.ID,
 		&contestName,
+		&problemset,
 		&penaltyType,
 		&runCtx.Run.Language,
 		&runCtx.ProblemName,
@@ -353,6 +360,9 @@ func v1CompatNewRunContext(
 
 	if contestName.Valid {
 		runCtx.Contest = &contestName.String
+	}
+	if problemset.Valid {
+		runCtx.Problemset = &problemset.Int64
 	}
 	if penaltyType.Valid {
 		runCtx.PenaltyType = penaltyType.String
