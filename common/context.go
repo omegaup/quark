@@ -61,9 +61,14 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Milliseconds returns the duration as an integer millisecond count.
+// Milliseconds returns the duration as a floating point number of milliseconds.
 func (d Duration) Milliseconds() float64 {
 	return float64(d) / float64(time.Millisecond)
+}
+
+// Seconds returns the duration as a floating point number of seconds.
+func (d Duration) Seconds() float64 {
+	return time.Duration(d).Seconds()
 }
 
 // MinDuration returns the smaller of x or y.
