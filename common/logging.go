@@ -1,7 +1,11 @@
 package common
 
 import (
+	"bytes"
+	"fmt"
+	"github.com/go-stack/stack"
 	"github.com/inconshreveable/log15"
+	"github.com/pkg/errors"
 	"io"
 	"os"
 	"syscall"
@@ -70,11 +74,80 @@ func RotatingLog(config LoggingConfig) (log15.Logger, error) {
 	return log, nil
 }
 
+// StderrLog creates a log15.Logger that outputs to stderr and prints the stack
+// for the log call and the error stack trace if available.
+func StderrLog() log15.Logger {
+	log := log15.New()
+	log.SetHandler(ErrorCallerStackHandler(log15.LvlDebug, log15.StderrHandler))
+	return log
+}
+
+func rootCauseStackTrace(err error) errors.StackTrace {
+	type causer interface {
+		Cause() error
+	}
+	type stackTracer interface {
+		StackTrace() errors.StackTrace
+	}
+
+	var deepestStackTrace errors.StackTrace
+
+	for err != nil {
+		stackTrace, ok := err.(stackTracer)
+		if !ok {
+			break
+		}
+		deepestStackTrace = stackTrace.StackTrace()
+
+		cause, ok := err.(causer)
+		if !ok {
+			break
+		}
+		err = cause.Cause()
+	}
+	return deepestStackTrace
+}
+
 // ErrorCallerStackHandler creates a handler that drops all logs that are less
 // important than maxLvl, and also adds a stack trace to all events that are
-// errors / critical.
+// errors / critical, as well as the error values that have a stack trace.
 func ErrorCallerStackHandler(maxLvl log15.Lvl, handler log15.Handler) log15.Handler {
-	callerStackHandler := log15.CallerStackHandler("%+v", handler)
+	callerStackHandler := log15.FuncHandler(func(r *log15.Record) error {
+		// Get the stack trace of the call to log.Error/log.Crit.
+		s := stack.Trace().TrimBelow(r.Call).TrimRuntime()
+		if len(s) > 0 {
+			var buf bytes.Buffer
+
+			buf.WriteString("[")
+			for i, pc := range s {
+				if i > 0 {
+					buf.WriteString(" ")
+				}
+				fmt.Fprintf(&buf, "%+n(%+v)", pc, pc)
+			}
+			buf.WriteString("]")
+
+			r.Ctx = append(r.Ctx, "stack", buf.String())
+		}
+
+		// Get the stack trace of the first error value.
+		for i := 1; i < len(r.Ctx); i += 2 {
+			err, ok := r.Ctx[i].(error)
+			if !ok {
+				continue
+			}
+
+			stackTrace := rootCauseStackTrace(err)
+			if stackTrace == nil {
+				continue
+			}
+
+			r.Ctx = append(r.Ctx, "errstack", fmt.Sprintf("%+v", stackTrace))
+			break
+		}
+
+		return handler.Log(r)
+	})
 	return log15.FuncHandler(func(r *log15.Record) error {
 		if r.Lvl > maxLvl {
 			return nil

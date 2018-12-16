@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/inconshreveable/log15"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"os"
@@ -21,7 +20,7 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	log := log15.New()
+	log := common.StderrLog()
 
 	expected, err := os.Open(args[0])
 	if err != nil {
