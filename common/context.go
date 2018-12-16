@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/inconshreveable/log15"
+	base "github.com/omegaup/go-base"
 	"io"
 	"math"
 	"math/big"
@@ -438,13 +439,16 @@ func NewContext(config *Config, role string) (*Context, error) {
 
 	// Logging
 	var err error
-	if context.Log, err = RotatingLog(context.Config.Logging); err != nil {
+	if context.Log, err = base.RotatingLog(
+		context.Config.Logging.File,
+		context.Config.Logging.Level,
+	); err != nil {
 		return nil, err
 	}
 
 	// Tracing
 	if context.Config.Tracing.Enabled {
-		tracingFile, err := NewRotatingFile(
+		tracingFile, err := base.NewRotatingFile(
 			context.Config.Tracing.File,
 			0644,
 			func(tracingFile *os.File, isEmpty bool) error {
@@ -508,7 +512,7 @@ func (context *Context) DebugContext(logCtx ...interface{}) *Context {
 	)
 	childContext.EventFactory.Register(childContext.memoryCollector)
 	childContext.Log.SetHandler(log15.MultiHandler(
-		ErrorCallerStackHandler(
+		base.ErrorCallerStackHandler(
 			log15.LvlDebug,
 			log15.StreamHandler(&buffer, log15.LogfmtFormat()),
 		),

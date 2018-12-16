@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"os"
@@ -20,7 +21,7 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	log := common.StderrLog()
+	log := base.StderrLog()
 
 	expected, err := os.Open(args[0])
 	if err != nil {
