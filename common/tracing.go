@@ -120,29 +120,22 @@ func (e *IssuerClockSyncEvent) Finalize() {
 // https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview
 type EventCollector interface {
 	Add(Event) error
+	io.Closer
 }
 
 // A WriterEventCollector is an EventCollector that writes its output to an
 // io.Writer. It uses a sync.Mutex to synchronize events so that all writes are
 // thread-safe.
 type WriterEventCollector struct {
-	output io.Writer
+	output io.WriteCloser
 	lock   sync.Mutex
 }
 
-// NewWriterEventCollector returns a WriterEventCollector for a specified io.Writer.
-func NewWriterEventCollector(
-	output io.Writer,
-	appending bool,
-) (*WriterEventCollector, error) {
-	if !appending {
-		if _, err := output.Write([]byte("[\n")); err != nil {
-			return nil, err
-		}
-	}
+// NewWriterEventCollector returns a WriterEventCollector for a specified io.WriteCloser.
+func NewWriterEventCollector(output io.WriteCloser) *WriterEventCollector {
 	return &WriterEventCollector{
 		output: output,
-	}, nil
+	}
 }
 
 // Add writes the specified event to the stream.
@@ -161,6 +154,11 @@ func (collector *WriterEventCollector) Add(e Event) error {
 		return err
 	}
 	return nil
+}
+
+// Close closes the underlying writer.
+func (collector *WriterEventCollector) Close() error {
+	return collector.output.Close()
 }
 
 // A MemoryEventCollector is an EventCollector that stores all the Events in an
@@ -249,6 +247,11 @@ func (collector *MemoryEventCollector) UnmarshalJSON(buf []byte) error {
 	return nil
 }
 
+// Close is a no-op.
+func (collector *MemoryEventCollector) Close() error {
+	return nil
+}
+
 // A MultiEventCollector is an EventCollector that can broadcast Events to
 // multiple EventCollectors.
 type MultiEventCollector struct {
@@ -273,6 +276,17 @@ func (collector *MultiEventCollector) Add(e Event) error {
 	return nil
 }
 
+// Close closes all underlying collectors.
+func (collector *MultiEventCollector) Close() error {
+	var lastError error
+	for _, collector := range collector.collectors {
+		if err := collector.Close(); err != nil {
+			lastError = err
+		}
+	}
+	return lastError
+}
+
 // A NullEventCollector is an EventCollector that discards all the collected
 // objects.
 type NullEventCollector struct {
@@ -280,6 +294,11 @@ type NullEventCollector struct {
 
 // Add does nothing.
 func (collector *NullEventCollector) Add(e Event) error {
+	return nil
+}
+
+// Close does nothing.
+func (collector *NullEventCollector) Close() error {
 	return nil
 }
 

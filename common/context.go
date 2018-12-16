@@ -12,7 +12,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unicode"
 )
@@ -405,9 +404,7 @@ type Context struct {
 	EventCollector  EventCollector
 	EventFactory    *EventFactory
 	Metrics         Metrics
-	handler         log15.Handler
 	logBuffer       *bytes.Buffer
-	tracingFd       *os.File
 	memoryCollector *MemoryEventCollector
 }
 
@@ -440,63 +437,25 @@ func NewContext(config *Config, role string) (*Context, error) {
 	}
 
 	// Logging
-	context.Log = log15.New()
-	if context.Config.Logging.File == "/dev/null" {
-		context.handler = log15.DiscardHandler()
-	} else if context.Config.Logging.File == "stderr" {
-		context.handler = log15.StderrHandler
-	} else {
-		// Open a file for appending and redirect stderr/stdout to it. This helps
-		// the panic messages to also appear in the log.
-		f, err := os.OpenFile(context.Config.Logging.File, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-		if err = syscall.Dup2(int(f.Fd()), int(os.Stderr.Fd())); err != nil {
-			return nil, err
-		}
-		context.handler = log15.StreamHandler(os.Stderr, log15.LogfmtFormat())
-	}
-	level, err := log15.LvlFromString(context.Config.Logging.Level)
-	if err != nil {
+	var err error
+	if context.Log, err = RotatingLog(context.Config.Logging); err != nil {
 		return nil, err
 	}
-	context.handler = log15.LvlFilterHandler(level, context.handler)
-	context.Log.SetHandler(context.handler)
 
 	// Tracing
 	if context.Config.Tracing.Enabled {
-		s, err := os.Stat(context.Config.Tracing.File)
-		if os.IsNotExist(err) || s.Size() == 0 {
-			context.tracingFd, err = os.Create(context.Config.Tracing.File)
-			if err != nil {
-				return nil, err
-			}
-			context.EventCollector, err = NewWriterEventCollector(
-				context.tracingFd,
-				false,
-			)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			context.tracingFd, err = os.OpenFile(
-				context.Config.Tracing.File,
-				os.O_WRONLY|os.O_APPEND,
-				0664,
-			)
-			if err != nil {
-				return nil, err
-			}
-			context.EventCollector, err = NewWriterEventCollector(
-				context.tracingFd,
-				true,
-			)
-			if err != nil {
-				return nil, err
-			}
+		tracingFile, err := NewRotatingFile(
+			context.Config.Tracing.File,
+			0644,
+			func(tracingFile *os.File, isEmpty bool) error {
+				_, err := tracingFile.Write([]byte("[\n"))
+				return err
+			},
+		)
+		if err != nil {
+			return nil, err
 		}
+		context.EventCollector = NewWriterEventCollector(tracingFile)
 	} else {
 		context.EventCollector = &NullEventCollector{}
 	}
@@ -525,8 +484,9 @@ func NewContextFromReader(reader io.Reader, role string) (*Context, error) {
 
 // Close releases all resources owned by the context.
 func (context *Context) Close() {
-	if context.tracingFd != nil {
-		context.tracingFd.Close()
+	context.EventCollector.Close()
+	if closer, ok := context.Log.GetHandler().(io.Closer); ok {
+		closer.Close()
 	}
 }
 
@@ -536,13 +496,9 @@ func (context *Context) Close() {
 func (context *Context) DebugContext(logCtx ...interface{}) *Context {
 	var buffer bytes.Buffer
 	childContext := &Context{
-		Config:    context.Config,
-		Log:       context.Log.New(logCtx...),
-		logBuffer: &buffer,
-		handler: log15.MultiHandler(
-			log15.StreamHandler(&buffer, log15.LogfmtFormat()),
-			context.handler,
-		),
+		Config:          context.Config,
+		Log:             context.Log.New(logCtx...),
+		logBuffer:       &buffer,
 		memoryCollector: NewMemoryEventCollector(),
 		EventFactory:    context.EventFactory,
 	}
@@ -551,7 +507,13 @@ func (context *Context) DebugContext(logCtx ...interface{}) *Context {
 		context.EventCollector,
 	)
 	childContext.EventFactory.Register(childContext.memoryCollector)
-	childContext.Log.SetHandler(childContext.handler)
+	childContext.Log.SetHandler(log15.MultiHandler(
+		ErrorCallerStackHandler(
+			log15.LvlDebug,
+			log15.StreamHandler(&buffer, log15.LogfmtFormat()),
+		),
+		context.Log.GetHandler(),
+	))
 	return childContext
 }
 
