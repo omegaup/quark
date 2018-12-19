@@ -301,8 +301,8 @@ func NewLiteralInputFactory(
 			groups[tokens[0]] = make([]CaseSettings, 0)
 		}
 		groups[tokens[0]] = append(groups[tokens[0]], cs)
-		factory.files[fmt.Sprintf("in/%s.in", name)] = []byte(c.Input)
-		factory.files[fmt.Sprintf("out/%s.out", name)] = []byte(c.ExpectedOutput)
+		factory.files[fmt.Sprintf("cases/%s.in", name)] = []byte(c.Input)
+		factory.files[fmt.Sprintf("cases/%s.out", name)] = []byte(c.ExpectedOutput)
 	}
 	factory.settings.Cases = make([]GroupSettings, 0)
 	for name, g := range groups {

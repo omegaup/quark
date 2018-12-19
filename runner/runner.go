@@ -445,7 +445,7 @@ func Grade(
 		}
 
 		binaries = []*binary{
-			&binary{
+			{
 				name:             interactive.Main,
 				target:           target,
 				language:         lang,
@@ -631,7 +631,7 @@ func Grade(
 				settings.Limits.OutputLimit += 16 * 1024
 			}
 			binaries = []*binary{
-				&binary{
+				{
 					name:             "Main",
 					target:           "Main",
 					language:         run.Language,
@@ -822,7 +822,7 @@ func Grade(
 						if bin.receiveInput {
 							inputPath = path.Join(
 								input.Path(),
-								"in",
+								"cases",
 								fmt.Sprintf("%s.in", caseData.Name),
 							)
 						} else {
@@ -1019,12 +1019,12 @@ func Grade(
 				if settings.Validator.Name == "custom" {
 					originalInputFile := path.Join(
 						input.Path(),
-						"in",
+						"cases",
 						fmt.Sprintf("%s.in", caseData.Name),
 					)
 					originalOutputFile := path.Join(
 						input.Path(),
-						"out",
+						"cases",
 						fmt.Sprintf("%s.out", caseData.Name),
 					)
 					if _, err := os.Stat(originalOutputFile); os.IsNotExist(err) {
@@ -1089,7 +1089,7 @@ func Grade(
 				}
 				defer contestantFd.Close()
 				expectedPath := path.Join(
-					input.Path(), "out", fmt.Sprintf("%s.out", caseData.Name),
+					input.Path(), "cases", fmt.Sprintf("%s.out", caseData.Name),
 				)
 				if settings.Validator.Name == "custom" {
 					// No need to open the actual file. It might not even exist.

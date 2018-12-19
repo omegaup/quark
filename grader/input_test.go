@@ -169,7 +169,7 @@ func TestTransmitInput(t *testing.T) {
 	}
 
 	input, err := ctx.InputManager.Add(
-		"2af3227d22470f4d9730937b6b47fd79622fdb32",
+		kHeadCommit,
 		NewInputFactory("test", &ctx.Config),
 	)
 	if err != nil {
@@ -191,7 +191,7 @@ func TestTransmitInput(t *testing.T) {
 		name, value string
 	}{
 		{"Content-Type", "application/x-gzip"},
-		{"Content-Sha1", "2c8b5ee63c0c86f102660912004c55ca12caa3b5"},
+		{"Content-Sha1", "d80feecc2f19607c592bdb6a1d05aa5a234b8498"},
 	}
 	for _, het := range headerentries {
 		if !reflect.DeepEqual(headers[het.name], []string{het.value}) {

@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+const (
+	kHeadCommit = "d129ffad215c8c87d2e646b959f31e5f279c1cff"
+)
+
 func newGraderContext() (*Context, error) {
 	dirname, err := ioutil.TempDir("/tmp", "gradertest")
 	if err != nil {
@@ -79,11 +83,11 @@ func newGraderContext() (*Context, error) {
 	}{
 		{
 			"first commit\n",
-			"6b70f47f4f4d57fcac0ac91ed0c6320218764236",
+			"7c26e62a4c982713463d4c0334c6793840291b0e",
 			[]filecontents{
-				{"cases/in/0.in", "1 2"},
-				{"cases/out/0.out", "3"},
-				{"cases/settings.json", `{
+				{"cases/0.in", "1 2"},
+				{"cases/0.out", "3"},
+				{"settings.json", `{
   "Cases": [
 		{"Cases": [{"Name": "0", "Weight": 1.0}], "Name": "0", "Weight": 1.0}
   ], 
@@ -102,13 +106,13 @@ func newGraderContext() (*Context, error) {
 		},
 		{
 			"second commit\n",
-			"2af3227d22470f4d9730937b6b47fd79622fdb32",
+			kHeadCommit,
 			[]filecontents{
-				{"cases/in/0.in", "1 2"},
-				{"cases/out/0.out", "3"},
-				{"cases/in/1.in", "2 3"},
-				{"cases/out/1.out", "5"},
-				{"cases/settings.json", `{
+				{"cases/0.in", "1 2"},
+				{"cases/0.out", "3"},
+				{"cases/1.in", "2 3"},
+				{"cases/1.out", "5"},
+				{"settings.json", `{
   "Cases": [
 		{"Cases": [{"Name": "0", "Weight": 0.5}], "Name": "0", "Weight": 0.5}, 
 		{"Cases": [{"Name": "1", "Weight": 0.5}], "Name": "1", "Weight": 0.5}
@@ -151,25 +155,24 @@ func newGraderContext() (*Context, error) {
 		if err != nil {
 			return nil, err
 		}
+		defer currentBranch.Free()
 		currentTip, err := repo.LookupCommit(currentBranch.Target())
 		if err != nil {
 			return nil, err
 		}
+		defer currentTip.Free()
 
 		message := gct.message
-		tree, err := repo.LookupTree(treeID)
+		casesTree, err := repo.LookupTree(treeID)
 		if err != nil {
 			return nil, err
 		}
-		casesTree, err := tree.EntryByPath("cases")
-		if err != nil {
-			return nil, err
-		}
-		if casesTree.Id.String() != gct.expectedhash {
+		defer casesTree.Free()
+		if casesTree.Id().String() != gct.expectedhash {
 			return nil, fmt.Errorf(
 				"expected %q, got %q",
 				gct.expectedhash,
-				casesTree.Id.String(),
+				casesTree.Id().String(),
 			)
 		}
 		if _, err := repo.CreateCommit(

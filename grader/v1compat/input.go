@@ -26,7 +26,7 @@ import (
 const (
 	// InputVersion represents a global version. Bump if a fundamentally breaking
 	// change is introduced.
-	InputVersion = 1
+	InputVersion = 2
 )
 
 // A SettingsLoader allows to load ProblemSettings from a particular git tree
@@ -472,9 +472,14 @@ func CreateArchiveFromGit(
 		if !strings.HasPrefix(untrimmedPath, "cases/") {
 			return 0
 		}
-		entryPath := strings.TrimPrefix(untrimmedPath, "cases/")
-		if strings.HasPrefix(entryPath, "in/") {
-			caseName := strings.TrimSuffix(strings.TrimPrefix(entryPath, "in/"), ".in")
+		entryPath := untrimmedPath
+		if strings.HasPrefix(entryPath, "cases/in/") {
+			entryPath = path.Join("cases", strings.TrimPrefix(entryPath, "cases/in/"))
+		} else if strings.HasPrefix(entryPath, "cases/out/") {
+			entryPath = path.Join("cases", strings.TrimPrefix(entryPath, "cases/out/"))
+		}
+		if strings.HasSuffix(entryPath, ".in") {
+			caseName := strings.TrimPrefix(strings.TrimSuffix(entryPath, ".in"), "cases/")
 			if _, ok := rawCaseWeights[caseName]; !ok {
 				// If a test plan is present, it should mention all cases.
 				if hasTestPlan {
