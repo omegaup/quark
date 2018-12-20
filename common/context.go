@@ -505,6 +505,7 @@ func (context *Context) DebugContext(logCtx ...interface{}) *Context {
 		logBuffer:       &buffer,
 		memoryCollector: NewMemoryEventCollector(),
 		EventFactory:    context.EventFactory,
+		Metrics:         context.Metrics,
 	}
 	childContext.EventCollector = NewMultiEventCollector(
 		childContext.memoryCollector,
