@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // A CaseResult represents the sub-results of a specific test case.
@@ -626,7 +627,7 @@ func Grade(
 				// ASan uses TONS of extra memory.
 				settings.Limits.MemoryLimit = -1
 				// ASan claims to be 2x slower.
-				settings.Limits.TimeLimit = settings.Limits.TimeLimit*2 + 1000
+				settings.Limits.TimeLimit = settings.Limits.TimeLimit*2 + common.Duration(1*time.Second)
 				// 16kb should be enough to emit the report.
 				settings.Limits.OutputLimit += 16 * 1024
 			}
@@ -742,19 +743,18 @@ func Grade(
 
 	groupResults := make([]GroupResult, len(settings.Cases))
 	runResult.Verdict = "OK"
-	wallTimeLimit := float64(settings.Limits.OverallWallTimeLimit) / 1000.0
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("run", common.EventBegin))
 	for i, group := range settings.Cases {
 		caseResults := make([]CaseResult, len(group.Cases))
 		for j, caseData := range group.Cases {
 			var runMeta *RunMetadata
 			var individualMeta = make(map[string]RunMetadata)
-			if runResult.WallTime > wallTimeLimit {
+			if runResult.WallTime > settings.Limits.OverallWallTimeLimit.Milliseconds() {
 				ctx.Log.Debug(
 					"Not even running since the wall time limit has been exceeded",
 					"case", caseData.Name,
 					"wall time", runResult.WallTime,
-					"limit", wallTimeLimit,
+					"limit", settings.Limits.OverallWallTimeLimit.Milliseconds(),
 				)
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
