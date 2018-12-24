@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	kHeadCommit = "d129ffad215c8c87d2e646b959f31e5f279c1cff"
+	headCommit = "d129ffad215c8c87d2e646b959f31e5f279c1cff"
 )
 
 func newGraderContext() (*Context, error) {
@@ -106,7 +106,7 @@ func newGraderContext() (*Context, error) {
 		},
 		{
 			"second commit\n",
-			kHeadCommit,
+			headCommit,
 			[]filecontents{
 				{"cases/0.in", "1 2"},
 				{"cases/0.out", "3"},

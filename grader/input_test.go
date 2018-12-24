@@ -169,7 +169,7 @@ func TestTransmitInput(t *testing.T) {
 	}
 
 	input, err := ctx.InputManager.Add(
-		kHeadCommit,
+		headCommit,
 		NewInputFactory("test", &ctx.Config),
 	)
 	if err != nil {
