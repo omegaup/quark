@@ -167,7 +167,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	inputManager := common.NewInputManager(ctx)
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
-			Cases: map[string]common.LiteralCaseSettings{
+			Cases: map[string]*common.LiteralCaseSettings{
 				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
 				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
 				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
@@ -553,7 +553,7 @@ func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
 	inputManager := common.NewInputManager(ctx)
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
-			Cases: map[string]common.LiteralCaseSettings{
+			Cases: map[string]*common.LiteralCaseSettings{
 				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
 				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
 				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
@@ -701,7 +701,7 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 </resultados>`
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
-			Cases: map[string]common.LiteralCaseSettings{
+			Cases: map[string]*common.LiteralCaseSettings{
 				"0": {Input: `<ejecucion>
 	<condiciones instruccionesMaximasAEjecutar="10000000" longitudStack="65000"></condiciones>
 	<mundos>
@@ -822,7 +822,7 @@ func TestLibinteractive(t *testing.T) {
 	inputManager := common.NewInputManager(ctx)
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
-			Cases: map[string]common.LiteralCaseSettings{
+			Cases: map[string]*common.LiteralCaseSettings{
 				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
 				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},

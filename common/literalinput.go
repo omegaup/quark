@@ -47,6 +47,9 @@ type LiteralCaseSettings struct {
 	Weight         *big.Rat `json:"weight"`
 }
 
+var _ json.Marshaler = &LiteralCaseSettings{}
+var _ json.Unmarshaler = &LiteralCaseSettings{}
+
 // MarshalJSON implements the json.Marshaler interface.
 func (c *LiteralCaseSettings) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
@@ -136,10 +139,10 @@ var (
 // be used directly as an Input). It is useful for testing and to evaluate a
 // run that doesn't have a problem associated with it.
 type LiteralInput struct {
-	Cases       map[string]LiteralCaseSettings `json:"cases"`
-	Limits      *LimitsSettings                `json:"limits,omitempty"`
-	Validator   *LiteralValidatorSettings      `json:"validator,omitempty"`
-	Interactive *LiteralInteractiveSettings    `json:"interactive,omitempty"`
+	Cases       map[string]*LiteralCaseSettings `json:"cases"`
+	Limits      *LimitsSettings                 `json:"limits,omitempty"`
+	Validator   *LiteralValidatorSettings       `json:"validator,omitempty"`
+	Interactive *LiteralInteractiveSettings     `json:"interactive,omitempty"`
 }
 
 // LiteralRun is a standalone representation of a Run. It is useful for testing

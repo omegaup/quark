@@ -140,7 +140,7 @@ func TestPreloadInputs(t *testing.T) {
 	{
 		AplusB, err := common.NewLiteralInputFactory(
 			&common.LiteralInput{
-				Cases: map[string]common.LiteralCaseSettings{
+				Cases: map[string]*common.LiteralCaseSettings{
 					"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
 					"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 				},
@@ -214,7 +214,7 @@ func TestInputFactory(t *testing.T) {
 		headers map[string]string
 	}
 	httpentries := map[string]httpentry{
-		"/input/4bba61b5499a7a511eb515594f3293a8741516ad/": httpentry{
+		"/input/4bba61b5499a7a511eb515594f3293a8741516ad/": {
 			mustDecode(
 				`H4sIAFBMXVYAA+2WzU+DMBTAd93+CsJZWUspEK/Gmx+HLXowHppZZx0UA2VqFv53X1HYXDKXmDCi
 				vt+B0r6Pvva1D5QeD7qGABHntqURJ5ttw9d3ShllA4d3HhlQFkbkjjNYinkutNmpt0/+S1F6TDyl
@@ -231,7 +231,7 @@ func TestInputFactory(t *testing.T) {
 				"X-Content-Uncompressed-Size": "20",
 			},
 		},
-		"/input/0000000000000000000000000000000000000001/": httpentry{
+		"/input/0000000000000000000000000000000000000001/": {
 			[]byte("invalid .tar.gz"),
 			"application/x-gzip",
 			map[string]string{
@@ -239,7 +239,7 @@ func TestInputFactory(t *testing.T) {
 				"X-Content-Uncompressed-Size": "20",
 			},
 		},
-		"/input/0000000000000000000000000000000000000002/": httpentry{
+		"/input/0000000000000000000000000000000000000002/": {
 			mustDecode(
 				`H4sIAFBMXVYAA+2WzU+DMBTAd93+CsJZWUspEK/Gmx+HLXowHppZZx0UA2VqFv53X1HYXDKXmDCi
 				vt+B0r6Pvva1D5QeD7qGABHntqURJ5ttw9d3ShllA4d3HhlQFkbkjjNYinkutNmpt0/+S1F6TDyl
@@ -256,7 +256,7 @@ func TestInputFactory(t *testing.T) {
 				"X-Content-Uncompressed-Size": "20",
 			},
 		},
-		"/input/0000000000000000000000000000000000000003/": httpentry{
+		"/input/0000000000000000000000000000000000000003/": {
 			mustDecode(
 				`H4sIAFBMXVYAA+2WzU+DMBTAd93+CsJZWUspEK/Gmx+HLXowHppZZx0UA2VqFv53X1HYXDKXmDCi
 				vt+B0r6Pvva1D5QeD7qGABHntqURJ5ttw9d3ShllA4d3HhlQFkbkjjNYinkutNmpt0/+S1F6TDyl
@@ -273,7 +273,7 @@ func TestInputFactory(t *testing.T) {
 				"X-Content-Uncompressed-Size": "Invalid length",
 			},
 		},
-		"/input/0000000000000000000000000000000000000004/": httpentry{
+		"/input/0000000000000000000000000000000000000004/": {
 			mustDecode("H4sIAJctXVYAA8vMK0vMyUxRKEksUjAYKMAFAMWXZ/uGAAAA"),
 			"application/x-gzip",
 			map[string]string{},

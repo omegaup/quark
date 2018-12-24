@@ -19,7 +19,7 @@ func TestLiteralInput(t *testing.T) {
 	inputManager := NewInputManager(ctx)
 	AplusB, err := NewLiteralInputFactory(
 		&LiteralInput{
-			Cases: map[string]LiteralCaseSettings{
+			Cases: map[string]*LiteralCaseSettings{
 				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
 				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},
