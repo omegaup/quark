@@ -45,6 +45,7 @@ type InteractiveInterface struct {
 // generate interactive shims.
 type InteractiveSettings struct {
 	Interfaces            map[string]map[string]*InteractiveInterface
+	Templates             map[string]string
 	Main                  string
 	ModuleName            string
 	ParentLang            string

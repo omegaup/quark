@@ -112,10 +112,11 @@ type LiteralValidatorSettings struct {
 // LiteralInteractiveSettings stores the settings for a problem that uses
 // libinteractive.
 type LiteralInteractiveSettings struct {
-	IDLSource  string `json:"idl"`
-	ModuleName string `json:"module_name"`
-	ParentLang string `json:"language"`
-	MainSource string `json:"main_source"`
+	IDLSource  string            `json:"idl"`
+	ModuleName string            `json:"module_name"`
+	ParentLang string            `json:"language"`
+	MainSource string            `json:"main_source"`
+	Templates  map[string]string `json:"templates"`
 }
 
 // Default values for some of the settings.

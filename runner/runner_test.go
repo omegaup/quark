@@ -849,6 +849,21 @@ func TestLibinteractive(t *testing.T) {
 						cout << identity(sum(identity(A), identity(B))) << endl;
 					}
 				`,
+				Templates: map[string]string{
+					"cpp": `
+						#include "APlusB.h"
+
+						int sum(int a, int b) {
+							// FIXME
+							return 0;
+						}
+
+						int identity(int x) {
+							// FIXME
+							return 0;
+						}
+					`,
+				},
 				ModuleName: "AplusB",
 				ParentLang: "cpp",
 			},
