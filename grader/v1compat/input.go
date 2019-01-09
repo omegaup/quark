@@ -6,10 +6,11 @@ import (
 	"compress/gzip"
 	"crypto/sha1"
 	"encoding/json"
-	"errors"
+	stderrors "errors"
 	"fmt"
 	git "github.com/lhchavez/git2go"
 	"github.com/omegaup/quark/common"
+	"github.com/pkg/errors"
 	"io"
 	"math/big"
 	"net/http"
@@ -80,7 +81,7 @@ func VersionedHash(
 func GetProblemInformation(repositoryPath string) (*ProblemInformation, error) {
 	repository, err := git.OpenRepository(repositoryPath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to open %s", repositoryPath)
 	}
 	defer repository.Free()
 	headRef, err := repository.Head()
@@ -122,7 +123,7 @@ func (input *graderBaseInput) Verify() error {
 		return err
 	}
 	if storedHash != fmt.Sprintf("%0x", hash) {
-		return errors.New("Hash verification failed")
+		return stderrors.New("Hash verification failed")
 	}
 	uncompressedSize, err := input.getStoredLength()
 	if err != nil {
@@ -638,12 +639,32 @@ func (factory *inputFactory) NewInput(
 				fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
 			),
 		},
-		repositoryPath: path.Join(
+		repositoryPath: GetRepositoryPath(
 			factory.config.Grader.V1.RuntimePath,
-			"problems.git",
 			factory.problemName,
 		),
 		loader:      factory.loader,
 		problemName: factory.problemName,
 	}
+}
+
+// GetRepositoryPath returns the path of a problem repository.
+func GetRepositoryPath(
+	root string,
+	problemName string,
+) string {
+	// Try the old path first.
+	repositoryPath := path.Join(
+		root,
+		"problems.git",
+		problemName,
+	)
+	if _, err := os.Stat(repositoryPath); err == nil {
+		return repositoryPath
+	}
+	return path.Join(
+		root,
+		"problems.git",
+		fmt.Sprintf("%s.git", problemName),
+	)
 }

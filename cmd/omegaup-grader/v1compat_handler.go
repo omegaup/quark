@@ -15,13 +15,21 @@ import (
 	"github.com/omegaup/quark/runner"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
+	"io"
 	"io/ioutil"
 	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"path"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
+)
+
+var (
+	guidRegex = regexp.MustCompile("^[0-9a-f]{32}$")
 )
 
 type graderRunningStatus struct {
@@ -47,6 +55,11 @@ type runGradeRequest struct {
 	GUIDs   []string `json:"id"`
 	Rejudge bool     `json:"rejudge"`
 	Debug   bool     `json:"debug"`
+}
+
+type runGradeResource struct {
+	GUID     string `json:"id"`
+	Filename string `json:"filename"`
 }
 
 func v1CompatUpdateDatabase(
@@ -349,9 +362,8 @@ func v1CompatNewRunContext(
 		settings.Validator.Limits = &validatorLimits
 	}
 
-	gitProblemInfo, err := v1compat.GetProblemInformation(path.Join(
+	gitProblemInfo, err := v1compat.GetProblemInformation(v1compat.GetRepositoryPath(
 		ctx.Config.Grader.V1.RuntimePath,
-		"problems.git",
 		runCtx.ProblemName,
 	))
 	if err != nil {
@@ -618,6 +630,63 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		encoder := json.NewEncoder(w)
 		encoder.SetIndent("", "  ")
 		encoder.Encode(response)
+	})
+
+	mux.HandleFunc("/run/resource/", func(w http.ResponseWriter, r *http.Request) {
+		ctx := context()
+		decoder := json.NewDecoder(r.Body)
+		defer r.Body.Close()
+
+		var request runGradeResource
+		if err := decoder.Decode(&request); err != nil {
+			ctx.Log.Error("Error receiving resource request", "err", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		if len(request.GUID) != 32 || !guidRegex.MatchString(request.GUID) {
+			ctx.Log.Error("Invalid GUID", "guid", request.GUID)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if request.Filename == "" || strings.HasPrefix(request.Filename, ".") ||
+			strings.Contains(request.Filename, "/") {
+			ctx.Log.Error("Invalid filename", "filename", request.Filename)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		filePath := path.Join(
+			ctx.Config.Grader.V1.RuntimeGradePath,
+			request.GUID[:2],
+			request.GUID[2:],
+			request.Filename,
+		)
+		f, err := os.Open(filePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				ctx.Log.Info("/run/resource/", "request", request, "response", "not found")
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			ctx.Log.Info("/run/resource/", "request", request, "response", "internal server error", "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+
+		info, err := f.Stat()
+		if err != nil {
+			ctx.Log.Info("/run/resource/", "request", request, "response", "internal server error", "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+
+		ctx.Log.Info("/run/resource/", "request", request, "response", "ok")
+		w.WriteHeader(http.StatusOK)
+		io.Copy(w, f)
 	})
 
 	mux.HandleFunc("/broadcast/", func(w http.ResponseWriter, r *http.Request) {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	git "github.com/lhchavez/git2go"
 	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/grader/v1compat"
 	"io"
 	"net/http"
 	"os"
@@ -313,9 +314,8 @@ func (factory *InputFactory) NewInput(
 				fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
 			),
 		},
-		repositoryPath: path.Join(
+		repositoryPath: v1compat.GetRepositoryPath(
 			factory.config.Grader.RuntimePath,
-			"problems.git",
 			factory.problemName,
 		),
 	}
