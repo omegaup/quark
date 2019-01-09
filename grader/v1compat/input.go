@@ -653,18 +653,9 @@ func GetRepositoryPath(
 	root string,
 	problemName string,
 ) string {
-	// Try the old path first.
-	repositoryPath := path.Join(
-		root,
-		"problems.git",
-		problemName,
-	)
-	if _, err := os.Stat(repositoryPath); err == nil {
-		return repositoryPath
-	}
 	return path.Join(
 		root,
 		"problems.git",
-		fmt.Sprintf("%s.git", problemName),
+		problemName,
 	)
 }
