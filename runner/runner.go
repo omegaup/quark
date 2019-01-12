@@ -749,12 +749,12 @@ func Grade(
 		for j, caseData := range group.Cases {
 			var runMeta *RunMetadata
 			var individualMeta = make(map[string]RunMetadata)
-			if runResult.WallTime > settings.Limits.OverallWallTimeLimit.Milliseconds() {
+			if runResult.WallTime > settings.Limits.OverallWallTimeLimit.Seconds() {
 				ctx.Log.Debug(
 					"Not even running since the wall time limit has been exceeded",
 					"case", caseData.Name,
 					"wall time", runResult.WallTime,
-					"limit", settings.Limits.OverallWallTimeLimit.Milliseconds(),
+					"limit", settings.Limits.OverallWallTimeLimit.Seconds(),
 				)
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
