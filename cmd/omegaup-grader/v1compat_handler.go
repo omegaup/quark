@@ -289,7 +289,7 @@ func v1CompatNewRunContext(
 	ctx *grader.Context,
 	db *sql.DB,
 	guid string,
-) (*grader.RunContext, string, *common.ProblemSettings, error) {
+) (*grader.RunContext, *common.ProblemSettings, error) {
 	runCtx := grader.NewEmptyRunContext(ctx)
 	runCtx.GUID = guid
 	runCtx.GradeDir = path.Join(
@@ -301,14 +301,10 @@ func v1CompatNewRunContext(
 	var problemset sql.NullInt64
 	var penaltyType sql.NullString
 	var contestPoints sql.NullFloat64
-	validatorLimits := common.DefaultValidatorLimits
-	settings := common.ProblemSettings{}
 	err := db.QueryRow(
 		`SELECT
 			r.run_id, c.alias, r.problemset_id, c.penalty_type, r.language, p.alias,
-			pp.points, p.extra_wall_time, p.memory_limit, p.output_limit,
-			p.overall_wall_time_limit, p.time_limit, p.validator_time_limit, p.slow,
-			p.validator
+			pp.points
 		FROM
 			Runs r
 		INNER JOIN
@@ -327,39 +323,9 @@ func v1CompatNewRunContext(
 		&runCtx.Run.Language,
 		&runCtx.ProblemName,
 		&contestPoints,
-		&settings.Limits.ExtraWallTime,
-		&settings.Limits.MemoryLimit,
-		&settings.Limits.OutputLimit,
-		&settings.Limits.OverallWallTimeLimit,
-		&settings.Limits.TimeLimit,
-		&validatorLimits.TimeLimit,
-		&settings.Slow,
-		&settings.Validator.Name,
 	)
 	if err != nil {
-		return nil, "", nil, err
-	}
-
-	settings.Limits.MemoryLimit *= common.Kibibyte
-	settings.Limits.ExtraWallTime *= common.Duration(time.Millisecond)
-	settings.Limits.OverallWallTimeLimit *= common.Duration(time.Millisecond)
-	settings.Limits.TimeLimit *= common.Duration(time.Millisecond)
-	validatorLimits.TimeLimit *= common.Duration(time.Millisecond)
-
-	if settings.Validator.Name == "custom" {
-		if validatorLimits.ExtraWallTime < settings.Limits.ExtraWallTime {
-			validatorLimits.ExtraWallTime = settings.Limits.ExtraWallTime
-		}
-		if validatorLimits.MemoryLimit < settings.Limits.MemoryLimit {
-			validatorLimits.MemoryLimit = settings.Limits.MemoryLimit
-		}
-		if validatorLimits.OutputLimit < settings.Limits.OutputLimit {
-			validatorLimits.OutputLimit = settings.Limits.OutputLimit
-		}
-		if validatorLimits.OverallWallTimeLimit < settings.Limits.OverallWallTimeLimit {
-			validatorLimits.OverallWallTimeLimit = settings.Limits.OverallWallTimeLimit
-		}
-		settings.Validator.Limits = &validatorLimits
+		return nil, nil, err
 	}
 
 	gitProblemInfo, err := v1compat.GetProblemInformation(v1compat.GetRepositoryPath(
@@ -367,7 +333,7 @@ func v1CompatNewRunContext(
 		runCtx.ProblemName,
 	))
 	if err != nil {
-		return nil, "", nil, err
+		return nil, nil, err
 	}
 
 	if contestName.Valid {
@@ -394,12 +360,12 @@ func v1CompatNewRunContext(
 		),
 	)
 	if err != nil {
-		return nil, "", nil, err
+		return nil, nil, err
 	}
 	runCtx.Run.Source = string(contents)
 
-	runCtx.Run.InputHash = v1compat.VersionedHash(ctx.LibinteractiveVersion, gitProblemInfo, &settings)
-	return runCtx, gitProblemInfo.TreeID, &settings, nil
+	runCtx.Run.InputHash = gitProblemInfo.InputHash
+	return runCtx, gitProblemInfo.Settings, nil
 }
 
 func v1CompatInjectRuns(
@@ -410,7 +376,7 @@ func v1CompatInjectRuns(
 	priority grader.QueuePriority,
 ) error {
 	for _, guid := range guids {
-		runCtx, gitTree, settings, err := v1CompatNewRunContext(ctx, db, guid)
+		runCtx, settings, err := v1CompatNewRunContext(ctx, db, guid)
 		if err != nil {
 			ctx.Log.Error(
 				"Error getting run context",
@@ -431,10 +397,6 @@ func v1CompatInjectRuns(
 			v1compat.NewInputFactory(
 				runCtx.ProblemName,
 				&ctx.Config,
-				&v1compat.SettingsLoader{
-					Settings: settings,
-					GitTree:  gitTree,
-				},
 			),
 		)
 		if err != nil {
@@ -614,7 +576,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		ctx.Log.Info("/run/payload/", "request", request)
 		var response = make(map[string]*common.Run)
 		for _, guid := range request.GUIDs {
-			runCtx, _, _, err := v1CompatNewRunContext(ctx, db, guid)
+			runCtx, _, err := v1CompatNewRunContext(ctx, db, guid)
 			if err != nil {
 				ctx.Log.Error(
 					"Error getting run context",

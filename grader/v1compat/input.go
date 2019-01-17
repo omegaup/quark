@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
-	"crypto/sha1"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
@@ -12,30 +11,11 @@ import (
 	"github.com/omegaup/quark/common"
 	"github.com/pkg/errors"
 	"io"
-	"math/big"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strconv"
-	"strings"
 )
-
-const (
-	// InputVersion represents a global version. Bump if a fundamentally breaking
-	// change is introduced.
-	InputVersion = 2
-)
-
-// A SettingsLoader allows to load ProblemSettings from a particular git tree
-// hash.
-type SettingsLoader struct {
-	Settings *common.ProblemSettings
-	GitTree  string
-}
 
 type graderBaseInput struct {
 	common.BaseInput
@@ -46,34 +26,8 @@ type graderBaseInput struct {
 
 // A ProblemInformation represents information from the problem.
 type ProblemInformation struct {
-	TreeID        string
-	IsInteractive bool
-}
-
-// VersionedHash returns the hash for a specified problem. It takes into
-// account the global InputVersion, the libinteractive version (for interactive
-// problems), and the hash of the tree in git.
-func VersionedHash(
-	libinteractiveVersion string,
-	problemInfo *ProblemInformation,
-	settings *common.ProblemSettings,
-) string {
-	hasher := sha1.New()
-	fmt.Fprintf(
-		hasher,
-		"%d:%s:",
-		InputVersion,
-		problemInfo.TreeID,
-	)
-	if problemInfo.IsInteractive {
-		fmt.Fprintf(
-			hasher,
-			"%s:",
-			libinteractiveVersion,
-		)
-	}
-	json.NewEncoder(hasher).Encode(settings)
-	return fmt.Sprintf("%0x", hasher.Sum(nil))
+	InputHash string
+	Settings  *common.ProblemSettings
 }
 
 // GetProblemInformation returns the ProblemInformation obtained from the git
@@ -84,28 +38,44 @@ func GetProblemInformation(repositoryPath string) (*ProblemInformation, error) {
 		return nil, errors.Wrapf(err, "failed to open %s", repositoryPath)
 	}
 	defer repository.Free()
-	headRef, err := repository.Head()
+	privateBranchRef, err := repository.References.Lookup("refs/heads/private")
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to find the private branch for %s", repositoryPath)
 	}
-	defer headRef.Free()
-	headObject, err := headRef.Peel(git.ObjectCommit)
+	defer privateBranchRef.Free()
+	privateBranchObject, err := privateBranchRef.Peel(git.ObjectCommit)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to peel the private branch for %s", repositoryPath)
 	}
-	defer headObject.Free()
-	headCommit, err := headObject.AsCommit()
+	defer privateBranchObject.Free()
+	privateBranchCommit, err := privateBranchObject.AsCommit()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to find private branch commit for %s", repositoryPath)
 	}
-	defer headCommit.Free()
-	headTree, err := headCommit.Tree()
+	defer privateBranchCommit.Free()
+	privateBranchTree, err := privateBranchCommit.Tree()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to find private branch commit's tree for %s", repositoryPath)
 	}
+	defer privateBranchTree.Free()
+
+	settingsJSONEntry := privateBranchTree.EntryByName("settings.json")
+	if settingsJSONEntry == nil {
+		return nil, errors.Errorf("failed to find settings.json for %s", repositoryPath)
+	}
+	settingsJSONObject, err := repository.LookupBlob(settingsJSONEntry.Id)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to lookup settings.json for %s", repositoryPath)
+	}
+	defer settingsJSONObject.Free()
+	var problemSettings common.ProblemSettings
+	if err := json.Unmarshal(settingsJSONObject.Contents(), &problemSettings); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal settings.json for %s", repositoryPath)
+	}
+
 	return &ProblemInformation{
-		headTree.Id().String(),
-		headTree.EntryByName("interactive") != nil,
+		privateBranchTree.Id().String(),
+		&problemSettings,
 	}, nil
 }
 
@@ -202,7 +172,6 @@ type graderInput struct {
 	graderBaseInput
 	repositoryPath string
 	problemName    string
-	loader         *SettingsLoader
 }
 
 func (input *graderInput) Persist() error {
@@ -211,12 +180,10 @@ func (input *graderInput) Persist() error {
 	}
 	tmpPath := fmt.Sprintf("%s.tmp", input.archivePath)
 	defer os.Remove(tmpPath)
-	settings, uncompressedSize, err := CreateArchiveFromGit(
-		input.problemName,
+	uncompressedSize, err := CreateArchiveFromGit(
 		tmpPath,
 		input.repositoryPath,
 		input.Hash(),
-		input.loader,
 	)
 	if err != nil {
 		return err
@@ -261,108 +228,43 @@ func (input *graderInput) Persist() error {
 		return err
 	}
 
-	*input.Settings() = *settings
 	input.storedHash = fmt.Sprintf("%0x", hash)
 	input.uncompressedSize = uncompressedSize
 	input.Commit(stat.Size())
 	return nil
 }
 
-func getLibinteractiveSettings(
-	contents []byte,
-	moduleName string,
-	parentLang string,
-) (*common.InteractiveSettings, error) {
-	cmd := exec.Command(
-		"/usr/bin/java",
-		"-jar", "/usr/share/java/libinteractive.jar",
-		"json",
-		"--module-name", moduleName,
-		"--parent-lang", parentLang,
-		"--omit-debug-targets",
-	)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	go (func() {
-		stdin.Write(contents)
-		stdin.Close()
-	})()
-	settings := common.InteractiveSettings{}
-	if err := json.NewDecoder(stdout).Decode(&settings); err != nil {
-		return nil, err
-	}
-	if err := cmd.Wait(); err != nil {
-		return nil, err
-	}
-	return &settings, nil
-}
-
-func parseTestplan(contents string) (map[string]*big.Rat, error) {
-	rawCaseWeights := make(map[string]*big.Rat)
-	testplanRe := regexp.MustCompile(`^\s*([^# \t]+)\s+([0-9.]+).*$`)
-	for _, line := range strings.Split(contents, "\n") {
-		m := testplanRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		var err error
-		rawCaseWeights[m[1]], err = common.ParseRational(m[2])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return rawCaseWeights, nil
-}
-
 // CreateArchiveFromGit creates an archive that can be sent to a Runner as an
 // Input from a git repository.
 func CreateArchiveFromGit(
-	problemName string,
 	archivePath string,
 	repositoryPath string,
 	inputHash string,
-	loader *SettingsLoader,
-) (*common.ProblemSettings, int64, error) {
-	settings := loader.Settings
-	if settings.Validator.Name == "token-numeric" {
-		tolerance := 1e-6
-		settings.Validator.Tolerance = &tolerance
-	}
-
+) (int64, error) {
 	repository, err := git.OpenRepository(repositoryPath)
 	if err != nil {
-		return nil, 0, err
+		return 0, errors.Wrapf(err, "failed to open repository for %s:%s", repositoryPath, inputHash)
 	}
 	defer repository.Free()
 
-	treeOid, err := git.NewOid(loader.GitTree)
+	treeOid, err := git.NewOid(inputHash)
 	if err != nil {
-		return nil, 0, err
+		return 0, errors.Wrapf(err, "failed to parse tree hash for %s:%s", repositoryPath, inputHash)
 	}
-
 	tree, err := repository.LookupTree(treeOid)
 	if err != nil {
-		return nil, 0, err
+		return 0, errors.Wrapf(err, "failed to lookup tree for %s:%s", repositoryPath, inputHash)
 	}
 	defer tree.Free()
 	odb, err := repository.Odb()
 	if err != nil {
-		return nil, 0, err
+		return 0, errors.Wrapf(err, "failed to get odb for %s:%s", repositoryPath, inputHash)
 	}
 	defer odb.Free()
 
 	tmpFd, err := os.Create(archivePath)
 	if err != nil {
-		return nil, 0, err
+		return 0, errors.Wrapf(err, "failed to create archive for %s:%s", repositoryPath, inputHash)
 	}
 	defer tmpFd.Close()
 
@@ -374,122 +276,8 @@ func CreateArchiveFromGit(
 
 	var walkErr error
 	var uncompressedSize int64
-	var rawCaseWeights map[string]*big.Rat
-	var hasTestPlan bool
-	var libinteractiveIdlContents []byte
-	var libinteractiveModuleName string
-	var libinteractiveParentLang string
-	if testplanEntry := tree.EntryByName("testplan"); testplanEntry != nil && testplanEntry.Type == git.ObjectBlob {
-		blob, err := repository.LookupBlob(testplanEntry.Id)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer blob.Free()
-		rawCaseWeights, err = parseTestplan(string(blob.Contents()))
-		if err != nil {
-			return nil, 0, err
-		}
-		hasTestPlan = true
-	} else {
-		rawCaseWeights = make(map[string]*big.Rat)
-	}
 	tree.Walk(func(parent string, entry *git.TreeEntry) int {
-		untrimmedPath := path.Join(parent, entry.Name)
-		if strings.HasPrefix(untrimmedPath, "interactive/") {
-			if strings.HasSuffix(untrimmedPath, ".idl") &&
-				entry.Type == git.ObjectBlob {
-				var blob *git.Blob
-				blob, walkErr = repository.LookupBlob(entry.Id)
-				if walkErr != nil {
-					return -1
-				}
-				defer blob.Free()
-				libinteractiveIdlContents = blob.Contents()
-				libinteractiveModuleName = strings.TrimSuffix(entry.Name, ".idl")
-				hdr := &tar.Header{
-					Name:     untrimmedPath,
-					Typeflag: tar.TypeReg,
-					Mode:     0644,
-					Size:     blob.Size(),
-				}
-				uncompressedSize += blob.Size()
-				if walkErr = archive.WriteHeader(hdr); walkErr != nil {
-					return -1
-				}
-				if _, walkErr = archive.Write(libinteractiveIdlContents); walkErr != nil {
-					return -1
-				}
-			} else if strings.HasPrefix(entry.Name, "Main.") &&
-				!strings.HasPrefix(entry.Name, "Main.distrib.") &&
-				entry.Type == git.ObjectBlob {
-				var blob *git.Blob
-				blob, walkErr = repository.LookupBlob(entry.Id)
-				if walkErr != nil {
-					return -1
-				}
-				defer blob.Free()
-				libinteractiveParentLang = strings.TrimPrefix(entry.Name, "Main.")
-				hdr := &tar.Header{
-					Name:     untrimmedPath,
-					Typeflag: tar.TypeReg,
-					Mode:     0644,
-					Size:     blob.Size(),
-				}
-				uncompressedSize += blob.Size()
-				if walkErr = archive.WriteHeader(hdr); walkErr != nil {
-					return -1
-				}
-				if _, walkErr = archive.Write(blob.Contents()); walkErr != nil {
-					return -1
-				}
-			}
-			return 0
-		}
-		if strings.HasPrefix(untrimmedPath, "validator.") &&
-			settings.Validator.Name == "custom" &&
-			entry.Type == git.ObjectBlob {
-			lang := strings.Trim(filepath.Ext(untrimmedPath), ".")
-			settings.Validator.Lang = &lang
-			var blob *git.Blob
-			blob, walkErr = repository.LookupBlob(entry.Id)
-			if walkErr != nil {
-				return -1
-			}
-			defer blob.Free()
-			hdr := &tar.Header{
-				Name:     untrimmedPath,
-				Typeflag: tar.TypeReg,
-				Mode:     0644,
-				Size:     blob.Size(),
-			}
-			uncompressedSize += blob.Size()
-			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
-				return -1
-			}
-			if _, walkErr = archive.Write(blob.Contents()); walkErr != nil {
-				return -1
-			}
-		}
-		if !strings.HasPrefix(untrimmedPath, "cases/") {
-			return 0
-		}
-		entryPath := untrimmedPath
-		if strings.HasPrefix(entryPath, "cases/in/") {
-			entryPath = path.Join("cases", strings.TrimPrefix(entryPath, "cases/in/"))
-		} else if strings.HasPrefix(entryPath, "cases/out/") {
-			entryPath = path.Join("cases", strings.TrimPrefix(entryPath, "cases/out/"))
-		}
-		if strings.HasSuffix(entryPath, ".in") {
-			caseName := strings.TrimPrefix(strings.TrimSuffix(entryPath, ".in"), "cases/")
-			if _, ok := rawCaseWeights[caseName]; !ok {
-				// If a test plan is present, it should mention all cases.
-				if hasTestPlan {
-					walkErr = fmt.Errorf("Case not found in testplan: %s", caseName)
-					return -1
-				}
-				rawCaseWeights[caseName] = big.NewRat(1, 1)
-			}
-		}
+		entryPath := path.Join(parent, entry.Name)
 		switch entry.Type {
 		case git.ObjectTree:
 			hdr := &tar.Header{
@@ -499,12 +287,15 @@ func CreateArchiveFromGit(
 				Size:     0,
 			}
 			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
+				walkErr = errors.Wrapf(walkErr, "failed to write header for tree %s", entryPath)
 				return -1
 			}
+
 		case git.ObjectBlob:
 			var blob *git.Blob
 			blob, walkErr = repository.LookupBlob(entry.Id)
 			if walkErr != nil {
+				walkErr = errors.Wrapf(walkErr, "failed to lookup blob %s", entryPath)
 				return -1
 			}
 			defer blob.Free()
@@ -517,19 +308,25 @@ func CreateArchiveFromGit(
 			}
 			uncompressedSize += blob.Size()
 			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
+				walkErr = errors.Wrapf(walkErr, "failed to write header for blob %s", entryPath)
 				return -1
 			}
 
+			// Attempt to uncompress this object on the fly from the gzip stream
+			// rather than decompressing completely it in memory. This is only
+			// possible if the object is not deltified.
 			stream, err := odb.NewReadStream(entry.Id)
 			if err == nil {
 				defer stream.Free()
 				if _, walkErr = io.Copy(archive, stream); walkErr != nil {
+					walkErr = errors.Wrapf(walkErr, "failed to copy blob stream %s", entryPath)
 					return -1
 				}
 			} else {
 				// That particular object cannot be streamed. Allocate the blob in
 				// memory and write it to the archive.
 				if _, walkErr = archive.Write(blob.Contents()); walkErr != nil {
+					walkErr = errors.Wrapf(walkErr, "failed to write blob %s", entryPath)
 					return -1
 				}
 			}
@@ -537,67 +334,10 @@ func CreateArchiveFromGit(
 		return 0
 	})
 	if walkErr != nil {
-		return nil, 0, walkErr
+		return 0, errors.Wrapf(walkErr, "failed to create archive for %s:%s", repositoryPath, inputHash)
 	}
 
-	// Generate the group/case settings.
-	cases := make(map[string][]common.CaseSettings)
-	totalWeight := &big.Rat{}
-	for _, weight := range rawCaseWeights {
-		totalWeight.Add(totalWeight, weight)
-	}
-	for caseName, weight := range rawCaseWeights {
-		components := strings.SplitN(caseName, ".", 2)
-		groupName := components[0]
-		if _, ok := cases[groupName]; !ok {
-			cases[groupName] = make([]common.CaseSettings, 0)
-		}
-		cases[groupName] = append(cases[groupName], common.CaseSettings{
-			Name:   caseName,
-			Weight: common.RationalDiv(weight, totalWeight),
-		})
-	}
-	settings.Cases = make([]common.GroupSettings, 0)
-	for groupName, cases := range cases {
-		sort.Sort(common.ByCaseName(cases))
-		settings.Cases = append(settings.Cases, common.GroupSettings{
-			Cases: cases,
-			Name:  groupName,
-		})
-	}
-	sort.Sort(common.ByGroupName(settings.Cases))
-
-	if libinteractiveIdlContents != nil && libinteractiveParentLang != "" {
-		settings.Interactive, err = getLibinteractiveSettings(
-			libinteractiveIdlContents,
-			libinteractiveModuleName,
-			libinteractiveParentLang,
-		)
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-
-	// Finally, write settings.json.
-	settingsBlob, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return nil, 0, err
-	}
-	hdr := &tar.Header{
-		Name:     "settings.json",
-		Typeflag: tar.TypeReg,
-		Mode:     0644,
-		Size:     int64(len(settingsBlob)),
-	}
-	uncompressedSize += int64(len(settingsBlob))
-	if err = archive.WriteHeader(hdr); err != nil {
-		return nil, 0, err
-	}
-	if _, err = archive.Write(settingsBlob); err != nil {
-		return nil, 0, err
-	}
-
-	return settings, uncompressedSize, nil
+	return uncompressedSize, nil
 }
 
 // inputFactory is an InputFactory that can store specific versions of a
@@ -606,19 +346,16 @@ func CreateArchiveFromGit(
 type inputFactory struct {
 	problemName string
 	config      *common.Config
-	loader      *SettingsLoader
 }
 
 // NewInputFactory returns a new InputFactory.
 func NewInputFactory(
 	problemName string,
 	config *common.Config,
-	loader *SettingsLoader,
 ) common.InputFactory {
 	return &inputFactory{
 		problemName: problemName,
 		config:      config,
-		loader:      loader,
 	}
 }
 
@@ -643,7 +380,6 @@ func (factory *inputFactory) NewInput(
 			factory.config.Grader.V1.RuntimePath,
 			factory.problemName,
 		),
-		loader:      factory.loader,
 		problemName: factory.problemName,
 	}
 }
