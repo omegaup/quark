@@ -20,6 +20,7 @@ import (
 )
 
 var (
+	version    = flag.Bool("version", false, "Print the version and exit")
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
 	configPath = flag.String(
 		"config",
@@ -33,6 +34,9 @@ var (
 			return true
 		},
 	}
+
+	// ProgramVersion is the version of the code from which the binary was built from.
+	ProgramVersion string
 )
 
 func loadContext() error {
@@ -190,6 +194,11 @@ func updateScoreboardLoop(
 
 func main() {
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("omegaup-broadcaster %s\n", ProgramVersion)
+		return
+	}
 
 	if err := loadContext(); err != nil {
 		panic(err)

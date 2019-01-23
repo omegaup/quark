@@ -38,6 +38,7 @@ var (
 		"With -oneshot=run, the path to the input directory.")
 	debug = flag.Bool("debug", false, "Enables debug in oneshot mode.")
 
+	version    = flag.Bool("version", false, "Print the version and exit")
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
 	noop       = flag.Bool("noop-sandbox", false, "Use the no-op sandbox (always returns AC)")
 	configPath = flag.String("config", "/etc/omegaup/runner/config.json",
@@ -46,6 +47,9 @@ var (
 	ioLock        sync.Mutex
 	inputManager  *common.InputManager
 	sandbox       runner.Sandbox
+
+	// ProgramVersion is the version of the code from which the binary was built from.
+	ProgramVersion string
 )
 
 func isOneShotMode() bool {
@@ -78,6 +82,11 @@ func loadContext() error {
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("omegaup-runner %s\n", ProgramVersion)
+		return
+	}
 
 	if *noop {
 		sandbox = &noopSandbox{}

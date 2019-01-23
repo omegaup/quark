@@ -24,6 +24,7 @@ import (
 )
 
 var (
+	version    = flag.Bool("version", false, "Print the version and exit")
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
 	skipAssets = flag.Bool("skip-assets", false, "Do not use pre-packaged assets")
 	configPath = flag.String(
@@ -33,6 +34,9 @@ var (
 	)
 	globalContext atomic.Value
 	server        *http.Server
+
+	// ProgramVersion is the version of the code from which the binary was built from.
+	ProgramVersion string
 )
 
 type processRunStatus struct {
@@ -166,6 +170,11 @@ func queEventsProcessor(events <-chan *grader.QueueEvent) {
 
 func main() {
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("omegaup-grader %s\n", ProgramVersion)
+		return
+	}
 
 	if err := loadContext(); err != nil {
 		panic(err)
