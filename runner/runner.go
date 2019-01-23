@@ -432,6 +432,20 @@ func Grade(
 	runResult.CompileMeta = make(map[string]RunMetadata)
 
 	settings := *input.Settings()
+
+	// totalWeightFactor is used to normalize all the weights in the case data.
+	totalWeightFactor := new(big.Rat)
+	for _, group := range settings.Cases {
+		for _, caseData := range group.Cases {
+			totalWeightFactor.Add(totalWeightFactor, caseData.Weight)
+		}
+	}
+	if totalWeightFactor.Cmp(new(big.Rat)) <= 0 {
+		totalWeightFactor = big.NewRat(1, 1)
+	} else {
+		totalWeightFactor.Quo(big.NewRat(1, 1), totalWeightFactor)
+	}
+
 	interactive := settings.Interactive
 	if interactive != nil {
 		ctx.Log.Info("libinteractive", "version", interactive.LibinteractiveVersion)
@@ -987,7 +1001,7 @@ func Grade(
 				ContestScore: &big.Rat{},
 				MaxScore: new(big.Rat).Mul(
 					runResult.MaxScore,
-					caseData.Weight,
+					new(big.Rat).Mul(caseData.Weight, totalWeightFactor),
 				),
 			}
 		}
@@ -999,7 +1013,7 @@ func Grade(
 			ContestScore: &big.Rat{},
 			MaxScore: new(big.Rat).Mul(
 				runResult.MaxScore,
-				group.Weight(),
+				new(big.Rat).Mul(group.Weight(), totalWeightFactor),
 			),
 		}
 	}
@@ -1115,12 +1129,18 @@ func Grade(
 				}
 				caseResults.Score.Add(caseResults.Score, runScore)
 				caseResults.ContestScore = new(big.Rat).Mul(
-					new(big.Rat).Mul(runResult.MaxScore, caseData.Weight),
+					new(big.Rat).Mul(
+						runResult.MaxScore,
+						new(big.Rat).Mul(caseData.Weight, totalWeightFactor),
+					),
 					caseResults.Score,
 				)
 				score.Add(
 					score,
-					new(big.Rat).Mul(runScore, caseData.Weight),
+					new(big.Rat).Mul(
+						runScore,
+						new(big.Rat).Mul(caseData.Weight, totalWeightFactor),
+					),
 				)
 				if runScore.Cmp(big.NewRat(1, 1)) == 0 {
 					caseResults.Verdict = "AC"
