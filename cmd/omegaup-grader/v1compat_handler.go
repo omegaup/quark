@@ -594,6 +594,64 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		encoder.Encode(response)
 	})
 
+	mux.HandleFunc("/run/source/", func(w http.ResponseWriter, r *http.Request) {
+		ctx := context()
+
+		if r.Method != "GET" {
+			ctx.Log.Error("Invalid request", "url", r.URL.Path, "method", r.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		tokens := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+
+		if len(tokens) != 3 {
+			ctx.Log.Error("Invalid request", "url", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		guid := tokens[2]
+
+		if len(guid) != 32 || !guidRegex.MatchString(guid) {
+			ctx.Log.Error("Invalid GUID", "guid", guid)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		filePath := path.Join(
+			ctx.Config.Grader.V1.RuntimePath,
+			"submissions",
+			guid[:2],
+			guid[2:],
+		)
+		f, err := os.Open(filePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				ctx.Log.Info("/run/source/", "guid", guid, "response", "not found")
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			ctx.Log.Info("/run/source/", "guid", guid, "response", "internal server error", "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+
+		info, err := f.Stat()
+		if err != nil {
+			ctx.Log.Info("/run/source/", "guid", guid, "response", "internal server error", "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+
+		ctx.Log.Info("/run/source/", "guid", guid, "response", "ok")
+		w.WriteHeader(http.StatusOK)
+		io.Copy(w, f)
+	})
+
 	mux.HandleFunc("/run/resource/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := context()
 		decoder := json.NewDecoder(r.Body)
