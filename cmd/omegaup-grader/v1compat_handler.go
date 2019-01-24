@@ -539,6 +539,60 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		}
 	})
 
+	mux.HandleFunc("/run/new/", func(w http.ResponseWriter, r *http.Request) {
+		ctx := context()
+
+		if r.Method != "POST" {
+			ctx.Log.Error("Invalid request", "url", r.URL.Path, "method", r.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		tokens := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+
+		if len(tokens) != 3 {
+			ctx.Log.Error("Invalid request", "url", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		guid := tokens[2]
+
+		if len(guid) != 32 || !guidRegex.MatchString(guid) {
+			ctx.Log.Error("Invalid GUID", "guid", guid)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		filePath := path.Join(
+			ctx.Config.Grader.V1.RuntimePath,
+			"submissions",
+			guid[:2],
+			guid[2:],
+		)
+		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+		if err != nil {
+			if os.IsExist(err) {
+				ctx.Log.Info("/run/new/", "guid", guid, "response", "not found")
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+			ctx.Log.Info("/run/new/", "guid", guid, "response", "internal server error", "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+
+		io.Copy(f, r.Body)
+
+		if err = v1CompatInjectRuns(ctx, runs, db, []string{guid}, grader.QueuePriorityNormal); err != nil {
+			ctx.Log.Info("/run/new/", "guid", guid, "response", "internal server error", "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		ctx.Log.Info("/run/new/", "guid", guid, "response", "ok")
+		w.WriteHeader(http.StatusOK)
+	})
+
 	mux.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := context()
 		decoder := json.NewDecoder(r.Body)
