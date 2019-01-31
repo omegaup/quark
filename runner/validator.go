@@ -66,10 +66,14 @@ func CalculateScore(
 		case "token-caseless":
 			correct = tokenCaselessEquals(expectedToken.Text, contestantToken.Text)
 		case "token-numeric":
+			tolerance := common.DefaultValidatorTolerance
+			if settings.Tolerance != nil {
+				tolerance = *settings.Tolerance
+			}
 			correct = tokenNumericEquals(
 				expectedToken.Text,
 				contestantToken.Text,
-				*settings.Tolerance,
+				tolerance,
 			)
 		default:
 			return &big.Rat{}, nil, fmt.Errorf("Unknown validator: %q", settings.Name)
