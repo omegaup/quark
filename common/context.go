@@ -229,7 +229,6 @@ type V1Config struct {
 	RuntimePath      string
 	SendBroadcast    bool
 	UpdateDatabase   bool
-	WriteResults     bool
 }
 
 // GraderEphemeralConfig represents the configuration for the Grader web interface.
@@ -353,7 +352,6 @@ var defaultConfig = Config{
 			RuntimePath:      "/var/lib/omegaup/",
 			SendBroadcast:    true,
 			UpdateDatabase:   true,
-			WriteResults:     true,
 		},
 		Ephemeral: GraderEphemeralConfig{
 			EphemeralSizeLimit:   Gibibyte,

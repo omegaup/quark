@@ -12,7 +12,6 @@ import (
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/grader/v1compat"
-	"github.com/omegaup/quark/runner"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 	"io"
@@ -108,39 +107,6 @@ func v1CompatUpdateDatabase(
 		if err != nil {
 			ctx.Log.Error("Error updating the database", "err", err, "run", run)
 		}
-	}
-}
-
-func v1CompatWriteResults(
-	ctx *grader.Context,
-	run *grader.RunInfo,
-) {
-	f, err := os.Create(path.Join(run.GradeDir, "results.json"))
-	if err != nil {
-		ctx.Log.Error("Error creating results.json", "err", err, "run", run)
-		return
-	}
-	defer f.Close()
-	result := struct {
-		ID          int64
-		GUID        string
-		Contest     *string
-		ProblemName string
-		Result      *runner.RunResult
-	}{
-		ID:          run.ID,
-		GUID:        run.GUID,
-		Contest:     run.Contest,
-		ProblemName: run.ProblemName,
-		Result:      &run.Result,
-	}
-	marshaled, err := json.MarshalIndent(&result, "", " ")
-	if err != nil {
-		ctx.Log.Error("Error marshaling results", "err", err, "run", run)
-		return
-	}
-	if _, err = f.Write(marshaled); err != nil {
-		ctx.Log.Error("Error writing results.json", "err", err, "run", run)
 	}
 }
 
@@ -249,9 +215,6 @@ func v1CompatRunPostProcessor(
 		}
 		if ctx.Config.Grader.V1.UpdateDatabase {
 			v1CompatUpdateDatabase(ctx, db, run)
-		}
-		if ctx.Config.Grader.V1.WriteResults {
-			v1CompatWriteResults(ctx, run)
 		}
 		if ctx.Config.Grader.V1.SendBroadcast {
 			if err := v1CompatBroadcastRun(ctx, db, client, run); err != nil {
@@ -573,7 +536,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 		if err != nil {
 			if os.IsExist(err) {
-				ctx.Log.Info("/run/new/", "guid", guid, "response", "not found")
+				ctx.Log.Info("/run/new/", "guid", guid, "response", "already exists")
 				w.WriteHeader(http.StatusConflict)
 				return
 			}
