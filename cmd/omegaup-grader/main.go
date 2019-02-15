@@ -16,6 +16,7 @@ import (
 	"github.com/omegaup/quark/grader"
 	"io"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path"
 	"path/filepath"
