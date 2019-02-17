@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	git "github.com/lhchavez/git2go"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
@@ -170,6 +171,8 @@ func queEventsProcessor(events <-chan *grader.QueueEvent) {
 }
 
 func main() {
+	defer git.Shutdown()
+
 	flag.Parse()
 
 	if *version {
