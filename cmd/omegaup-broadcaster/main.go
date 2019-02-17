@@ -7,6 +7,7 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
+	"github.com/coreos/go-systemd/daemon"
 	"github.com/gorilla/websocket"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
@@ -368,6 +369,7 @@ func main() {
 		"broadcaster port", ctx.Config.Broadcaster.Port,
 		"events port", ctx.Config.Broadcaster.EventsPort,
 	)
+	daemon.SdNotify(false, "READY=1")
 
 	<-stopChan
 
