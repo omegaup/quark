@@ -658,17 +658,33 @@ func (monitor *InflightMonitor) Add(
 	run.monitor = monitor
 	monitor.mapping[run.Run.AttemptID] = inflight
 	go func() {
+		defer close(inflight.timeout)
+
+		connectTimer := time.NewTimer(monitor.connectTimeout)
+		defer func() {
+			if !connectTimer.Stop() {
+				<-connectTimer.C
+			}
+		}()
 		select {
 		case <-inflight.connected:
-			select {
-			case <-inflight.ready:
-			case <-time.After(monitor.readyTimeout):
-				monitor.timeout(run, inflight.timeout)
-			}
-		case <-time.After(monitor.connectTimeout):
+		case <-connectTimer.C:
 			monitor.timeout(run, inflight.timeout)
+			return
 		}
-		close(inflight.timeout)
+
+		readyTimer := time.NewTimer(monitor.readyTimeout)
+		defer func() {
+			if !readyTimer.Stop() {
+				<-readyTimer.C
+			}
+		}()
+		select {
+		case <-inflight.ready:
+		case <-readyTimer.C:
+			monitor.timeout(run, inflight.timeout)
+			return
+		}
 	}()
 	return inflight
 }
