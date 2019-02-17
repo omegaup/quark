@@ -204,7 +204,7 @@ func processRun(
 }
 
 func registerHandlers(mux *http.ServeMux, db *sql.DB) {
-	runs, err := context().QueueManager.Get(grader.DefaultQueueName)
+	runs, err := graderContext().QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
@@ -220,7 +220,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	mux.HandleFunc("/monitoring/benchmark/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := context()
+		ctx := graderContext()
 		runnerName := peerName(r)
 		f, err := os.OpenFile("benchmark.txt", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
 		if err != nil {
@@ -239,7 +239,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	gradeRe := regexp.MustCompile("/run/grade/(\\d+)/?")
 	mux.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 		res := gradeRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
@@ -352,7 +352,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	mux.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := context()
+		ctx := graderContext()
 		runnerName := peerName(r)
 		ctx.Log.Debug("requesting run", "proto", r.Proto, "client", runnerName)
 
@@ -376,7 +376,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
 	mux.Handle("/run/", http.TimeoutHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
@@ -408,7 +408,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
 	mux.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := context()
+		ctx := graderContext()
 		res := inputRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)

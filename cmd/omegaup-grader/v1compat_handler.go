@@ -208,7 +208,7 @@ func v1CompatRunPostProcessor(
 	finishedRuns <-chan *grader.RunInfo,
 	client *http.Client,
 ) {
-	ctx := context()
+	ctx := graderContext()
 	for run := range finishedRuns {
 		if run.Result.Verdict == "JE" {
 			ctx.Metrics.CounterAdd("grader_runs_je", 1)
@@ -404,26 +404,26 @@ func v1CompatBroadcast(
 }
 
 func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
-	runs, err := context().QueueManager.Get(grader.DefaultQueueName)
+	runs, err := graderContext().QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
-	guids, err := v1CompatGetPendingRuns(context(), db)
+	guids, err := v1CompatGetPendingRuns(graderContext(), db)
 	if err != nil {
 		panic(err)
 	}
 	for _, guid := range guids {
 		if err := v1CompatInjectRuns(
-			context(),
+			graderContext(),
 			runs,
 			db,
 			[]string{guid},
 			grader.QueuePriorityNormal,
 		); err != nil {
-			context().Log.Error("Error injecting run", "guid", guid, "err", err)
+			graderContext().Log.Error("Error injecting run", "guid", guid, "err", err)
 		}
 	}
-	context().Log.Info("Injected pending runs", "count", len(guids))
+	graderContext().Log.Info("Injected pending runs", "count", len(guids))
 
 	transport := &http.Transport{
 		Dial: (&net.Dialer{
@@ -434,15 +434,15 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 	if !*insecure {
-		cert, err := ioutil.ReadFile(context().Config.TLS.CertFile)
+		cert, err := ioutil.ReadFile(graderContext().Config.TLS.CertFile)
 		if err != nil {
 			panic(err)
 		}
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(cert)
 		keyPair, err := tls.LoadX509KeyPair(
-			context().Config.TLS.CertFile,
-			context().Config.TLS.KeyFile,
+			graderContext().Config.TLS.CertFile,
+			graderContext().Config.TLS.KeyFile,
 		)
 		transport.TLSClientConfig = &tls.Config{
 			Certificates: []tls.Certificate{keyPair},
@@ -460,7 +460,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	client := &http.Client{Transport: transport}
 
 	finishedRunsChan := make(chan *grader.RunInfo, 1)
-	context().InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
+	graderContext().InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
 	go v1CompatRunPostProcessor(db, finishedRunsChan, client)
 
 	mux.Handle("/", http.FileServer(&wrappedFileSystem{
@@ -475,7 +475,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	mux.Handle("/metrics", prometheus.Handler())
 
 	mux.HandleFunc("/grader/status/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		runData := ctx.InflightMonitor.GetRunData()
 		status := graderStatusResponse{
@@ -503,7 +503,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/run/new/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 
 		if r.Method != "POST" {
 			ctx.Log.Error("Invalid request", "url", r.URL.Path, "method", r.Method)
@@ -557,7 +557,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 
@@ -580,7 +580,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/run/payload/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 
@@ -612,7 +612,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/run/source/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 
 		if r.Method != "GET" {
 			ctx.Log.Error("Invalid request", "url", r.URL.Path, "method", r.Method)
@@ -670,7 +670,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/run/resource/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 
@@ -727,7 +727,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/broadcast/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 
@@ -746,7 +746,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/reload-config/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := graderContext()
 		ctx.Log.Info("/reload-config/")
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")

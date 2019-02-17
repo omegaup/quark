@@ -2,6 +2,7 @@ package main
 
 import (
 	"container/heap"
+	"context"
 	"encoding/json"
 	"expvar"
 	"flag"
@@ -15,8 +16,11 @@ import (
 	_ "net/http/pprof"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -55,7 +59,7 @@ func loadContext() error {
 	return nil
 }
 
-func context() *common.Context {
+func broadcasterContext() *common.Context {
 	return globalContext.Load().(*common.Context)
 }
 
@@ -201,11 +205,14 @@ func main() {
 		return
 	}
 
+	stopChan := make(chan os.Signal)
+	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
+
 	if err := loadContext(); err != nil {
 		panic(err)
 	}
 
-	ctx := context()
+	ctx := broadcasterContext()
 	expvar.Publish("config", &ctx.Config)
 
 	b := broadcaster.NewBroadcaster(ctx, &PrometheusMetrics{})
@@ -266,7 +273,7 @@ func main() {
 
 	eventsMux := http.NewServeMux()
 	eventsMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context()
+		ctx := broadcasterContext()
 
 		authToken := ""
 		if ouat, _ := r.Cookie("ouat"); ouat != nil {
@@ -318,22 +325,23 @@ func main() {
 
 		subscriber.Run()
 	})
-	ctx.Log.Info(
-		"omegaUp broadcaster started",
-		"broadcaster port", ctx.Config.Broadcaster.Port,
-		"events port", ctx.Config.Broadcaster.EventsPort,
-	)
 	go b.Run()
 
 	eventsHost := ""
 	if ctx.Config.Broadcaster.Proxied {
 		eventsHost = "localhost"
 	}
-	go common.RunServer(
-		&ctx.Config.Broadcaster.TLS,
-		eventsMux,
-		fmt.Sprintf("%s:%d", eventsHost, ctx.Config.Broadcaster.EventsPort),
-		ctx.Config.Broadcaster.Proxied,
+	var servers []*http.Server
+	var wg sync.WaitGroup
+	servers = append(
+		servers,
+		common.RunServer(
+			&ctx.Config.Broadcaster.TLS,
+			eventsMux,
+			&wg,
+			fmt.Sprintf("%s:%d", eventsHost, ctx.Config.Broadcaster.EventsPort),
+			ctx.Config.Broadcaster.Proxied,
+		),
 	)
 	go updateScoreboardLoop(
 		ctx,
@@ -344,10 +352,34 @@ func main() {
 		),
 		contestChan,
 	)
-	common.RunServer(
-		&ctx.Config.TLS,
-		nil,
-		fmt.Sprintf(":%d", ctx.Config.Broadcaster.Port),
-		*insecure,
+	servers = append(
+		servers,
+		common.RunServer(
+			&ctx.Config.TLS,
+			nil,
+			&wg,
+			fmt.Sprintf(":%d", ctx.Config.Broadcaster.Port),
+			*insecure,
+		),
 	)
+
+	ctx.Log.Info(
+		"omegaUp broadcaster started",
+		"broadcaster port", ctx.Config.Broadcaster.Port,
+		"events port", ctx.Config.Broadcaster.EventsPort,
+	)
+
+	<-stopChan
+
+	ctx.Log.Info("Shutting down server...")
+	cancelCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, server := range servers {
+		server.Shutdown(cancelCtx)
+	}
+
+	cancel()
+	wg.Wait()
+
+	ctx.Log.Info("Server gracefully stopped.")
 }

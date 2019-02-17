@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"expvar"
@@ -19,10 +20,13 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
+	"time"
 )
 
 var (
@@ -69,7 +73,7 @@ func loadContext() error {
 	return nil
 }
 
-func context() *grader.Context {
+func graderContext() *grader.Context {
 	return globalContext.Load().(*grader.Context)
 }
 
@@ -136,7 +140,7 @@ func (fs *wrappedFileSystem) Open(name string) (http.File, error) {
 }
 
 func queEventsProcessor(events <-chan *grader.QueueEvent) {
-	ctx := context()
+	ctx := graderContext()
 	for {
 		select {
 		case event, ok := <-events:
@@ -180,21 +184,24 @@ func main() {
 		return
 	}
 
+	stopChan := make(chan os.Signal)
+	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
+
 	if err := loadContext(); err != nil {
 		panic(err)
 	}
 
-	ctx := context()
+	ctx := graderContext()
 	expvar.Publish("config", &ctx.Config)
 
 	expvar.Publish("codemanager", expvar.Func(func() interface{} {
-		return context().InputManager
+		return graderContext().InputManager
 	}))
 	expvar.Publish("queues", expvar.Func(func() interface{} {
-		return context().QueueManager
+		return graderContext().QueueManager
 	}))
 	expvar.Publish("inflight_runs", expvar.Func(func() interface{} {
-		return context().InflightMonitor
+		return graderContext().InflightMonitor
 	}))
 	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
 	go ctx.InputManager.PreloadInputs(
@@ -216,39 +223,67 @@ func main() {
 	}
 
 	setupMetrics(ctx)
-	ctx.Log.Info("omegaUp grader started")
+	var servers []*http.Server
+	var wg sync.WaitGroup
 	{
 		mux := http.NewServeMux()
 		registerEphemeralHandlers(mux)
-		go common.RunServer(
-			&ctx.Config.Grader.Ephemeral.TLS,
-			mux,
-			fmt.Sprintf(":%d", ctx.Config.Grader.Ephemeral.Port),
-			ctx.Config.Grader.Ephemeral.Proxied,
+		servers = append(
+			servers,
+			common.RunServer(
+				&ctx.Config.Grader.Ephemeral.TLS,
+				mux,
+				&wg,
+				fmt.Sprintf(":%d", ctx.Config.Grader.Ephemeral.Port),
+				ctx.Config.Grader.Ephemeral.Proxied,
+			),
 		)
 	}
 
 	queueEventsChan := make(chan *grader.QueueEvent, 1)
-	context().QueueManager.AddEventListener(queueEventsChan)
+	graderContext().QueueManager.AddEventListener(queueEventsChan)
 	go queEventsProcessor(queueEventsChan)
 
 	mux := http.DefaultServeMux
 	if ctx.Config.Grader.V1.Enabled {
 		registerV1CompatHandlers(mux, db)
-		go common.RunServer(
-			&ctx.Config.TLS,
-			mux,
-			fmt.Sprintf(":%d", ctx.Config.Grader.V1.Port),
-			*insecure,
+		servers = append(
+			servers,
+			common.RunServer(
+				&ctx.Config.TLS,
+				mux,
+				&wg,
+				fmt.Sprintf(":%d", ctx.Config.Grader.V1.Port),
+				*insecure,
+			),
 		)
 		mux = http.NewServeMux()
 	}
 
 	registerHandlers(mux, db)
-	common.RunServer(
-		&ctx.Config.TLS,
-		mux,
-		fmt.Sprintf(":%d", ctx.Config.Grader.Port),
-		*insecure,
+	servers = append(
+		servers,
+		common.RunServer(
+			&ctx.Config.TLS,
+			mux,
+			&wg,
+			fmt.Sprintf(":%d", ctx.Config.Grader.Port),
+			*insecure,
+		),
 	)
+
+	ctx.Log.Info("omegaUp grader started")
+
+	<-stopChan
+
+	ctx.Log.Info("Shutting down server...")
+	cancelCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	for _, server := range servers {
+		server.Shutdown(cancelCtx)
+	}
+
+	cancel()
+	wg.Wait()
+
+	ctx.Log.Info("Server gracefully stopped.")
 }

@@ -18,11 +18,11 @@ import (
 
 var (
 	validEphemeralRunFilenames = map[string]struct{}{
-		"details.json": struct{}{},
-		"files.zip":    struct{}{},
-		"logs.txt":     struct{}{},
-		"request.json": struct{}{},
-		"tracing.json": struct{}{},
+		"details.json": {},
+		"files.zip":    {},
+		"logs.txt":     {},
+		"request.json": {},
+		"tracing.json": {},
 	}
 )
 
@@ -227,7 +227,7 @@ func (h *runHandler) saveOriginalRequest(
 }
 
 func (h *runHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := context()
+	ctx := graderContext()
 	ctx.Log.Info("run request", "path", r.URL.Path)
 	tokens := strings.Split(r.URL.Path, "/")
 
@@ -286,7 +286,7 @@ func (h *runHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerEphemeralHandlers(mux *http.ServeMux) {
-	ctx := context()
+	ctx := graderContext()
 	_, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)

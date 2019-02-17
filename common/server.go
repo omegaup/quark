@@ -6,25 +6,31 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"sync"
 )
 
-// RunServer runs an http.Server with the specified http.Handler forever. It
-// will optionally enable TLS.
+// RunServer runs an http.Server with the specified http.Handler in a
+// goroutine. It will optionally enable TLS.
 func RunServer(
 	tlsConfig *TLSConfig,
 	handler http.Handler,
+	wg *sync.WaitGroup,
 	addr string,
 	insecure bool,
-) {
+) *http.Server {
 	server := &http.Server{
 		Addr:    addr,
 		Handler: handler,
 	}
 
 	if insecure {
-		if err := server.ListenAndServe(); err != nil {
-			panic(err)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				panic(err)
+			}
+		}()
 	} else {
 		cert, err := ioutil.ReadFile(tlsConfig.CertFile)
 		if err != nil {
@@ -40,14 +46,18 @@ func RunServer(
 		config.BuildNameToCertificate()
 		server.TLSConfig = config
 
-		err = server.ListenAndServeTLS(
-			tlsConfig.CertFile,
-			tlsConfig.KeyFile,
-		)
-		if err != nil {
-			panic(err)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := server.ListenAndServeTLS(
+				tlsConfig.CertFile,
+				tlsConfig.KeyFile,
+			); err != http.ErrServerClosed {
+				panic(err)
+			}
+		}()
 	}
+	return server
 }
 
 // AcceptsMimeType returns whether the provided MIME type was mentioned in the
