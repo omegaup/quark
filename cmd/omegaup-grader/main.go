@@ -1,6 +1,6 @@
 package main
 
-//go:generate go-bindata -nomemcopy data/dist/...
+//go:generate ${GOPATH}/bin/go-bindata -nomemcopy data/dist/...
 
 import (
 	"bytes"
