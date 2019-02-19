@@ -217,6 +217,7 @@ func (h *runHandler) saveOriginalRequest(
 	// operation fail altogether if it does.
 	zw := gzip.NewWriter(f)
 	if err = json.NewEncoder(zw).Encode(ephemeralRunRequest); err != nil {
+		zw.Close()
 		h.ctx.Log.Error("Error marshaling json", "err", err)
 		return err
 	}

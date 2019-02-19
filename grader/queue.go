@@ -421,6 +421,7 @@ func (run *RunContext) Close() {
 		defer fd.Close()
 		gz := gzip.NewWriter(fd)
 		if _, err := gz.Write(run.context.LogBuffer()); err != nil {
+			gz.Close()
 			run.Log.Error("Unable to write log file", "err", err)
 			return
 		}
@@ -440,6 +441,7 @@ func (run *RunContext) Close() {
 		defer fd.Close()
 		gz := gzip.NewWriter(fd)
 		if _, err := gz.Write(run.context.TraceBuffer()); err != nil {
+			gz.Close()
 			run.Log.Error("Unable to upload traces", "err", err)
 			return
 		}
