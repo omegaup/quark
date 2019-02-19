@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -306,7 +307,11 @@ func TestInputFactory(t *testing.T) {
 		{"0000000000000000000000000000000000000004", false},
 		{"4bba61b5499a7a511eb515594f3293a8741516ad", true},
 	}
-	factory := NewInputFactory(http.DefaultClient, &ctx.Config)
+	baseURL, err := url.Parse(ctx.Config.Runner.GraderURL)
+	if err != nil {
+		panic(err)
+	}
+	factory := NewInputFactory(http.DefaultClient, &ctx.Config, baseURL)
 	for _, het := range hashentries {
 		input, err := inputManager.Add(het.hash, factory)
 		if input != nil {

@@ -23,18 +23,21 @@ import (
 // InputFactory is a common.InputFactory that can fetch the test case data from
 // the grader.
 type InputFactory struct {
-	client *http.Client
-	config *common.Config
+	client  *http.Client
+	config  *common.Config
+	baseURL *url.URL
 }
 
 // NewInputFactory returns a new InputFactory.
 func NewInputFactory(
 	client *http.Client,
 	config *common.Config,
+	baseURL *url.URL,
 ) common.InputFactory {
 	return &InputFactory{
-		client: client,
-		config: config,
+		client:  client,
+		config:  config,
+		baseURL: baseURL,
 	}
 }
 
@@ -43,11 +46,7 @@ func (factory *InputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
-	baseURL, err := url.Parse(factory.config.Runner.GraderURL)
-	if err != nil {
-		panic(err)
-	}
-	requestURL, err := baseURL.Parse(fmt.Sprintf("input/%s/", hash))
+	requestURL, err := factory.baseURL.Parse(fmt.Sprintf("input/%s/", hash))
 	if err != nil {
 		panic(err)
 	}

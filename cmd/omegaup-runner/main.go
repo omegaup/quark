@@ -12,7 +12,6 @@ import (
 	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
-	"math/big"
 	"math/rand"
 	"mime/multipart"
 	"net"
@@ -89,7 +88,7 @@ func main() {
 	}
 
 	if *noop {
-		sandbox = &noopSandbox{}
+		sandbox = &runner.NoopSandbox{}
 	} else {
 		sandbox = &runner.OmegajailSandbox{}
 	}
@@ -433,39 +432,7 @@ func gradeAndUploadResults(
 	}
 
 	if *noop {
-		// The no-op runner judges everything as AC.
-		result.Verdict = "AC"
-		result.Score = big.NewRat(1, 1)
-		result.ContestScore = new(big.Rat).Mul(
-			result.Score,
-			result.MaxScore,
-		)
-
-		for i := range result.Groups {
-			group := &result.Groups[i]
-			group.Score = new(big.Rat).Add(
-				&big.Rat{},
-				group.MaxScore,
-			)
-			group.ContestScore = new(big.Rat).Mul(
-				group.MaxScore,
-				result.ContestScore,
-			)
-
-			for j := range group.Cases {
-				caseResult := &group.Cases[j]
-				caseResult.Score = new(big.Rat).Add(
-					&big.Rat{},
-					caseResult.MaxScore,
-				)
-				caseResult.ContestScore = new(big.Rat).Mul(
-					caseResult.MaxScore,
-					result.ContestScore,
-				)
-				caseResult.Verdict = "AC"
-
-			}
-		}
+		runner.NoopSandboxFixupResult(result)
 	}
 
 	// Send results.
@@ -537,9 +504,13 @@ func gradeRun(
 	ctx.EventCollector.Add(ioLockEvent)
 
 	inputEvent := ctx.EventFactory.NewCompleteEvent("input")
+	baseURL, err := url.Parse(ctx.Config.Runner.GraderURL)
+	if err != nil {
+		panic(err)
+	}
 	input, err := inputManager.Add(
 		run.InputHash,
-		runner.NewInputFactory(client, &ctx.Config),
+		runner.NewInputFactory(client, &ctx.Config, baseURL),
 	)
 	if err != nil {
 		return nil, err

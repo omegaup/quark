@@ -78,8 +78,8 @@ func graderContext() *grader.Context {
 	return globalContext.Load().(*grader.Context)
 }
 
-func peerName(r *http.Request) string {
-	if *insecure {
+func peerName(r *http.Request, insecure bool) string {
+	if insecure {
 		return r.RemoteAddr
 	}
 	return r.TLS.PeerCertificates[0].Subject.CommonName
@@ -228,7 +228,7 @@ func main() {
 	var wg sync.WaitGroup
 	{
 		mux := http.NewServeMux()
-		registerEphemeralHandlers(mux)
+		registerEphemeralHandlers(ctx, mux)
 		servers = append(
 			servers,
 			common.RunServer(
@@ -261,7 +261,7 @@ func main() {
 		mux = http.NewServeMux()
 	}
 
-	registerHandlers(mux, db)
+	registerHandlers(ctx, mux, db, *insecure)
 	servers = append(
 		servers,
 		common.RunServer(

@@ -81,8 +81,9 @@ func processRun(
 	r *http.Request,
 	attemptID uint64,
 	runCtx *grader.RunContext,
+	insecure bool,
 ) *processRunStatus {
-	runnerName := peerName(r)
+	runnerName := peerName(r, insecure)
 	// TODO: make this a per-attempt directory so we can only commit directories
 	// that will be not retried.
 	gradeDir := runCtx.GradeDir
@@ -203,8 +204,8 @@ func processRun(
 	return &processRunStatus{http.StatusOK, false}
 }
 
-func registerHandlers(mux *http.ServeMux, db *sql.DB) {
-	runs, err := graderContext().QueueManager.Get(grader.DefaultQueueName)
+func registerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB, insecure bool) {
+	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
@@ -220,8 +221,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	mux.HandleFunc("/monitoring/benchmark/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := graderContext()
-		runnerName := peerName(r)
+		runnerName := peerName(r, insecure)
 		f, err := os.OpenFile("benchmark.txt", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
 		if err != nil {
 			ctx.Log.Error("Failed to open benchmark file", "err", err)
@@ -239,7 +239,6 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	gradeRe := regexp.MustCompile("/run/grade/(\\d+)/?")
 	mux.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
 		res := gradeRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
@@ -352,8 +351,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	mux.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := graderContext()
-		runnerName := peerName(r)
+		runnerName := peerName(r, insecure)
 		ctx.Log.Debug("requesting run", "proto", r.Proto, "client", runnerName)
 
 		runCtx, _, ok := runs.GetRun(
@@ -376,7 +374,6 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
 	mux.Handle("/run/", http.TimeoutHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
@@ -389,7 +386,7 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		result := processRun(r, attemptID, runCtx)
+		result := processRun(r, attemptID, runCtx, insecure)
 		w.WriteHeader(result.status)
 		if !result.retry {
 			// The run either finished correctly or encountered a fatal error.
@@ -408,7 +405,6 @@ func registerHandlers(mux *http.ServeMux, db *sql.DB) {
 	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
 	mux.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		ctx := graderContext()
 		res := inputRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
 			w.WriteHeader(http.StatusNotFound)
