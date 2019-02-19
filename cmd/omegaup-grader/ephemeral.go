@@ -34,6 +34,9 @@ type runHandler struct {
 func (h *runHandler) validateRequest(
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 ) error {
+	if ephemeralRunRequest.Input.Limits == nil {
+		return nil
+	}
 	// Silently apply some caps.
 	ephemeralRunRequest.Input.Limits.TimeLimit = common.MinDuration(
 		h.ctx.Config.Grader.Ephemeral.CaseTimeLimit,
