@@ -199,7 +199,7 @@ type LiteralInputFactory struct {
 	runtimePath      string
 	files            map[string][]byte
 	hash             string
-	tarfile          bytes.Buffer
+	tarfile          *bytes.Buffer
 	uncompressedSize int64
 }
 
@@ -216,7 +216,8 @@ func NewLiteralInputFactory(
 		settings: ProblemSettings{
 			Slow: true,
 		},
-		files: make(map[string][]byte),
+		files:   make(map[string][]byte),
+		tarfile: &bytes.Buffer{},
 	}
 
 	// Validator
@@ -376,7 +377,7 @@ func NewLiteralInputFactory(
 		factory.uncompressedSize += int64(len(contents))
 	}
 
-	if err := createTar(&factory.tarfile, factory.files); err != nil {
+	if err := createTar(factory.tarfile, factory.files); err != nil {
 		return nil, err
 	}
 
@@ -396,6 +397,11 @@ func (factory *LiteralInputFactory) NewInput(hash string, mgr *InputManager) Inp
 	if hash != factory.hash {
 		return nil
 	}
+	if factory.tarfile == nil {
+		return nil
+	}
+	passedTarfile := factory.tarfile
+	factory.tarfile = nil
 	return &inMemoryInput{
 		BaseInput: *NewBaseInput(
 			factory.hash,
@@ -412,7 +418,7 @@ func (factory *LiteralInputFactory) NewInput(hash string, mgr *InputManager) Inp
 			fmt.Sprintf("%s/%s", hash[:2], hash[2:]),
 		),
 		files:            &factory.files,
-		tarfile:          &factory.tarfile,
+		tarfile:          passedTarfile,
 		settings:         &factory.settings,
 		persistMode:      factory.persistMode,
 		uncompressedSize: factory.uncompressedSize,
@@ -469,6 +475,7 @@ func (input *inMemoryInput) Persist() error {
 			return nil
 		}
 		input.Commit(int64(len(input.tarfile.Bytes())))
+		input.tarfile = nil
 	}
 	if input.persistMode == LiteralPersistRunner {
 		if err := os.MkdirAll(path.Dir(input.path), 0755); err != nil {

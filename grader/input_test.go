@@ -121,10 +121,6 @@ func TestPreloadInputs(t *testing.T) {
 			t.Fatalf("Failed to create Input: %q", err)
 		}
 		AplusBHash = AplusBInput.Hash()
-		if err = AplusBInput.Persist(); err != nil {
-			t.Fatalf("Failed to persist Input: %q", err)
-		}
-		AplusBInput.Release(AplusBInput)
 	}
 	ctx.InputManager.PreloadInputs(
 		cachePath,
