@@ -194,13 +194,8 @@ func LanguageFileExtension(language string) string {
 // LiteralInputFactory is an InputFactory that will return an Input version of
 // the specified LiteralInput when asked for an input.
 type LiteralInputFactory struct {
-	settings         ProblemSettings
-	persistMode      LiteralPersistMode
-	runtimePath      string
-	files            map[string][]byte
-	hash             string
-	tarfile          *bytes.Buffer
-	uncompressedSize int64
+	input *inMemoryInput
+	hash  string
 }
 
 // NewLiteralInputFactory validates the LiteralInput and stores it so it can be
@@ -210,15 +205,11 @@ func NewLiteralInputFactory(
 	runtimePath string,
 	persistMode LiteralPersistMode,
 ) (*LiteralInputFactory, error) {
-	factory := &LiteralInputFactory{
-		runtimePath: runtimePath,
-		persistMode: persistMode,
-		settings: ProblemSettings{
-			Slow: true,
-		},
-		files:   make(map[string][]byte),
-		tarfile: &bytes.Buffer{},
+	settings := &ProblemSettings{
+		Slow: true,
 	}
+	files := &map[string][]byte{}
+	tarfile := &bytes.Buffer{}
 
 	// Validator
 	validator := input.Validator
@@ -230,25 +221,25 @@ func NewLiteralInputFactory(
 		if validator.CustomValidator == nil {
 			return nil, errors.New("custom validator empty")
 		}
-		factory.settings.Validator.Name = validator.Name
-		factory.settings.Validator.Lang = &validator.CustomValidator.Language
+		settings.Validator.Name = validator.Name
+		settings.Validator.Lang = &validator.CustomValidator.Language
 		validatorFilename := fmt.Sprintf(
 			"validator.%s",
 			validator.CustomValidator.Language,
 		)
-		factory.files[validatorFilename] = []byte(validator.CustomValidator.Source)
+		(*files)[validatorFilename] = []byte(validator.CustomValidator.Source)
 		if validator.CustomValidator.Limits == nil {
 			limits := DefaultValidatorLimits
 			validator.CustomValidator.Limits = &limits
 		}
 	case "token", "token-caseless", "literal":
-		factory.settings.Validator.Name = validator.Name
+		settings.Validator.Name = validator.Name
 	case "token-numeric":
-		factory.settings.Validator.Name = validator.Name
+		settings.Validator.Name = validator.Name
 		if validator.Tolerance != nil {
-			factory.settings.Validator.Tolerance = validator.Tolerance
+			settings.Validator.Tolerance = validator.Tolerance
 		} else {
-			factory.settings.Validator.Tolerance = &DefaultValidatorTolerance
+			settings.Validator.Tolerance = &DefaultValidatorTolerance
 		}
 	default:
 		return nil, fmt.Errorf("invalid validator %q", validator.Name)
@@ -256,28 +247,28 @@ func NewLiteralInputFactory(
 
 	// Limits
 	if input.Limits != nil {
-		factory.settings.Limits.TimeLimit = MinDuration(
+		settings.Limits.TimeLimit = MinDuration(
 			input.Limits.TimeLimit,
 			DefaultLiteralLimitSettings.TimeLimit,
 		)
-		factory.settings.Limits.MemoryLimit = MinBytes(
+		settings.Limits.MemoryLimit = MinBytes(
 			input.Limits.MemoryLimit,
 			DefaultLiteralLimitSettings.MemoryLimit,
 		)
-		factory.settings.Limits.OverallWallTimeLimit = MinDuration(
+		settings.Limits.OverallWallTimeLimit = MinDuration(
 			input.Limits.OverallWallTimeLimit,
 			DefaultLiteralLimitSettings.OverallWallTimeLimit,
 		)
-		factory.settings.Limits.ExtraWallTime = MinDuration(
+		settings.Limits.ExtraWallTime = MinDuration(
 			input.Limits.ExtraWallTime,
 			DefaultLiteralLimitSettings.ExtraWallTime,
 		)
-		factory.settings.Limits.OutputLimit = MinBytes(
+		settings.Limits.OutputLimit = MinBytes(
 			input.Limits.OutputLimit,
 			DefaultLiteralLimitSettings.OutputLimit,
 		)
 	} else {
-		factory.settings.Limits = DefaultLiteralLimitSettings
+		settings.Limits = DefaultLiteralLimitSettings
 	}
 
 	// Cases
@@ -306,19 +297,19 @@ func NewLiteralInputFactory(
 			groups[tokens[0]] = make([]CaseSettings, 0)
 		}
 		groups[tokens[0]] = append(groups[tokens[0]], cs)
-		factory.files[fmt.Sprintf("cases/%s.in", name)] = []byte(c.Input)
-		factory.files[fmt.Sprintf("cases/%s.out", name)] = []byte(c.ExpectedOutput)
+		(*files)[fmt.Sprintf("cases/%s.in", name)] = []byte(c.Input)
+		(*files)[fmt.Sprintf("cases/%s.out", name)] = []byte(c.ExpectedOutput)
 	}
-	factory.settings.Cases = make([]GroupSettings, 0)
+	settings.Cases = make([]GroupSettings, 0)
 	for name, g := range groups {
 		group := GroupSettings{
 			Name:  name,
 			Cases: g,
 		}
 		sort.Sort(ByCaseName(group.Cases))
-		factory.settings.Cases = append(factory.settings.Cases, group)
+		settings.Cases = append(settings.Cases, group)
 	}
-	sort.Sort(ByGroupName(factory.settings.Cases))
+	sort.Sort(ByGroupName(settings.Cases))
 
 	// Interactive
 	if input.Interactive != nil {
@@ -330,9 +321,9 @@ func NewLiteralInputFactory(
 			return nil, err
 		}
 		interactive.ParentLang = LanguageFileExtension(interactive.ParentLang)
-		factory.files[fmt.Sprintf("interactive/Main.%s", interactive.ParentLang)] =
+		(*files)[fmt.Sprintf("interactive/Main.%s", interactive.ParentLang)] =
 			[]byte(interactive.MainSource)
-		factory.files[fmt.Sprintf("interactive/%s.idl", interactive.ModuleName)] =
+		(*files)[fmt.Sprintf("interactive/%s.idl", interactive.ModuleName)] =
 			[]byte(interactive.IDLSource)
 		cmd := exec.Command(
 			"/usr/bin/java",
@@ -355,7 +346,7 @@ func NewLiteralInputFactory(
 			return nil, err
 		}
 		decoder := json.NewDecoder(stdout)
-		if err := decoder.Decode(&factory.settings.Interactive); err != nil {
+		if err := decoder.Decode(&settings.Interactive); err != nil {
 			var buf bytes.Buffer
 			// Best-effort stderr reading.
 			io.Copy(&buf, stderr)
@@ -367,62 +358,62 @@ func NewLiteralInputFactory(
 		}
 	}
 
-	marshaledBytes, err := json.MarshalIndent(factory.settings, "", "  ")
+	marshaledBytes, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	factory.files["settings.json"] = marshaledBytes
+	(*files)["settings.json"] = marshaledBytes
 
-	for _, contents := range factory.files {
-		factory.uncompressedSize += int64(len(contents))
+	var uncompressedSize int64
+	for _, contents := range *files {
+		uncompressedSize += int64(len(contents))
 	}
 
-	if err := createTar(factory.tarfile, factory.files); err != nil {
+	if err := createTar(tarfile, files); err != nil {
 		return nil, err
 	}
 
 	hash := sha1.New()
-	if _, err := io.Copy(hash, bytes.NewReader(factory.tarfile.Bytes())); err != nil {
+	if _, err := io.Copy(hash, bytes.NewReader(tarfile.Bytes())); err != nil {
 		return nil, err
 	}
 
-	factory.hash = fmt.Sprintf("%02x", hash.Sum(nil))
-
-	return factory, nil
+	inputHash := fmt.Sprintf("%02x", hash.Sum(nil))
+	return &LiteralInputFactory{
+		hash: inputHash,
+		input: &inMemoryInput{
+			archivePath: path.Join(
+				runtimePath,
+				"cache",
+				fmt.Sprintf("%s/%s.tar.gz", inputHash[:2], inputHash[2:]),
+			),
+			path: path.Join(
+				runtimePath,
+				"input",
+				fmt.Sprintf("%s/%s", inputHash[:2], inputHash[2:]),
+			),
+			files:            files,
+			tarfile:          tarfile,
+			settings:         settings,
+			persistMode:      persistMode,
+			uncompressedSize: uncompressedSize,
+		},
+	}, nil
 }
 
 // NewInput returns the LiteralInput that was specified as the
 // LiteralInputFactory's Input in its constructor.
 func (factory *LiteralInputFactory) NewInput(hash string, mgr *InputManager) Input {
-	if hash != factory.hash {
+	if hash != factory.hash || factory.input == nil {
 		return nil
 	}
-	if factory.tarfile == nil {
-		return nil
-	}
-	passedTarfile := factory.tarfile
-	factory.tarfile = nil
-	return &inMemoryInput{
-		BaseInput: *NewBaseInput(
-			factory.hash,
-			mgr,
-		),
-		archivePath: path.Join(
-			factory.runtimePath,
-			"cache",
-			fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
-		),
-		path: path.Join(
-			factory.runtimePath,
-			"input",
-			fmt.Sprintf("%s/%s", hash[:2], hash[2:]),
-		),
-		files:            &factory.files,
-		tarfile:          passedTarfile,
-		settings:         &factory.settings,
-		persistMode:      factory.persistMode,
-		uncompressedSize: factory.uncompressedSize,
-	}
+	// Release the underlying input from the factory so that all the
+	// memory-consuming elements of it are not unnecessarily held onto longer
+	// than needed.
+	passedInput := factory.input
+	factory.input = nil
+	passedInput.BaseInput = *NewBaseInput(hash, mgr)
+	return passedInput
 }
 
 // Hash returns the hash of the literal input.
@@ -475,7 +466,11 @@ func (input *inMemoryInput) Persist() error {
 			return nil
 		}
 		input.Commit(int64(len(input.tarfile.Bytes())))
+
+		// Now that the input has been persisted, release the memory-consuming elements.
 		input.tarfile = nil
+		input.files = nil
+		input.settings = nil
 	}
 	if input.persistMode == LiteralPersistRunner {
 		if err := os.MkdirAll(path.Dir(input.path), 0755); err != nil {
@@ -551,14 +546,14 @@ func (input *inMemoryInput) Delete() error {
 	return nil
 }
 
-func createTar(buf *bytes.Buffer, files map[string][]byte) error {
+func createTar(buf *bytes.Buffer, files *map[string][]byte) error {
 	gz := gzip.NewWriter(buf)
 	defer gz.Close()
 
 	archive := tar.NewWriter(gz)
 	defer archive.Close()
 
-	for name, contents := range files {
+	for name, contents := range *files {
 		hdr := &tar.Header{
 			Name: name,
 			Mode: 0644,
