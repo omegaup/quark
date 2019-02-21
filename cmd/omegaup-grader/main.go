@@ -140,7 +140,7 @@ func (fs *wrappedFileSystem) Open(name string) (http.File, error) {
 	return nil, os.ErrNotExist
 }
 
-func queEventsProcessor(events <-chan *grader.QueueEvent) {
+func queueEventsProcessor(events <-chan *grader.QueueEvent) {
 	ctx := graderContext()
 	for {
 		select {
@@ -243,7 +243,7 @@ func main() {
 
 	queueEventsChan := make(chan *grader.QueueEvent, 1)
 	graderContext().QueueManager.AddEventListener(queueEventsChan)
-	go queEventsProcessor(queueEventsChan)
+	go queueEventsProcessor(queueEventsChan)
 
 	mux := http.DefaultServeMux
 	if ctx.Config.Grader.V1.Enabled {
