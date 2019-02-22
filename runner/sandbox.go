@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"io"
 	"io/ioutil"
@@ -85,14 +86,14 @@ func (preloader *inputPreloader) release() {
 
 // RunMetadata represents the results of an execution.
 type RunMetadata struct {
-	Verdict    string      `json:"verdict"`
-	ExitStatus int         `json:"exit_status,omitempty"`
-	Time       float64     `json:"time"`
-	SystemTime float64     `json:"sys_time"`
-	WallTime   float64     `json:"wall_time"`
-	Memory     common.Byte `json:"memory"`
-	Signal     *string     `json:"signal,omitempty"`
-	Syscall    *string     `json:"syscall,omitempty"`
+	Verdict    string    `json:"verdict"`
+	ExitStatus int       `json:"exit_status,omitempty"`
+	Time       float64   `json:"time"`
+	SystemTime float64   `json:"sys_time"`
+	WallTime   float64   `json:"wall_time"`
+	Memory     base.Byte `json:"memory"`
+	Signal     *string   `json:"signal,omitempty"`
+	Syscall    *string   `json:"syscall,omitempty"`
 }
 
 func (m *RunMetadata) String() string {
@@ -399,10 +400,10 @@ func (*OmegajailSandbox) Run(
 	}
 
 	// 16MB + memory limit to prevent some RTE
-	memoryLimit := common.Byte(16)*common.Mebibyte + limits.MemoryLimit
+	memoryLimit := base.Byte(16)*base.Mebibyte + limits.MemoryLimit
 	// "640MB should be enough for anybody"
 	hardLimit := strconv.FormatInt(
-		common.MinBytes(common.Byte(640)*common.Mebibyte, memoryLimit).Bytes(),
+		base.MinBytes(base.Byte(640)*base.Mebibyte, memoryLimit).Bytes(),
 		10,
 	)
 
@@ -574,7 +575,7 @@ func parseMetaFile(
 			meta.WallTime /= 1e6
 		case "mem":
 			memoryBytes, _ := strconv.ParseInt(tokens[1], 10, 64)
-			meta.Memory = common.Byte(memoryBytes)
+			meta.Memory = base.Byte(memoryBytes)
 		case "signal":
 			meta.Signal = &tokens[1]
 		case "signal_number":
@@ -614,9 +615,9 @@ func parseMetaFile(
 	}
 
 	if lang == "java" {
-		meta.Memory = common.MaxBytes(0, meta.Memory-ctx.Config.Runner.JavaVMEstimatedSize)
+		meta.Memory = base.MaxBytes(0, meta.Memory-ctx.Config.Runner.JavaVMEstimatedSize)
 	} else if lang == "cs" {
-		meta.Memory = common.MaxBytes(0, meta.Memory-ctx.Config.Runner.ClrVMEstimatedSize)
+		meta.Memory = base.MaxBytes(0, meta.Memory-ctx.Config.Runner.ClrVMEstimatedSize)
 	} else if lang == "kj" || lang == "kp" {
 		// Karel programs have a unique exit status per each one of the failure
 		// modes. Map 1 (INSTRUCTION) to TLE.

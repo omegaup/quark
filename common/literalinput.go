@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -122,11 +123,11 @@ type LiteralInteractiveSettings struct {
 // Default values for some of the settings.
 var (
 	DefaultLiteralLimitSettings = LimitsSettings{
-		TimeLimit:            Duration(time.Duration(10) * time.Second),
-		MemoryLimit:          Gibibyte + Gibibyte/2,
-		OverallWallTimeLimit: Duration(time.Duration(10) * time.Second),
-		ExtraWallTime:        Duration(0),
-		OutputLimit:          Byte(2) * Mebibyte,
+		TimeLimit:            base.Duration(time.Duration(10) * time.Second),
+		MemoryLimit:          base.Gibibyte + base.Gibibyte/2,
+		OverallWallTimeLimit: base.Duration(time.Duration(10) * time.Second),
+		ExtraWallTime:        base.Duration(0),
+		OutputLimit:          base.Byte(2) * base.Mebibyte,
 	}
 
 	DefaultLiteralValidatorSettings = LiteralValidatorSettings{
@@ -247,23 +248,23 @@ func NewLiteralInputFactory(
 
 	// Limits
 	if input.Limits != nil {
-		settings.Limits.TimeLimit = MinDuration(
+		settings.Limits.TimeLimit = base.MinDuration(
 			input.Limits.TimeLimit,
 			DefaultLiteralLimitSettings.TimeLimit,
 		)
-		settings.Limits.MemoryLimit = MinBytes(
+		settings.Limits.MemoryLimit = base.MinBytes(
 			input.Limits.MemoryLimit,
 			DefaultLiteralLimitSettings.MemoryLimit,
 		)
-		settings.Limits.OverallWallTimeLimit = MinDuration(
+		settings.Limits.OverallWallTimeLimit = base.MinDuration(
 			input.Limits.OverallWallTimeLimit,
 			DefaultLiteralLimitSettings.OverallWallTimeLimit,
 		)
-		settings.Limits.ExtraWallTime = MinDuration(
+		settings.Limits.ExtraWallTime = base.MinDuration(
 			input.Limits.ExtraWallTime,
 			DefaultLiteralLimitSettings.ExtraWallTime,
 		)
-		settings.Limits.OutputLimit = MinBytes(
+		settings.Limits.OutputLimit = base.MinBytes(
 			input.Limits.OutputLimit,
 			DefaultLiteralLimitSettings.OutputLimit,
 		)

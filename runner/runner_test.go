@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"io/ioutil"
 	"math/big"
@@ -176,11 +177,11 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				Name: "token-numeric",
 			},
 			Limits: &common.LimitsSettings{
-				TimeLimit:            common.Duration(time.Second),
-				MemoryLimit:          64 * common.Mebibyte,
-				OverallWallTimeLimit: common.Duration(time.Duration(5) * time.Second),
-				ExtraWallTime:        common.Duration(0),
-				OutputLimit:          10 * common.Kibibyte,
+				TimeLimit:            base.Duration(time.Second),
+				MemoryLimit:          64 * base.Mebibyte,
+				OverallWallTimeLimit: base.Duration(time.Duration(5) * time.Second),
+				ExtraWallTime:        base.Duration(0),
+				OutputLimit:          10 * base.Kibibyte,
 			},
 		},
 		ctx.Config.Runner.RuntimePath,

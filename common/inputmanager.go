@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -191,7 +192,7 @@ type InputManager struct {
 	evictList *list.List
 	ctx       *Context
 	totalSize int64
-	sizeLimit Byte
+	sizeLimit base.Byte
 }
 
 // inputEntry represents an entry in the InputManager.

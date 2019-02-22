@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"github.com/elazarl/go-bindata-assetfs"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner"
@@ -38,15 +39,15 @@ func (h *runHandler) validateRequest(
 		return nil
 	}
 	// Silently apply some caps.
-	ephemeralRunRequest.Input.Limits.TimeLimit = common.MinDuration(
+	ephemeralRunRequest.Input.Limits.TimeLimit = base.MinDuration(
 		h.ctx.Config.Grader.Ephemeral.CaseTimeLimit,
 		ephemeralRunRequest.Input.Limits.TimeLimit,
 	)
-	ephemeralRunRequest.Input.Limits.OverallWallTimeLimit = common.MinDuration(
+	ephemeralRunRequest.Input.Limits.OverallWallTimeLimit = base.MinDuration(
 		h.ctx.Config.Grader.Ephemeral.OverallWallTimeLimit,
 		ephemeralRunRequest.Input.Limits.OverallWallTimeLimit,
 	)
-	ephemeralRunRequest.Input.Limits.MemoryLimit = common.MinBytes(
+	ephemeralRunRequest.Input.Limits.MemoryLimit = base.MinBytes(
 		h.ctx.Config.Grader.Ephemeral.MemoryLimit,
 		ephemeralRunRequest.Input.Limits.MemoryLimit,
 	)

@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"io"
 	"io/ioutil"
 	"os"
@@ -14,7 +15,7 @@ import (
 	"testing"
 )
 
-func newTestInputManager(sizeLimit Byte) *InputManager {
+func newTestInputManager(sizeLimit base.Byte) *InputManager {
 	config := DefaultConfig()
 	config.Logging.File = "stderr"
 	config.Tracing.Enabled = false
@@ -93,12 +94,12 @@ func (factory *testCachedInputFactory) GetInputHash(
 }
 
 func TestInputManagerSerializability(t *testing.T) {
-	inputManager := newTestInputManager(Kibibyte)
+	inputManager := newTestInputManager(base.Kibibyte)
 	inputManager.MarshalJSON()
 }
 
 func TestInputManager(t *testing.T) {
-	inputManager := newTestInputManager(Kibibyte)
+	inputManager := newTestInputManager(base.Kibibyte)
 
 	if inputManager.Size() != 0 {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 0)
@@ -178,7 +179,7 @@ func TestPreloadInputs(t *testing.T) {
 			t.Fatalf("ioutil.WriteFile failed with %q", err)
 		}
 	}
-	inputManager := newTestInputManager(Kibibyte)
+	inputManager := newTestInputManager(base.Kibibyte)
 	if err := inputManager.PreloadInputs(
 		dirname,
 		&testCachedInputFactory{path: dirname},

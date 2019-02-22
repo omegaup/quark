@@ -3,17 +3,18 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	base "github.com/omegaup/go-base"
 	"math/big"
 	"time"
 )
 
 // LimitsSettings represents runtime limits for the Input.
 type LimitsSettings struct {
-	ExtraWallTime        Duration
-	MemoryLimit          Byte
-	OutputLimit          Byte
-	OverallWallTimeLimit Duration
-	TimeLimit            Duration
+	ExtraWallTime        base.Duration
+	MemoryLimit          base.Byte
+	OutputLimit          base.Byte
+	OverallWallTimeLimit base.Duration
+	TimeLimit            base.Duration
 }
 
 // ValidatorSettings represents the options used to validate outputs.
@@ -134,19 +135,19 @@ type ProblemSettings struct {
 var (
 	// DefaultValidatorLimits specifies the default limits for a validator.
 	DefaultValidatorLimits = LimitsSettings{
-		ExtraWallTime:        Duration(0),
-		MemoryLimit:          Byte(256) * Mebibyte,
-		OutputLimit:          Byte(10) * Kibibyte,
-		OverallWallTimeLimit: Duration(time.Duration(5) * time.Second),
-		TimeLimit:            Duration(time.Duration(1) * time.Second),
+		ExtraWallTime:        base.Duration(0),
+		MemoryLimit:          base.Byte(256) * base.Mebibyte,
+		OutputLimit:          base.Byte(10) * base.Kibibyte,
+		OverallWallTimeLimit: base.Duration(time.Duration(5) * time.Second),
+		TimeLimit:            base.Duration(time.Duration(1) * time.Second),
 	}
 
 	// DefaultLimits specifies the default limits for a problem.
 	DefaultLimits = LimitsSettings{
-		ExtraWallTime:        Duration(0),
-		MemoryLimit:          Byte(32) * Mebibyte,
-		OutputLimit:          Byte(10) * Kibibyte,
-		OverallWallTimeLimit: Duration(time.Duration(1) * time.Minute),
-		TimeLimit:            Duration(time.Duration(1) * time.Second),
+		ExtraWallTime:        base.Duration(0),
+		MemoryLimit:          base.Byte(32) * base.Mebibyte,
+		OutputLimit:          base.Byte(10) * base.Kibibyte,
+		OverallWallTimeLimit: base.Duration(time.Duration(1) * time.Minute),
+		TimeLimit:            base.Duration(time.Duration(1) * time.Second),
 	}
 )

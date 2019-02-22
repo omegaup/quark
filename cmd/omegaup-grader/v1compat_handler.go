@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/elazarl/go-bindata-assetfs"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
@@ -128,21 +129,21 @@ func v1CompatBroadcastRun(
 		message.Contest = *run.Contest
 	}
 	type serializedRun struct {
-		User         string      `json:"username"`
-		Contest      *string     `json:"contest_alias,omitempty"`
-		Problemset   *int64      `json:"problemset,omitempty"`
-		Problem      string      `json:"alias"`
-		GUID         string      `json:"guid"`
-		Runtime      float64     `json:"runtime"`
-		Penalty      float64     `json:"penalty"`
-		Memory       common.Byte `json:"memory"`
-		Score        float64     `json:"score"`
-		ContestScore float64     `json:"contest_score"`
-		Status       string      `json:"status"`
-		Verdict      string      `json:"verdict"`
-		SubmitDelay  float64     `json:"submit_delay"`
-		Time         float64     `json:"time"`
-		Language     string      `json:"language"`
+		User         string    `json:"username"`
+		Contest      *string   `json:"contest_alias,omitempty"`
+		Problemset   *int64    `json:"problemset,omitempty"`
+		Problem      string    `json:"alias"`
+		GUID         string    `json:"guid"`
+		Runtime      float64   `json:"runtime"`
+		Penalty      float64   `json:"penalty"`
+		Memory       base.Byte `json:"memory"`
+		Score        float64   `json:"score"`
+		ContestScore float64   `json:"contest_score"`
+		Status       string    `json:"status"`
+		Verdict      string    `json:"verdict"`
+		SubmitDelay  float64   `json:"submit_delay"`
+		Time         float64   `json:"time"`
+		Language     string    `json:"language"`
 	}
 	type runFinishedMessage struct {
 		Message string        `json:"message"`

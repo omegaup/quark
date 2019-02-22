@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"github.com/vincent-petithory/dataurl"
 	"io"
@@ -146,7 +147,7 @@ type RunResult struct {
 	MaxScore     *big.Rat               `json:"max_score"`
 	Time         float64                `json:"time"`
 	WallTime     float64                `json:"wall_time"`
-	Memory       common.Byte            `json:"memory"`
+	Memory       base.Byte              `json:"memory"`
 	JudgedBy     string                 `json:"judged_by,omitempty"`
 	Groups       []GroupResult          `json:"groups"`
 }
@@ -172,7 +173,7 @@ func (r *RunResult) MarshalJSON() ([]byte, error) {
 		MaxScore     float64                `json:"max_score"`
 		Time         float64                `json:"time"`
 		WallTime     float64                `json:"wall_time"`
-		Memory       common.Byte            `json:"memory"`
+		Memory       base.Byte              `json:"memory"`
 		JudgedBy     string                 `json:"judged_by,omitempty"`
 		Groups       []GroupResult          `json:"groups"`
 	}{
@@ -205,7 +206,7 @@ func (r *RunResult) UnmarshalJSON(data []byte) error {
 		MaxScore     float64                `json:"max_score"`
 		Time         float64                `json:"time"`
 		WallTime     float64                `json:"wall_time"`
-		Memory       common.Byte            `json:"memory"`
+		Memory       base.Byte              `json:"memory"`
 		JudgedBy     string                 `json:"judged_by,omitempty"`
 		Groups       []GroupResult          `json:"groups"`
 	}{}
@@ -641,7 +642,7 @@ func Grade(
 				// ASan uses TONS of extra memory.
 				settings.Limits.MemoryLimit = -1
 				// ASan claims to be 2x slower.
-				settings.Limits.TimeLimit = settings.Limits.TimeLimit*2 + common.Duration(1*time.Second)
+				settings.Limits.TimeLimit = settings.Limits.TimeLimit*2 + base.Duration(1*time.Second)
 				// 16kb should be enough to emit the report.
 				settings.Limits.OutputLimit += 16 * 1024
 			}
@@ -916,7 +917,7 @@ func Grade(
 				var finalVerdict = "OK"
 				var totalTime float64
 				var totalWallTime float64
-				var totalMemory common.Byte
+				var totalMemory base.Byte
 				for i := 0; i < regularBinaryCount; i++ {
 					intermediateResult := <-metaChan
 					generatedFiles = append(generatedFiles, intermediateResult.generatedFiles...)
@@ -942,7 +943,7 @@ func Grade(
 							totalWallTime,
 							intermediateResult.runMeta.WallTime,
 						)
-						totalMemory += common.MaxBytes(totalMemory, intermediateResult.runMeta.Memory)
+						totalMemory += base.MaxBytes(totalMemory, intermediateResult.runMeta.Memory)
 					}
 				}
 				close(metaChan)
@@ -988,7 +989,7 @@ func Grade(
 			runResult.Verdict = worseVerdict(runResult.Verdict, runMeta.Verdict)
 			runResult.Time += runMeta.Time
 			runResult.WallTime += runMeta.WallTime
-			runResult.Memory = common.MaxBytes(runResult.Memory, runMeta.Memory)
+			runResult.Memory = base.MaxBytes(runResult.Memory, runMeta.Memory)
 
 			// TODO: change CaseResult to split original metadatas and final metadata
 			caseResults[j] = CaseResult{

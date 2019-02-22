@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/inconshreveable/log15"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"io/ioutil"
@@ -78,22 +79,22 @@ type EphemeralRunManager struct {
 	ctx       *Context
 	rand      *rand.Rand
 	paths     map[string]struct{}
-	totalSize common.Byte
-	sizeLimit common.Byte
+	totalSize base.Byte
+	sizeLimit base.Byte
 }
 
 type ephemeralRunEntry struct {
 	path string
-	size common.Byte
+	size base.Byte
 }
 
-func directorySize(root string) (result common.Byte, err error) {
+func directorySize(root string) (result base.Byte, err error) {
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// Bail out the whole operation upon the first error.
 			return err
 		}
-		result += common.Byte(info.Size())
+		result += base.Byte(info.Size())
 		return nil
 	})
 

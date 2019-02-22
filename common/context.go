@@ -3,7 +3,6 @@ package common
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/inconshreveable/log15"
 	base "github.com/omegaup/go-base"
@@ -12,212 +11,26 @@ import (
 	"math/big"
 	"os"
 	"strconv"
-	"strings"
 	"time"
-	"unicode"
 )
-
-// Duration is identical to time.Duration, except it can implements the
-// json.Marshaler interface with time.Duration.String() and
-// time.Duration.ParseDuration().
-type Duration time.Duration
-
-// String returns a string representing the duration in the form "72h3m0.5s".
-// Leading zero units are omitted. As a special case, durations less than one
-// second format use a smaller unit (milli-, micro-, or nanoseconds) to ensure
-// that the leading digit is non-zero. The zero duration formats as 0s.
-func (d Duration) String() string {
-	return time.Duration(d).String()
-}
-
-// MarshalJSON implements the json.Marshaler interface. The duration is a quoted
-// string in RFC 3339 format, with sub-second precision added if present.
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", d.String())), nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface. The duration is
-// expected to be a quoted string that time.ParseDuration() can understand.
-func (d *Duration) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
-		return nil
-	}
-	if unicode.IsDigit(rune(data[0])) {
-		val, err := strconv.ParseFloat(string(data), 64)
-		if err != nil {
-			return nil
-		}
-		*d = Duration(time.Duration(val*1e9) * time.Nanosecond)
-		return nil
-	}
-	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
-		return errors.New("time: invalid duration " + string(data))
-	}
-	parsed, err := time.ParseDuration(string(data[1 : len(data)-1]))
-	if err != nil {
-		return err
-	}
-	*d = Duration(parsed)
-	return nil
-}
-
-// Milliseconds returns the duration as a floating point number of milliseconds.
-func (d Duration) Milliseconds() float64 {
-	return float64(d) / float64(time.Millisecond)
-}
-
-// Seconds returns the duration as a floating point number of seconds.
-func (d Duration) Seconds() float64 {
-	return time.Duration(d).Seconds()
-}
-
-// MinDuration returns the smaller of x or y.
-func MinDuration(x, y Duration) Duration {
-	if x < y {
-		return x
-	}
-	return y
-}
-
-// MaxDuration returns the larger of x or y.
-func MaxDuration(x, y Duration) Duration {
-	if x > y {
-		return x
-	}
-	return y
-}
-
-// A Byte is a unit of digital information.
-type Byte int64
-
-const (
-	// Kibibyte is 1024 Bytes.
-	Kibibyte = Byte(1024)
-
-	// Mebibyte is 1024 Kibibytes.
-	Mebibyte = Byte(1024) * Kibibyte
-
-	// Gibibyte is 1024 Mebibytes.
-	Gibibyte = Byte(1024) * Mebibyte
-
-	// Tebibyte is 1024 Gibibytes.
-	Tebibyte = Byte(1024) * Gibibyte
-)
-
-// MinBytes returns the smaller of x or y.
-func MinBytes(x, y Byte) Byte {
-	if x < y {
-		return x
-	}
-	return y
-}
-
-// MaxBytes returns the larger of x or y.
-func MaxBytes(x, y Byte) Byte {
-	if x > y {
-		return x
-	}
-	return y
-}
-
-// Bytes returns the Byte as an integer number of bytes.
-func (b Byte) Bytes() int64 {
-	return int64(b)
-}
-
-// Kibibytes returns the Byte as an floating point number of Kibibytes.
-func (b Byte) Kibibytes() float64 {
-	return float64(b) / float64(Kibibyte)
-}
-
-// Mebibytes returns the Byte as an floating point number of Mebibytes.
-func (b Byte) Mebibytes() float64 {
-	return float64(b) / float64(Mebibyte)
-}
-
-// Gibibytes returns the Byte as an floating point number of Gibibytes.
-func (b Byte) Gibibytes() float64 {
-	return float64(b) / float64(Gibibyte)
-}
-
-// Tebibytes returns the Byte as an floating point number of Tebibytes.
-func (b Byte) Tebibytes() float64 {
-	return float64(b) / float64(Tebibyte)
-}
-
-// MarshalJSON implements the json.Marshaler interface. The result is an
-// integer number of bytes.
-func (b Byte) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("%d", b.Bytes())), nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface. The result can be
-// an integer number of bytes, or a quoted string that MarshalJSON() can
-// understand.
-func (b *Byte) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
-		return nil
-	}
-	if unicode.IsDigit(rune(data[0])) {
-		val, err := strconv.ParseInt(string(data), 10, 64)
-		if err != nil {
-			return nil
-		}
-		*b = Byte(val)
-		return nil
-	}
-	unquoted := string(data)
-	if len(unquoted) < 3 || unquoted[0] != '"' || unquoted[len(unquoted)-1] != '"' {
-		return errors.New("byte: invalid byte " + unquoted)
-	}
-	unquoted = unquoted[1 : len(unquoted)-1]
-	suffixPos := strings.IndexFunc(unquoted, func(c rune) bool {
-		return c != '.' && !unicode.IsDigit(c)
-	})
-	if suffixPos == -1 {
-		suffixPos = len(unquoted)
-	}
-	parsed, err := strconv.ParseFloat(unquoted[:suffixPos], 64)
-	if err != nil {
-		return err
-	}
-	unit := Byte(1)
-	switch string(unquoted[suffixPos:]) {
-	case "TiB":
-		unit = Tebibyte
-	case "GiB":
-		unit = Gibibyte
-	case "MiB":
-		unit = Mebibyte
-	case "KiB":
-		unit = Kibibyte
-	case "B":
-	case "":
-		unit = Byte(1)
-	default:
-		return errors.New("byte: invalid byte " + string(data))
-	}
-	*b = Byte(parsed * float64(unit))
-	return nil
-}
 
 // BroadcasterConfig represents the configuration for the Broadcaster.
 type BroadcasterConfig struct {
 	ChannelLength           int
 	EventsPort              uint16
 	FrontendURL             string
-	PingPeriod              Duration
+	PingPeriod              base.Duration
 	Port                    uint16
 	Proxied                 bool
 	ScoreboardUpdateSecret  string
-	ScoreboardUpdateTimeout Duration
+	ScoreboardUpdateTimeout base.Duration
 	TLS                     TLSConfig // only used if Proxied == false
-	WriteDeadline           Duration
+	WriteDeadline           base.Duration
 }
 
 // InputManagerConfig represents the configuration for the InputManager.
 type InputManagerConfig struct {
-	CacheSize Byte
+	CacheSize base.Byte
 }
 
 // V1Config represents the configuration for the V1-compatibility shim for the
@@ -233,15 +46,15 @@ type V1Config struct {
 
 // GraderEphemeralConfig represents the configuration for the Grader web interface.
 type GraderEphemeralConfig struct {
-	EphemeralSizeLimit   Byte
-	CaseTimeLimit        Duration
-	OverallWallTimeLimit Duration
-	MemoryLimit          Byte
-	PingPeriod           Duration
+	EphemeralSizeLimit   base.Byte
+	CaseTimeLimit        base.Duration
+	OverallWallTimeLimit base.Duration
+	MemoryLimit          base.Byte
+	PingPeriod           base.Duration
 	Port                 uint16
 	Proxied              bool
 	TLS                  TLSConfig // only used if Proxied == false
-	WriteDeadline        Duration
+	WriteDeadline        base.Duration
 }
 
 // GraderConfig represents the configuration for the Grader.
@@ -266,10 +79,10 @@ type TLSConfig struct {
 type RunnerConfig struct {
 	GraderURL           string
 	RuntimePath         string
-	CompileTimeLimit    Duration
-	CompileOutputLimit  Byte
-	ClrVMEstimatedSize  Byte
-	JavaVMEstimatedSize Byte
+	CompileTimeLimit    base.Duration
+	CompileOutputLimit  base.Byte
+	ClrVMEstimatedSize  base.Byte
+	JavaVMEstimatedSize base.Byte
 	PreserveFiles       bool
 }
 
@@ -314,23 +127,23 @@ var defaultConfig = Config{
 		ChannelLength:           10,
 		EventsPort:              22291,
 		FrontendURL:             "https://omegaup.com",
-		PingPeriod:              Duration(time.Duration(30) * time.Second),
+		PingPeriod:              base.Duration(time.Duration(30) * time.Second),
 		Port:                    32672,
 		Proxied:                 true,
 		ScoreboardUpdateSecret:  "secret",
-		ScoreboardUpdateTimeout: Duration(time.Duration(10) * time.Second),
+		ScoreboardUpdateTimeout: base.Duration(time.Duration(10) * time.Second),
 		TLS: TLSConfig{
 			CertFile: "/etc/omegaup/broadcaster/certificate.pem",
 			KeyFile:  "/etc/omegaup/broadcaster/key.pem",
 		},
-		WriteDeadline: Duration(time.Duration(5) * time.Second),
+		WriteDeadline: base.Duration(time.Duration(5) * time.Second),
 	},
 	Db: DbConfig{
 		Driver:         "sqlite3",
 		DataSourceName: "./omegaup.db",
 	},
 	InputManager: InputManagerConfig{
-		CacheSize: Gibibyte,
+		CacheSize: base.Gibibyte,
 	},
 	Logging: LoggingConfig{
 		File:  "/var/log/omegaup/service.log",
@@ -354,28 +167,28 @@ var defaultConfig = Config{
 			UpdateDatabase:   true,
 		},
 		Ephemeral: GraderEphemeralConfig{
-			EphemeralSizeLimit:   Gibibyte,
-			CaseTimeLimit:        Duration(time.Duration(10) * time.Second),
-			OverallWallTimeLimit: Duration(time.Duration(10) * time.Second),
-			MemoryLimit:          Gibibyte,
+			EphemeralSizeLimit:   base.Gibibyte,
+			CaseTimeLimit:        base.Duration(time.Duration(10) * time.Second),
+			OverallWallTimeLimit: base.Duration(time.Duration(10) * time.Second),
+			MemoryLimit:          base.Gibibyte,
 			Port:                 36663,
-			PingPeriod:           Duration(time.Duration(30) * time.Second),
+			PingPeriod:           base.Duration(time.Duration(30) * time.Second),
 			Proxied:              true,
 			TLS: TLSConfig{
 				CertFile: "/etc/omegaup/grader/web-certificate.pem",
 				KeyFile:  "/etc/omegaup/grader/web-key.pem",
 			},
-			WriteDeadline: Duration(time.Duration(5) * time.Second),
+			WriteDeadline: base.Duration(time.Duration(5) * time.Second),
 		},
 		WriteGradeFiles: true,
 	},
 	Runner: RunnerConfig{
 		RuntimePath:         "/var/lib/omegaup/runner",
 		GraderURL:           "https://omegaup.com:11302",
-		CompileTimeLimit:    Duration(time.Duration(30) * time.Second),
-		CompileOutputLimit:  Byte(10) * Mebibyte,
-		ClrVMEstimatedSize:  Byte(20) * Mebibyte,
-		JavaVMEstimatedSize: Byte(30) * Mebibyte,
+		CompileTimeLimit:    base.Duration(time.Duration(30) * time.Second),
+		CompileOutputLimit:  base.Byte(10) * base.Mebibyte,
+		ClrVMEstimatedSize:  base.Byte(20) * base.Mebibyte,
+		JavaVMEstimatedSize: base.Byte(30) * base.Mebibyte,
 		PreserveFiles:       false,
 	},
 	TLS: TLSConfig{

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/bzip2"
 	"encoding/base64"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"io"
 	"math/big"
@@ -178,7 +179,7 @@ int main() {
 type BenchmarkResult struct {
 	Time     float64
 	WallTime float64
-	Memory   common.Byte
+	Memory   base.Byte
 }
 
 // BenchmarkResults represents the results of running the whole suite of
