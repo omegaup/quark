@@ -554,7 +554,14 @@ func createTar(buf *bytes.Buffer, files *map[string][]byte) error {
 	archive := tar.NewWriter(gz)
 	defer archive.Close()
 
-	for name, contents := range *files {
+	var sortedFiles []string
+	for name := range *files {
+		sortedFiles = append(sortedFiles, name)
+	}
+	sort.Strings(sortedFiles)
+
+	for _, name := range sortedFiles {
+		contents := (*files)[name]
 		hdr := &tar.Header{
 			Name: name,
 			Mode: 0644,
