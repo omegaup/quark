@@ -213,32 +213,34 @@ func (input *runnerBaseInput) persistFromTarStream(
 			if err := os.MkdirAll(filePath, 0755); err != nil {
 				return err
 			}
-		} else {
-			if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
-				return err
-			}
-			fd, err := os.Create(filePath)
-			if err != nil {
-				return err
-			}
-			defer fd.Close()
-
-			innerHasher := common.NewHashReader(archive, sha1.New())
-			if _, err := io.Copy(fd, innerHasher); err != nil {
-				return err
-			}
-			_, err = fmt.Fprintf(
-				sha1sumFile,
-				"%0x *%s/%s\n",
-				innerHasher.Sum(nil),
-				input.Hash()[2:],
-				hdr.Name,
-			)
-			if err != nil {
-				return err
-			}
-			size += hdr.Size
+			continue
 		}
+
+		if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
+			return err
+		}
+		fd, err := os.Create(filePath)
+		if err != nil {
+			return err
+		}
+
+		innerHasher := common.NewHashReader(archive, sha1.New())
+		_, err = io.Copy(fd, innerHasher)
+		fd.Close()
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(
+			sha1sumFile,
+			"%0x *%s/%s\n",
+			innerHasher.Sum(nil),
+			input.Hash()[2:],
+			hdr.Name,
+		)
+		if err != nil {
+			return err
+		}
+		size += hdr.Size
 	}
 
 	if streamHash != fmt.Sprintf("%0x", hasher.Sum(nil)) {
