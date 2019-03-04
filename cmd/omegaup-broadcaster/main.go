@@ -328,10 +328,6 @@ func main() {
 	})
 	go b.Run()
 
-	eventsHost := ""
-	if ctx.Config.Broadcaster.Proxied {
-		eventsHost = "localhost"
-	}
 	var servers []*http.Server
 	var wg sync.WaitGroup
 	servers = append(
@@ -340,7 +336,7 @@ func main() {
 			&ctx.Config.Broadcaster.TLS,
 			eventsMux,
 			&wg,
-			fmt.Sprintf("%s:%d", eventsHost, ctx.Config.Broadcaster.EventsPort),
+			fmt.Sprintf(":%d", ctx.Config.Broadcaster.EventsPort),
 			ctx.Config.Broadcaster.Proxied,
 		),
 	)
