@@ -719,7 +719,7 @@ func Grade(
 			path.Join(binRoot, "compile.out"),
 			path.Join(binRoot, "compile.err"),
 			path.Join(binRoot, "compile.meta"),
-			b.name,
+			b.target,
 			b.extraFlags,
 		)
 		ctx.EventCollector.Add(singleCompileEvent)

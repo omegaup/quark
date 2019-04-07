@@ -2,7 +2,6 @@ package runner
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/omegaup/quark/common"
 	"os"
 	"testing"
@@ -47,20 +46,6 @@ func TestParseMetaFile(t *testing.T) {
 			func(meta *RunMetadata) bool { return meta.Verdict == "RTE" },
 		},
 		{
-			fmt.Sprintf("status:0\nmem:%d", ctx.Config.Runner.JavaVMEstimatedSize),
-			"c",
-			nil,
-			func(meta *RunMetadata) bool {
-				return meta.Memory == ctx.Config.Runner.JavaVMEstimatedSize
-			},
-		},
-		{
-			fmt.Sprintf("status:0\nmem:%d", ctx.Config.Runner.JavaVMEstimatedSize),
-			"java",
-			nil,
-			func(meta *RunMetadata) bool { return meta.Memory == 0 },
-		},
-		{
 			"status:0\ntime:1000000",
 			"c",
 			nil,
@@ -82,7 +67,7 @@ func TestParseMetaFile(t *testing.T) {
 			"status:0\nsignal:SIGILL",
 			"c",
 			nil,
-			func(meta *RunMetadata) bool { return meta.Verdict == "RFE" },
+			func(meta *RunMetadata) bool { return meta.Verdict == "RTE" },
 		},
 		{
 			"status:0\nsignal:SIGABRT",

@@ -83,13 +83,11 @@ type TLSConfig struct {
 
 // RunnerConfig represents the configuration for the Runner.
 type RunnerConfig struct {
-	GraderURL           string
-	RuntimePath         string
-	CompileTimeLimit    base.Duration
-	CompileOutputLimit  base.Byte
-	ClrVMEstimatedSize  base.Byte
-	JavaVMEstimatedSize base.Byte
-	PreserveFiles       bool
+	GraderURL          string
+	RuntimePath        string
+	CompileTimeLimit   base.Duration
+	CompileOutputLimit base.Byte
+	PreserveFiles      bool
 }
 
 // DbConfig represents the configuration for the database.
@@ -192,13 +190,11 @@ var defaultConfig = Config{
 		WriteGradeFiles: true,
 	},
 	Runner: RunnerConfig{
-		RuntimePath:         "/var/lib/omegaup/runner",
-		GraderURL:           "https://omegaup.com:11302",
-		CompileTimeLimit:    base.Duration(time.Duration(30) * time.Second),
-		CompileOutputLimit:  base.Byte(10) * base.Mebibyte,
-		ClrVMEstimatedSize:  base.Byte(20) * base.Mebibyte,
-		JavaVMEstimatedSize: base.Byte(30) * base.Mebibyte,
-		PreserveFiles:       false,
+		RuntimePath:        "/var/lib/omegaup/runner",
+		GraderURL:          "https://omegaup.com:11302",
+		CompileTimeLimit:   base.Duration(time.Duration(30) * time.Second),
+		CompileOutputLimit: base.Byte(10) * base.Mebibyte,
+		PreserveFiles:      false,
 	},
 	TLS: TLSConfig{
 		CertFile: "/etc/omegaup/grader/certificate.pem",

@@ -162,8 +162,19 @@ func (*OmegajailSandbox) Compile(
 	chdir, outputFile, errorFile, metaFile, target string,
 	extraFlags []string,
 ) (*RunMetadata, error) {
-	commonParams := []string{
-		"-C", path.Join(omegajailPath, "root-compilers"),
+	if lang == "cs" {
+		// C# needs to have a *.runtimeconfig.json file next to the file that is
+		// being compiled.
+		err := os.Symlink(
+			"/usr/share/dotnet/Main.runtimeconfig.json",
+			fmt.Sprintf("%s/%s.runtimeconfig.json", chdir, target),
+		)
+		if err != nil {
+			ctx.Log.Error("Failed to symlink runtimeconfig", "err", err)
+		}
+	}
+
+	params := []string{
 		"-d", "/home",
 		"-b", chdir + ",/home,1",
 		"-1", outputFile,
@@ -171,10 +182,10 @@ func (*OmegajailSandbox) Compile(
 		"-M", metaFile,
 		"-t", strconv.FormatInt(int64(ctx.Config.Runner.CompileTimeLimit.Milliseconds()), 10),
 		"-O", strconv.FormatInt(ctx.Config.Runner.CompileOutputLimit.Bytes(), 10),
+		"--root", omegajailPath,
+		"--compile", lang,
+		"--compile-target", target,
 	}
-
-	inputFlags := make([]string, 0)
-
 	for _, inputFile := range inputFiles {
 		if !strings.HasPrefix(inputFile, chdir) {
 			return &RunMetadata{
@@ -189,108 +200,17 @@ func (*OmegajailSandbox) Compile(
 				ExitStatus: -1,
 			}, err
 		}
-		inputFlags = append(inputFlags, rel)
-	}
-
-	var params []string
-	linkerFlags := make([]string, 0)
-
-	switch lang {
-	case "java":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/javac"),
-			"-b", path.Join(omegajailPath, "root-openjdk,/usr/lib/jvm"),
-			"--", "/usr/bin/javac", "-J-Xmx512M", "-d", ".",
-		}
-	case "c":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/gcc"),
-			"--", "/usr/bin/gcc", "-o", target, "-std=c11", "-O2",
-		}
-		linkerFlags = append(linkerFlags, "-lm")
-	case "cpp":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/gcc"),
-			"--", "/usr/bin/g++", "-o", target, "-O2",
-		}
-		linkerFlags = append(linkerFlags, "-lm")
-	case "cpp11":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/gcc"),
-			"--", "/usr/bin/g++", "-o", target, "-std=c++11", "-O2",
-		}
-		linkerFlags = append(linkerFlags, "-lm")
-	case "pas":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/fpc"),
-			"--", "/usr/bin/fpc", "-Tlinux", "-O2",
-			"-Mobjfpc", "-Sc", "-Sh", fmt.Sprintf("-o%s", target),
-		}
-	case "py":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/pyc"),
-			"-b", path.Join(omegajailPath, "root-python") + ",/usr/lib/python2.7",
-			"--", "/usr/bin/python", "-m", "py_compile",
-		}
-	case "rb":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/ruby"),
-			"-b", path.Join(omegajailPath, "root-ruby") + ",/usr/lib/ruby",
-			"--", "/usr/bin/ruby", "-wc",
-		}
-	case "kj":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/js"),
-			"-b", path.Join(omegajailPath, "root-js") + ",/opt/nodejs",
-			"-0", path.Join(omegajailPath, "root-compilers/dev/null"),
-			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "compile", "java",
-			"-o", fmt.Sprintf("%s.kx", target),
-		}
-	case "kp":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/js"),
-			"-b", path.Join(omegajailPath, "root-js") + ",/opt/nodejs",
-			"-0", path.Join(omegajailPath, "root-compilers/dev/null"),
-			"--", "/usr/bin/node", "/opt/nodejs/karel.js", "compile", "pascal",
-			"-o", fmt.Sprintf("%s.kx", target),
-		}
-	case "hs":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/ghc"),
-			"-b", path.Join(omegajailPath, "root-hs") + ",/usr/lib/ghc",
-			"--", haskellCompiler, "-B/usr/lib/ghc", "-O2", "-o", target,
-		}
-	case "lua":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/lua"),
-			"--", "/usr/bin/luac", "-o", target,
-		}
-	case "cs":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/csc"),
-			"-b", path.Join(omegajailPath, "root-dotnet") + ",/usr/share/dotnet",
-			"--", "/usr/share/dotnet/dotnet",
-			"/usr/share/dotnet/sdk/2.0.0/Roslyn/csc.exe", "/noconfig",
-			"@/usr/share/dotnet/Release.rsp", "/target:exe",
-			fmt.Sprintf("/out:%s.dll", target),
-		}
-		err := os.Symlink(
-			"/usr/share/dotnet/Main.runtimeconfig.json",
-			fmt.Sprintf("%s/%s.runtimeconfig.json", chdir, target),
+		params = append(
+			params,
+			"--compile-source", rel,
 		)
-		if err != nil {
-			ctx.Log.Error("Failed to symlink runtimeconfig", "err", err)
-		}
+	}
+	if len(extraFlags) > 0 {
+		params = append(params, "--")
+		params = append(params, extraFlags...)
 	}
 
-	finalParams := make([]string, 0)
-	finalParams = append(finalParams, commonParams...)
-	finalParams = append(finalParams, params...)
-	finalParams = append(finalParams, extraFlags...)
-	finalParams = append(finalParams, inputFlags...)
-	finalParams = append(finalParams, linkerFlags...)
-
-	invokeOmegajail(ctx, finalParams, errorFile)
+	invokeOmegajail(ctx, params, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -344,27 +264,6 @@ func (*OmegajailSandbox) Run(
 		inputFile = path.Join(omegajailPath, "root/dev/null")
 	}
 
-	commonParams := []string{
-		"-C", path.Join(omegajailPath, "root"),
-		"-d", "/home",
-		"-b", chdir + ",/home",
-		"-0", inputFile,
-		"-1", outputFile,
-		"-2", errorFile,
-		"-M", metaFile,
-		"-t", strconv.FormatInt(int64(timeLimit.Milliseconds()), 10),
-		"-w", strconv.FormatInt(int64(limits.ExtraWallTime.Milliseconds()), 10),
-		"-O", strconv.FormatInt(limits.OutputLimit.Bytes(), 10),
-	}
-
-	extraOmegajailFlags := make([]string, 2*len(extraMountPoints))
-	i := 0
-	for path, mountTarget := range extraMountPoints {
-		extraOmegajailFlags[i] = "-b"
-		extraOmegajailFlags[i+1] = fmt.Sprintf("%s,%s", path, mountTarget)
-		i += 2
-	}
-
 	type fileLink struct {
 		sourceFile, targetFile string
 	}
@@ -399,82 +298,34 @@ func (*OmegajailSandbox) Run(
 		}
 	}
 
-	// 16MB + memory limit to prevent some RTE
-	memoryLimit := base.Byte(16)*base.Mebibyte + limits.MemoryLimit
 	// "640MB should be enough for anybody"
-	hardLimit := strconv.FormatInt(
-		base.MinBytes(base.Byte(640)*base.Mebibyte, memoryLimit).Bytes(),
-		10,
-	)
+	hardLimit := base.MinBytes(base.Byte(640)*base.Mebibyte, limits.MemoryLimit)
 
-	var params []string
-
-	switch lang {
-	case "java":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/java"),
-			"-b", path.Join(omegajailPath, "root-openjdk,/usr/lib/jvm"),
-			"--", "/usr/bin/java", fmt.Sprintf("-Xmx%d", memoryLimit), target,
-		}
-	case "c", "cpp", "cpp11":
-		if limits.MemoryLimit != -1 {
-			params = []string{
-				"-S", path.Join(omegajailPath, "scripts/cpp"),
-				"-m", hardLimit,
-			}
-		} else {
-			// It's dangerous to go without seccomp-bpf, but this is only for testing.
-			params = []string{}
-		}
-		params = append(params, "--", fmt.Sprintf("./%s", target))
-	case "pas":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/pas"),
-			"-m", hardLimit, "--", fmt.Sprintf("./%s", target),
-		}
-	case "py":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/py"),
-			"-b", path.Join(omegajailPath, "root-python") + ",/usr/lib/python2.7",
-			"-m", hardLimit, "--", "/usr/bin/python", fmt.Sprintf("./%s.py", target),
-		}
-	case "rb":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/ruby"),
-			"-b", path.Join(omegajailPath, "root-ruby") + ",/usr/lib/ruby",
-			"-m", hardLimit, "--", "/usr/bin/ruby", fmt.Sprintf("./%s.rb", target),
-		}
-	case "kp", "kj":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/karel"),
-			"-b", path.Join(omegajailPath, "root-js") + ",/opt/nodejs",
-			"--", "/opt/nodejs/karel.wasm", fmt.Sprintf("%s.kx", target),
-		}
-	case "hs":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/hs"),
-			"-b", path.Join(omegajailPath, "root-hs") + ",/usr/lib/ghc",
-			"-m", hardLimit, "--", fmt.Sprintf("./%s", target),
-		}
-	case "lua":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/lua"),
-			"-m", hardLimit, "--", "/usr/bin/lua", target,
-		}
-	case "cs":
-		params = []string{
-			"-S", path.Join(omegajailPath, "scripts/cs"),
-			"-b", path.Join(omegajailPath, "root-dotnet") + ",/usr/share/dotnet",
-			"--cgroup-memory-limit", hardLimit,
-			"--", "/usr/share/dotnet/dotnet", fmt.Sprintf("%s.dll", target),
-		}
+	params := []string{
+		"-d", "/home",
+		"-b", chdir + ",/home",
+		"-0", inputFile,
+		"-1", outputFile,
+		"-2", errorFile,
+		"-M", metaFile,
+		"-m", strconv.FormatInt(hardLimit.Bytes(), 10),
+		"-t", strconv.FormatInt(int64(timeLimit.Milliseconds()), 10),
+		"-w", strconv.FormatInt(int64(limits.ExtraWallTime.Milliseconds()), 10),
+		"-O", strconv.FormatInt(limits.OutputLimit.Bytes(), 10),
+		"--root", omegajailPath,
+		"--run", lang,
+		"--run-target", target,
 	}
-
-	finalParams := make([]string, 0)
-	finalParams = append(finalParams, commonParams...)
-	finalParams = append(finalParams, extraOmegajailFlags...)
-	finalParams = append(finalParams, params...)
-	finalParams = append(finalParams, extraParams...)
+	for path, mountTarget := range extraMountPoints {
+		params = append(
+			params,
+			"-b", fmt.Sprintf("%s,%s", path, mountTarget),
+		)
+	}
+	if len(extraParams) > 0 {
+		params = append(params, "--")
+		params = append(params, extraParams...)
+	}
 
 	preloader, err := newInputPreloader(inputFile)
 	if err != nil {
@@ -484,7 +335,7 @@ func (*OmegajailSandbox) Run(
 		preloader.release()
 	}
 
-	invokeOmegajail(ctx, finalParams, errorFile)
+	invokeOmegajail(ctx, params, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -596,9 +447,9 @@ func parseMetaFile(
 
 	if meta.Signal != nil {
 		switch *meta.Signal {
-		case "SIGILL", "SIGSYS":
+		case "SIGSYS":
 			meta.Verdict = "RFE"
-		case "SIGABRT", "SIGFPE", "SIGKILL", "SIGPIPE", "SIGBUS", "SIGSEGV":
+		case "SIGILL", "SIGABRT", "SIGFPE", "SIGKILL", "SIGPIPE", "SIGBUS", "SIGSEGV":
 			meta.Verdict = "RTE"
 		case "SIGALRM", "SIGXCPU":
 			meta.Verdict = "TLE"
@@ -614,11 +465,7 @@ func parseMetaFile(
 		meta.Verdict = "RTE"
 	}
 
-	if lang == "java" {
-		meta.Memory = base.MaxBytes(0, meta.Memory-ctx.Config.Runner.JavaVMEstimatedSize)
-	} else if lang == "cs" {
-		meta.Memory = base.MaxBytes(0, meta.Memory-ctx.Config.Runner.ClrVMEstimatedSize)
-	} else if lang == "kj" || lang == "kp" {
+	if lang == "kj" || lang == "kp" {
 		// Karel programs have a unique exit status per each one of the failure
 		// modes. Map 1 (INSTRUCTION) to TLE.
 		if meta.ExitStatus == 1 {
