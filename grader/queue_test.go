@@ -263,6 +263,9 @@ func TestPostProcessor(t *testing.T) {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
 	defer ctx.Close()
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
 
 	pp := NewRunPostProcessor()
 	go pp.run()
