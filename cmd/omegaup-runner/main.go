@@ -7,6 +7,7 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
+	"github.com/coreos/go-systemd/daemon"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"golang.org/x/net/http2"
@@ -227,7 +228,11 @@ func main() {
 	}
 
 	setupMetrics(ctx)
-	ctx.Log.Info("omegaUp runner ready to serve")
+	ctx.Log.Info(
+		"omegaUp runner ready",
+		"version", ProgramVersion,
+	)
+	daemon.SdNotify(false, "READY=1")
 
 	go func() {
 		for {

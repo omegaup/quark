@@ -361,7 +361,8 @@ func main() {
 	)
 
 	ctx.Log.Info(
-		"omegaUp broadcaster started",
+		"omegaUp broadcaster ready",
+		"version", ProgramVersion,
 		"broadcaster port", ctx.Config.Broadcaster.Port,
 		"events port", ctx.Config.Broadcaster.EventsPort,
 	)
@@ -369,6 +370,7 @@ func main() {
 
 	<-stopChan
 
+	daemon.SdNotify(false, "STOPPING=1")
 	ctx.Log.Info("Shutting down server...")
 	cancelCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

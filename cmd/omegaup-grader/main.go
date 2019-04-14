@@ -273,11 +273,15 @@ func main() {
 		),
 	)
 
-	ctx.Log.Info("omegaUp grader started")
+	ctx.Log.Info(
+		"omegaUp grader ready",
+		"version", ProgramVersion,
+	)
 	daemon.SdNotify(false, "READY=1")
 
 	<-stopChan
 
+	daemon.SdNotify(false, "STOPPING=1")
 	ctx.Log.Info("Shutting down server...")
 	cancelCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	for _, server := range servers {
