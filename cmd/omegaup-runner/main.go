@@ -273,7 +273,7 @@ func main() {
 	}
 }
 
-// channelBuffer is a buffer that implementats io.Reader, io.Writer, and
+// channelBuffer is a buffer that implements io.Reader, io.Writer, and
 // io.WriterTo. Write() stores the incoming slices in a []byte channel, which
 // are then consumed when either Read() or WriteTo() are called.
 type channelBuffer struct {
