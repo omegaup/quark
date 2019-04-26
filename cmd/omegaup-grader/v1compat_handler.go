@@ -13,7 +13,6 @@ import (
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/grader/v1compat"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 	"io"
@@ -53,14 +52,12 @@ type graderStatusResponse struct {
 }
 
 type runGradeRequest struct {
-	GUIDs   []string `json:"id,omitempty"`
-	RunIDs  []int64  `json:"run_ids,omitempty"`
-	Rejudge bool     `json:"rejudge"`
-	Debug   bool     `json:"debug"`
+	RunIDs  []int64 `json:"run_ids,omitempty"`
+	Rejudge bool    `json:"rejudge"`
+	Debug   bool    `json:"debug"`
 }
 
 type runGradeResource struct {
-	GUID     string `json:"id,omitempty"`
 	RunID    int64  `json:"run_id,omitempty"`
 	Filename string `json:"filename"`
 }
@@ -254,18 +251,8 @@ func v1CompatGetPendingRuns(ctx *grader.Context, db *sql.DB) ([]int64, error) {
 	return runIds, nil
 }
 
-// v1CompatGradeDir gets the old-style GUID-based path if it exist, or the
-// new-style Run ID-based path otherwise.
-func v1CompatGradeDir(ctx *grader.Context, runID int64, guid string) string {
-	compatPath := path.Join(
-		ctx.Config.Grader.V1.RuntimeGradePath,
-		guid[:2],
-		guid[2:],
-	)
-	if _, err := os.Stat(compatPath); err == nil {
-		return compatPath
-	}
-
+// v1CompatGradeDir gets the new-style Run ID-based path.
+func v1CompatGradeDir(ctx *grader.Context, runID int64) string {
 	return path.Join(
 		ctx.Config.Grader.V1.RuntimeGradePath,
 		fmt.Sprintf("%02d/%02d/%d", runID%100, (runID%10000)/100, runID),
@@ -276,7 +263,7 @@ func v1CompatNewRunContext(
 	ctx *grader.Context,
 	runCtx *grader.RunContext,
 ) (*grader.RunContext, error) {
-	runCtx.GradeDir = v1CompatGradeDir(ctx, runCtx.ID, runCtx.GUID)
+	runCtx.GradeDir = v1CompatGradeDir(ctx, runCtx.ID)
 	gitProblemInfo, err := v1compat.GetProblemInformation(v1compat.GetRepositoryPath(
 		ctx.Config.Grader.V1.RuntimePath,
 		runCtx.ProblemName,
@@ -352,103 +339,6 @@ func v1CompatNewRunContextFromID(
 		runCtx.Run.MaxScore = big.NewRat(1, 1)
 	}
 	return v1CompatNewRunContext(ctx, runCtx)
-}
-
-func v1CompatNewRunContextFromGUID(
-	ctx *grader.Context,
-	db *sql.DB,
-	guid string,
-) (*grader.RunContext, error) {
-	runCtx := grader.NewEmptyRunContext(ctx)
-	runCtx.GUID = guid
-	var contestName sql.NullString
-	var problemset sql.NullInt64
-	var penaltyType sql.NullString
-	var contestPoints sql.NullFloat64
-	if err := db.QueryRow(
-		`SELECT
-			r.run_id, c.alias, s.problemset_id, c.penalty_type, s.language,
-			p.alias, pp.points, r.version
-		FROM
-			Submissions s
-		INNER JOIN
-			Runs r ON r.run_id = s.current_run_id
-		INNER JOIN
-			Problems p ON p.problem_id = s.problem_id
-		LEFT JOIN
-			Problemset_Problems pp ON pp.problem_id = s.problem_id AND
-			pp.problemset_id = s.problemset_id
-		LEFT JOIN
-			Contests c ON c.problemset_id = pp.problemset_id
-		WHERE
-			s.guid = ?;`, runCtx.GUID).Scan(
-		&runCtx.ID,
-		&contestName,
-		&problemset,
-		&penaltyType,
-		&runCtx.Run.Language,
-		&runCtx.ProblemName,
-		&contestPoints,
-		&runCtx.Run.InputHash,
-	); err != nil {
-		return nil, err
-	}
-
-	if contestName.Valid {
-		runCtx.Contest = &contestName.String
-	}
-	if problemset.Valid {
-		runCtx.Problemset = &problemset.Int64
-	}
-	if penaltyType.Valid {
-		runCtx.PenaltyType = penaltyType.String
-	}
-	if contestPoints.Valid {
-		runCtx.Run.MaxScore = common.FloatToRational(contestPoints.Float64)
-	} else {
-		runCtx.Run.MaxScore = big.NewRat(1, 1)
-	}
-	return v1CompatNewRunContext(ctx, runCtx)
-}
-
-func v1CompatRunIDFromGUID(ctx *grader.Context, db *sql.DB, guid string) (int64, error) {
-	var runID sql.NullInt64
-	if err := db.QueryRow(
-		`SELECT
-			s.current_run_id
-		FROM
-			Submissions s
-		WHERE
-			s.guid = ?;`, guid).Scan(
-		&runID,
-	); err != nil {
-		return 0, err
-	}
-	if !runID.Valid {
-		return 0, errors.Errorf("run %s not found", guid)
-	}
-	return runID.Int64, nil
-}
-
-func v1CompatGUIDFromRunID(ctx *grader.Context, db *sql.DB, runID int64) (string, error) {
-	var guid sql.NullString
-	if err := db.QueryRow(
-		`SELECT
-			s.guid
-		FROM
-			Runs r
-		INNER JOIN
-			Submissions s ON s.submission_id = r.submission_id
-		WHERE
-			r.run_id = ?;`, runID).Scan(
-		&guid,
-	); err != nil {
-		return "", err
-	}
-	if !guid.Valid {
-		return "", errors.Errorf("run %d not found", runID)
-	}
-	return guid.String, nil
 }
 
 func v1CompatReadSource(ctx *grader.Context, runCtx *grader.RunContext) error {
@@ -660,34 +550,21 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		}
 
 		var runCtx *grader.RunContext
-		if runID, err := strconv.ParseUint(tokens[2], 10, 64); err == nil {
-			if runCtx, err = v1CompatNewRunContextFromID(ctx, db, int64(runID)); err != nil {
-				ctx.Log.Error(
-					"/run/new/",
-					"runID", runID,
-					"response", "internal server error",
-					"err", err,
-				)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-		} else {
-			guid := tokens[2]
-			if len(guid) != 32 || !guidRegex.MatchString(guid) {
-				ctx.Log.Error("Invalid GUID", "guid", guid)
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			if runCtx, err = v1CompatNewRunContextFromGUID(ctx, db, guid); err != nil {
-				ctx.Log.Error(
-					"/run/new/",
-					"guid", guid,
-					"response", "internal server error",
-					"err", err,
-				)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
+		runID, err := strconv.ParseUint(tokens[2], 10, 64)
+		if err != nil {
+			ctx.Log.Error("Invalid Run ID", "run id", tokens[2])
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if runCtx, err = v1CompatNewRunContextFromID(ctx, db, int64(runID)); err != nil {
+			ctx.Log.Error(
+				"/run/new/",
+				"runID", runID,
+				"response", "internal server error",
+				"err", err,
+			)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		filePath := path.Join(
@@ -737,34 +614,18 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 			priority = grader.QueuePriorityLow
 		}
 		var runCtxs []*grader.RunContext
-		if len(request.RunIDs) > 0 {
-			for _, runID := range request.RunIDs {
-				runCtx, err := v1CompatNewRunContextFromID(ctx, db, runID)
-				if err != nil {
-					graderContext().Log.Error(
-						"Error getting run context",
-						"err", err,
-						"run id", runID,
-					)
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-				runCtxs = append(runCtxs, runCtx)
+		for _, runID := range request.RunIDs {
+			runCtx, err := v1CompatNewRunContextFromID(ctx, db, runID)
+			if err != nil {
+				graderContext().Log.Error(
+					"Error getting run context",
+					"err", err,
+					"run id", runID,
+				)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
 			}
-		} else {
-			for _, guid := range request.GUIDs {
-				runCtx, err := v1CompatNewRunContextFromGUID(ctx, db, guid)
-				if err != nil {
-					graderContext().Log.Error(
-						"Error getting run context",
-						"err", err,
-						"guid", guid,
-					)
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-				runCtxs = append(runCtxs, runCtx)
-			}
+			runCtxs = append(runCtxs, runCtx)
 		}
 		if err = v1CompatInjectRuns(ctx, runs, priority, runCtxs...); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -774,7 +635,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})
 
-	submissionSourceHandler := func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/submission/source/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := graderContext()
 
 		if r.Method != "GET" {
@@ -830,10 +691,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		ctx.Log.Info("/run/source/", "guid", guid, "response", "ok")
 		w.WriteHeader(http.StatusOK)
 		io.Copy(w, f)
-	}
-
-	mux.HandleFunc("/submission/source/", submissionSourceHandler)
-	mux.HandleFunc("/run/source/", submissionSourceHandler)
+	})
 
 	mux.HandleFunc("/run/resource/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := graderContext()
@@ -848,23 +706,9 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		}
 
 		if request.RunID == 0 {
-			if len(request.GUID) != 32 || !guidRegex.MatchString(request.GUID) {
-				ctx.Log.Error("Invalid GUID", "guid", request.GUID)
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			if request.RunID, err = v1CompatRunIDFromGUID(ctx, db, request.GUID); err != nil {
-				ctx.Log.Info("/run/resource/", "request", request, "response", "not found", "err", err)
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-		}
-		if request.GUID == "" {
-			if request.GUID, err = v1CompatGUIDFromRunID(ctx, db, request.RunID); err != nil {
-				ctx.Log.Info("/run/resource/", "request", request, "response", "not found", "err", err)
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
+			ctx.Log.Info("/run/resource/", "request", request, "response", "not found", "err", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
 		}
 
 		if request.Filename == "" || strings.HasPrefix(request.Filename, ".") ||
@@ -875,7 +719,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		}
 
 		filePath := path.Join(
-			v1CompatGradeDir(ctx, request.RunID, request.GUID),
+			v1CompatGradeDir(ctx, request.RunID),
 			request.Filename,
 		)
 		f, err := os.Open(filePath)
