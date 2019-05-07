@@ -783,8 +783,9 @@ func Grade(
 				if file, ok := outputOnlyFiles[outName]; ok {
 					if err := ioutil.WriteFile(outPath, []byte(file.contents), 0644); err != nil {
 						ctx.Log.Error(
-							"failed to run",
+							"failed to write output file contents",
 							"case", caseData.Name,
+							"path", outPath,
 							"err", err,
 						)
 					}
@@ -796,14 +797,23 @@ func Grade(
 					}
 					if err := ioutil.WriteFile(metaPath, []byte("status:0"), 0644); err != nil {
 						ctx.Log.Error(
-							"failed to run "+caseData.Name,
+							"failed to write meta file",
+							"case", caseData.Name,
+							"path", metaPath,
 							"err", err,
 						)
 					}
 				} else {
+					ctx.Log.Error(
+						"missing an output file",
+						"case", caseData.Name,
+						"path", outPath,
+					)
 					if err := ioutil.WriteFile(outPath, []byte{}, 0644); err != nil {
 						ctx.Log.Error(
-							"failed to run "+caseData.Name,
+							"failed to write output file",
+							"case", caseData.Name,
+							"path", outPath,
 							"err", err,
 						)
 					}
@@ -812,7 +822,9 @@ func Grade(
 					}
 					if err := ioutil.WriteFile(metaPath, []byte("status:1"), 0644); err != nil {
 						ctx.Log.Error(
-							"failed to run "+caseData.Name,
+							"failed to write meta file",
+							"case", caseData.Name,
+							"path", metaPath,
 							"err", err,
 						)
 					}
@@ -820,7 +832,9 @@ func Grade(
 				errPath := path.Join(runRoot, errName)
 				if err := ioutil.WriteFile(errPath, []byte{}, 0644); err != nil {
 					ctx.Log.Error(
-						"failed to run "+caseData.Name,
+						"failed to write err file",
+						"case", caseData.Name,
+						"path", metaPath,
 						"err", err,
 					)
 				}
