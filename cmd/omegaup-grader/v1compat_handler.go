@@ -171,7 +171,7 @@ func v1CompatBroadcastRun(
 
 	err := db.QueryRow(
 		`SELECT
-			u.username, r.penalty, r.submit_delay, UNIX_TIMESTAMP(r.time)
+			u.username, r.penalty, s.submit_delay, UNIX_TIMESTAMP(r.time)
 		FROM
 			Runs r
 		INNER JOIN
