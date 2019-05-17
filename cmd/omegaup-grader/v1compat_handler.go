@@ -434,26 +434,32 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	if err != nil {
 		panic(err)
 	}
-	for _, runId := range runIds {
-		runCtx, err := v1CompatNewRunContextFromID(graderContext(), db, runId)
-		if err != nil {
-			graderContext().Log.Error(
-				"Error getting run context",
-				"err", err,
-				"runId", runId,
-			)
-			continue
+	// Don't block while the runs are being injected. This prevents potential
+	// deadlocks where there are more runs than what the queue can hold, and the
+	// queue cannot be drained unless the transport is connected.
+	go func() {
+		graderContext().Log.Info("Injecting pending runs", "count", len(runIds))
+		for _, runId := range runIds {
+			runCtx, err := v1CompatNewRunContextFromID(graderContext(), db, runId)
+			if err != nil {
+				graderContext().Log.Error(
+					"Error getting run context",
+					"err", err,
+					"runId", runId,
+				)
+				continue
+			}
+			if err := v1CompatInjectRuns(
+				graderContext(),
+				runs,
+				grader.QueuePriorityNormal,
+				runCtx,
+			); err != nil {
+				graderContext().Log.Error("Error injecting run", "runId", runId, "err", err)
+			}
 		}
-		if err := v1CompatInjectRuns(
-			graderContext(),
-			runs,
-			grader.QueuePriorityNormal,
-			runCtx,
-		); err != nil {
-			graderContext().Log.Error("Error injecting run", "runId", runId, "err", err)
-		}
-	}
-	graderContext().Log.Info("Injected pending runs", "count", len(runIds))
+		graderContext().Log.Info("Injected pending runs", "count", len(runIds))
+	}()
 
 	transport := &http.Transport{
 		Dial: (&net.Dialer{
