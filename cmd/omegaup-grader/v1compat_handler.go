@@ -297,7 +297,7 @@ func v1CompatNewRunContextFromID(
 	err := db.QueryRow(
 		`SELECT
 			s.guid, c.alias, s.problemset_id, c.penalty_type, s.language,
-			p.alias, pp.points, COALESCE(pp.version, p.current_version)
+			p.alias, pp.points, r.version
 		FROM
 			Runs r
 		INNER JOIN
