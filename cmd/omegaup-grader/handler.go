@@ -10,7 +10,6 @@ import (
 	"github.com/omegaup/quark/runner"
 	"io"
 	"io/ioutil"
-	"mime/multipart"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -19,62 +18,6 @@ import (
 	"strconv"
 	"time"
 )
-
-func newRunContext(ctx *grader.Context, db *sql.DB, id int64) (*grader.RunContext, error) {
-	runCtx := grader.NewEmptyRunContext(ctx)
-	runCtx.ID = id
-	runCtx.GradeDir = path.Join(
-		ctx.Config.Grader.RuntimePath,
-		"grade",
-		fmt.Sprintf("%02d", id%100),
-		fmt.Sprintf("%d", id),
-	)
-	var contestName sql.NullString
-	var contestPoints sql.NullFloat64
-	err := db.QueryRow(
-		`SELECT
-			s.guid, c.alias, s.language, p.alias, pv.hash, cp.points
-		FROM
-			Runs r
-		INNER JOIN
-			Submissions s ON r.submission_id = s.submission_id
-		INNER JOIN
-			Problems p ON p.problem_id = s.problem_id
-		INNER JOIN
-			Problem_Versions pv ON pv.version_id = r.version_id
-		LEFT JOIN
-			Contests c ON c.contest_id = s.contest_id
-		LEFT JOIN
-			Contest_Problems cp ON cp.problem_id = s.problem_id AND
-			cp.contest_id = s.contest_id
-		WHERE
-			r.run_id = ?;`, id).Scan(
-		&runCtx.GUID, &contestName, &runCtx.Run.Language, &runCtx.ProblemName,
-		&runCtx.Run.InputHash, &contestPoints)
-	if err != nil {
-		return nil, err
-	}
-	if contestName.Valid {
-		runCtx.Contest = &contestName.String
-	}
-	if contestPoints.Valid {
-		runCtx.Run.MaxScore = common.FloatToRational(contestPoints.Float64)
-	}
-	runCtx.Result.MaxScore = runCtx.Run.MaxScore
-	contents, err := ioutil.ReadFile(
-		path.Join(
-			ctx.Config.Grader.RuntimePath,
-			"submissions",
-			runCtx.GUID[:2],
-			runCtx.GUID[2:],
-		),
-	)
-	if err != nil {
-		return nil, err
-	}
-	runCtx.Run.Source = string(contents)
-	return runCtx, nil
-}
 
 func processRun(
 	r *http.Request,
@@ -224,118 +167,6 @@ func registerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB, insec
 		buf.WriteString("\n")
 		if _, err := io.Copy(f, &buf); err != nil {
 			ctx.Log.Error("Failed to write to benchmark file", "err", err)
-		}
-	})
-
-	gradeRe := regexp.MustCompile("/run/grade/(\\d+)/?")
-	mux.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
-		res := gradeRe.FindStringSubmatch(r.URL.Path)
-		if res == nil {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		id, err := strconv.ParseInt(res[1], 10, 64)
-		if err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		runCtx, err := newRunContext(ctx, db, id)
-		if err != nil {
-			ctx.Log.Error("Error getting run context", "err", err, "id", id)
-			if err == sql.ErrNoRows {
-				w.WriteHeader(http.StatusNotFound)
-			} else {
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-			return
-		}
-		input, err := ctx.InputManager.Add(
-			runCtx.Run.InputHash,
-			grader.NewInputFactory(runCtx.ProblemName, &ctx.Config),
-		)
-		if err != nil {
-			ctx.Log.Error("Error getting input", "err", err, "run", runCtx)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		if err = grader.AddRunContext(ctx, runCtx, input); err != nil {
-			ctx.Log.Error("Error adding run context", "err", err, "id", id)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		if _, ok := r.URL.Query()["debug"]; ok {
-			runCtx.Priority = grader.QueuePriorityLow
-			if err := runCtx.Debug(); err != nil {
-				ctx.Log.Error("Unable to set debug mode", "err", err)
-			} else {
-				defer func() {
-					if err := os.RemoveAll(runCtx.GradeDir); err != nil {
-						ctx.Log.Error("Error writing response", "err", err)
-					}
-				}()
-			}
-		}
-		runs.AddRun(runCtx)
-		runCtx.Log.Info("enqueued run", "run", runCtx.Run)
-		if _, ok := r.URL.Query()["wait"]; ok {
-			select {
-			case <-w.(http.CloseNotifier).CloseNotify():
-				return
-			case <-runCtx.Ready():
-			}
-
-			if _, ok := r.URL.Query()["multipart"]; ok {
-				multipartWriter := multipart.NewWriter(w)
-				defer multipartWriter.Close()
-
-				w.Header().Set("Content-Type", multipartWriter.FormDataContentType())
-				files := []string{"logs.txt.gz", "files.zip", "details.json", "tracing.json.gz"}
-				for _, file := range files {
-					fd, err := os.Open(path.Join(runCtx.GradeDir, file))
-					if err != nil {
-						ctx.Log.Error("Error opening file", "file", file, "err", err)
-						continue
-					}
-					resultWriter, err := multipartWriter.CreateFormFile("file", file)
-					if err != nil {
-						ctx.Log.Error("Error sending file", "file", file, "err", err)
-						continue
-					}
-					if _, err := io.Copy(resultWriter, fd); err != nil {
-						ctx.Log.Error("Error sending file", "file", file, "err", err)
-						continue
-					}
-				}
-			} else {
-				w.Header().Set("Content-Type", "text/json; charset=utf-8")
-
-				jsonData, _ := json.MarshalIndent(runCtx.Result, "", "  ")
-				logData, err := readGzippedFile(path.Join(runCtx.GradeDir, "logs.txt.gz"))
-				if err != nil {
-					ctx.Log.Error("Error reading logs", "err", err)
-				}
-				filesZip, err := readBase64File(path.Join(runCtx.GradeDir, "files.zip"))
-				if err != nil {
-					ctx.Log.Error("Error reading logs", "err", err)
-				}
-				tracing, err := readBase64File(path.Join(runCtx.GradeDir, "tracing.json.gz"))
-				if err != nil {
-					ctx.Log.Error("Error reading logs", "err", err)
-				}
-				response := &ResponseStruct{
-					Results:  string(jsonData),
-					Logs:     logData,
-					FilesZip: filesZip,
-					Tracing:  tracing,
-				}
-				encoder := json.NewEncoder(w)
-				if err := encoder.Encode(response); err != nil {
-					ctx.Log.Error("Error writing response", "err", err)
-				}
-			}
-		} else {
-			w.Header().Set("Content-Type", "text/json; charset=utf-8")
-			fmt.Fprintf(w, "{\"status\":\"ok\"}")
 		}
 	})
 
