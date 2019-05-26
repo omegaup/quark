@@ -18,7 +18,7 @@ import (
 )
 
 func newGraderContext(t *testing.T) *grader.Context {
-	dirname, err := ioutil.TempDir("/tmp", "gradertest")
+	dirname, err := ioutil.TempDir("/tmp", t.Name())
 	if err != nil {
 		t.Fatalf("Failed to create temporary directory: %s", err)
 	}
@@ -50,6 +50,9 @@ func newGraderContext(t *testing.T) *grader.Context {
 
 func TestEphemeralGrader(t *testing.T) {
 	ctx := newGraderContext(t)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(path.Dir(ctx.Config.Grader.RuntimePath))
+	}
 	mux := http.NewServeMux()
 	registerEphemeralHandlers(ctx, mux)
 	registerRunnerHandlers(ctx, mux, nil, true)

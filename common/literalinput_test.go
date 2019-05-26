@@ -10,7 +10,7 @@ import (
 func TestLiteralInput(t *testing.T) {
 	ctx := newTestingContext()
 	defer ctx.Close()
-	dirname, err := ioutil.TempDir("/tmp", "commontest")
+	dirname, err := ioutil.TempDir("/tmp", t.Name())
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %q", err)
 	}

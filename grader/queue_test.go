@@ -35,7 +35,7 @@ func addRun(
 }
 
 func TestMonitorSerializability(t *testing.T) {
-	ctx, err := newGraderContext()
+	ctx, err := newGraderContext(t)
 	if err != nil {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
@@ -49,7 +49,7 @@ func TestMonitorSerializability(t *testing.T) {
 }
 
 func TestQueue(t *testing.T) {
-	ctx, err := newGraderContext()
+	ctx, err := newGraderContext(t)
 	if err != nil {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
@@ -140,7 +140,7 @@ func TestQueue(t *testing.T) {
 }
 
 func TestQueuePriorities(t *testing.T) {
-	ctx, err := newGraderContext()
+	ctx, err := newGraderContext(t)
 	if err != nil {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
@@ -258,7 +258,7 @@ func newListener() *listener {
 }
 
 func TestPostProcessor(t *testing.T) {
-	ctx, err := newGraderContext()
+	ctx, err := newGraderContext(t)
 	if err != nil {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}

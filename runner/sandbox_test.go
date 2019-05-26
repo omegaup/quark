@@ -16,7 +16,7 @@ func TestOmegajail(t *testing.T) {
 }
 
 func TestParseMetaFile(t *testing.T) {
-	ctx, err := newRunnerContext()
+	ctx, err := newRunnerContext(t)
 	if err != nil {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}

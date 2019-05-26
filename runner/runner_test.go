@@ -30,6 +30,7 @@ type runnerTestCase struct {
 
 type sandboxWrapper interface {
 	sandbox(testCase *runnerTestCase) Sandbox
+	name() string
 }
 
 type omegajailSandboxWrapper struct {
@@ -38,6 +39,10 @@ type omegajailSandboxWrapper struct {
 
 func (wrapper *omegajailSandboxWrapper) sandbox(testCase *runnerTestCase) Sandbox {
 	return wrapper.omegajail
+}
+
+func (wrapper *omegajailSandboxWrapper) name() string {
+	return "OmegajailSandbox"
 }
 
 type fakeSandboxWrapper struct {
@@ -117,8 +122,12 @@ func (wrapper *fakeSandboxWrapper) sandbox(testCase *runnerTestCase) Sandbox {
 	return &fakeSandbox{testCase: testCase}
 }
 
-func newRunnerContext() (*common.Context, error) {
-	dirname, err := ioutil.TempDir("/tmp", "runnertest")
+func (wrapper *fakeSandboxWrapper) name() string {
+	return "FakeSandbox"
+}
+
+func newRunnerContext(t *testing.T) (*common.Context, error) {
+	dirname, err := ioutil.TempDir("/tmp", t.Name())
 	if err != nil {
 		return nil, err
 	}
@@ -152,11 +161,10 @@ func TestGradeOmegajail(t *testing.T) {
 		t.Skip("omegajail sandbox not supported")
 	}
 	runGraderTests(t, &omegajailSandboxWrapper{omegajail: omegajail})
-	runGraderTestsLowMem(t, &omegajailSandboxWrapper{omegajail: omegajail})
 }
 
 func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
-	ctx, err := newRunnerContext()
+	ctx, err := newRunnerContext(t)
 	if err != nil {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
@@ -505,44 +513,53 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		},
 	}
 	for idx, rte := range runtests {
-		results, err := Grade(
-			ctx,
-			&bytes.Buffer{},
-			&common.Run{
-				AttemptID: uint64(idx),
-				Language:  rte.language,
-				InputHash: input.Hash(),
-				Source:    rte.source,
-				MaxScore:  rte.maxScore,
-			},
-			input,
-			wrapper.sandbox(&rte),
-		)
-		if err != nil {
-			t.Errorf("Failed to run %v: %q", rte, err)
-			continue
-		}
-		if results.Verdict != rte.expectedVerdict {
-			t.Errorf(
-				"results.Verdict = %q, expected %q, test %v: %v",
-				results.Verdict,
-				rte.expectedVerdict,
-				idx,
-				rte,
+		t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
+			results, err := Grade(
+				ctx,
+				&bytes.Buffer{},
+				&common.Run{
+					AttemptID: uint64(idx),
+					Language:  rte.language,
+					InputHash: input.Hash(),
+					Source:    rte.source,
+					MaxScore:  rte.maxScore,
+				},
+				input,
+				wrapper.sandbox(&rte),
 			)
-		}
-		if results.Score.Cmp(rte.expectedScore) != 0 {
-			t.Errorf(
-				"results.Score = %s, expected %s",
-				results.Score.String(),
-				rte.expectedScore.String(),
-			)
-		}
+			if err != nil {
+				t.Fatalf("Failed to run %v: %q", rte, err)
+			}
+			if results.Verdict != rte.expectedVerdict {
+				t.Errorf(
+					"results.Verdict = %q, expected %q, test %v: %v",
+					results.Verdict,
+					rte.expectedVerdict,
+					idx,
+					rte,
+				)
+			}
+			if results.Score.Cmp(rte.expectedScore) != 0 {
+				t.Errorf(
+					"results.Score = %s, expected %s",
+					results.Score.String(),
+					rte.expectedScore.String(),
+				)
+			}
+		})
 	}
 }
 
-func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
-	ctx, err := newRunnerContext()
+func TestGradeLowMemOmegajail(t *testing.T) {
+	omegajail := &OmegajailSandbox{}
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	if !omegajail.Supported() {
+		t.Skip("omegajail omegajail not supported")
+	}
+
+	ctx, err := newRunnerContext(t)
 	if err != nil {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
@@ -628,39 +645,40 @@ func runGraderTestsLowMem(t *testing.T, wrapper sandboxWrapper) {
 		},
 	}
 	for idx, rte := range runtests {
-		results, err := Grade(
-			ctx,
-			&bytes.Buffer{},
-			&common.Run{
-				AttemptID: uint64(idx),
-				Language:  rte.language,
-				InputHash: input.Hash(),
-				Source:    rte.source,
-				MaxScore:  rte.maxScore,
-			},
-			input,
-			wrapper.sandbox(&rte),
-		)
-		if err != nil {
-			t.Errorf("Failed to run %v: %q", rte, err)
-			continue
-		}
-		if results.Verdict != rte.expectedVerdict {
-			t.Errorf(
-				"results.Verdict = %q, expected %q, test %v: %v",
-				results.Verdict,
-				rte.expectedVerdict,
-				idx,
-				rte,
+		t.Run(fmt.Sprintf("%d/%s %s", idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
+			results, err := Grade(
+				ctx,
+				&bytes.Buffer{},
+				&common.Run{
+					AttemptID: uint64(idx),
+					Language:  rte.language,
+					InputHash: input.Hash(),
+					Source:    rte.source,
+					MaxScore:  rte.maxScore,
+				},
+				input,
+				omegajail,
 			)
-		}
-		if results.Score.Cmp(rte.expectedScore) != 0 {
-			t.Errorf(
-				"results.Score = %s, expected %s",
-				results.Score.String(),
-				rte.expectedScore.String(),
-			)
-		}
+			if err != nil {
+				t.Fatalf("Failed to run %v: %q", rte, err)
+			}
+			if results.Verdict != rte.expectedVerdict {
+				t.Errorf(
+					"results.Verdict = %q, expected %q, test %v: %v",
+					results.Verdict,
+					rte.expectedVerdict,
+					idx,
+					rte,
+				)
+			}
+			if results.Score.Cmp(rte.expectedScore) != 0 {
+				t.Errorf(
+					"results.Score = %s, expected %s",
+					results.Score.String(),
+					rte.expectedScore.String(),
+				)
+			}
+		})
 	}
 }
 
@@ -680,7 +698,7 @@ func TestKarelGradeOmegajail(t *testing.T) {
 }
 
 func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
-	ctx, err := newRunnerContext()
+	ctx, err := newRunnerContext(t)
 	if err != nil {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
@@ -767,39 +785,40 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		},
 	}
 	for idx, rte := range runtests {
-		results, err := Grade(
-			ctx,
-			&bytes.Buffer{},
-			&common.Run{
-				AttemptID: uint64(idx),
-				Language:  rte.language,
-				InputHash: input.Hash(),
-				Source:    rte.source,
-				MaxScore:  rte.maxScore,
-			},
-			input,
-			wrapper.sandbox(&rte),
-		)
-		if err != nil {
-			t.Errorf("Failed to run %v: %q", rte, err)
-			continue
-		}
-		if results.Verdict != rte.expectedVerdict {
-			t.Errorf(
-				"results.Verdict = %q, expected %q, test %v: %v",
-				results.Verdict,
-				rte.expectedVerdict,
-				idx,
-				rte,
+		t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
+			results, err := Grade(
+				ctx,
+				&bytes.Buffer{},
+				&common.Run{
+					AttemptID: uint64(idx),
+					Language:  rte.language,
+					InputHash: input.Hash(),
+					Source:    rte.source,
+					MaxScore:  rte.maxScore,
+				},
+				input,
+				wrapper.sandbox(&rte),
 			)
-		}
-		if results.Score.Cmp(rte.expectedScore) != 0 {
-			t.Errorf(
-				"results.Score = %s, expected %s",
-				results.Score.String(),
-				rte.expectedScore.String(),
-			)
-		}
+			if err != nil {
+				t.Fatalf("Failed to run %v: %q", rte, err)
+			}
+			if results.Verdict != rte.expectedVerdict {
+				t.Errorf(
+					"results.Verdict = %q, expected %q, test %v: %v",
+					results.Verdict,
+					rte.expectedVerdict,
+					idx,
+					rte,
+				)
+			}
+			if results.Score.Cmp(rte.expectedScore) != 0 {
+				t.Errorf(
+					"results.Score = %s, expected %s",
+					results.Score.String(),
+					rte.expectedScore.String(),
+				)
+			}
+		})
 	}
 }
 
@@ -811,7 +830,7 @@ func TestLibinteractive(t *testing.T) {
 	if !omegajail.Supported() {
 		t.Skip("omegajail sandbox not supported")
 	}
-	ctx, err := newRunnerContext()
+	ctx, err := newRunnerContext(t)
 	if err != nil {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
@@ -985,37 +1004,38 @@ func TestLibinteractive(t *testing.T) {
 		},
 	}
 	for idx, rte := range runtests {
-		results, err := Grade(
-			ctx,
-			&bytes.Buffer{},
-			&common.Run{
-				AttemptID: uint64(idx),
-				Language:  rte.language,
-				InputHash: input.Hash(),
-				Source:    rte.source,
-				MaxScore:  rte.maxScore,
-			},
-			input,
-			omegajail,
-		)
-		if err != nil {
-			t.Errorf("Failed to run %v: %q", rte, err)
-			continue
-		}
-		if results.Verdict != rte.expectedVerdict {
-			t.Errorf(
-				"results.Verdict = %q, expected %q",
-				results.Verdict,
-				rte.expectedVerdict,
+		t.Run(fmt.Sprintf("%d/%s %s", idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
+			results, err := Grade(
+				ctx,
+				&bytes.Buffer{},
+				&common.Run{
+					AttemptID: uint64(idx),
+					Language:  rte.language,
+					InputHash: input.Hash(),
+					Source:    rte.source,
+					MaxScore:  rte.maxScore,
+				},
+				input,
+				omegajail,
 			)
-		}
-		if results.Score.Cmp(rte.expectedScore) != 0 {
-			t.Errorf(
-				"results.Score = %s, expected %s",
-				results.Score.String(),
-				rte.expectedScore.String(),
-			)
-		}
+			if err != nil {
+				t.Fatalf("Failed to run %v: %q", rte, err)
+			}
+			if results.Verdict != rte.expectedVerdict {
+				t.Errorf(
+					"results.Verdict = %q, expected %q",
+					results.Verdict,
+					rte.expectedVerdict,
+				)
+			}
+			if results.Score.Cmp(rte.expectedScore) != 0 {
+				t.Errorf(
+					"results.Score = %s, expected %s",
+					results.Score.String(),
+					rte.expectedScore.String(),
+				)
+			}
+		})
 	}
 }
 

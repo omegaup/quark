@@ -32,7 +32,7 @@ func mustDecode(b64 string) []byte {
 }
 
 func TestPreloadInputs(t *testing.T) {
-	ctx, err := newRunnerContext()
+	ctx, err := newRunnerContext(t)
 	if err != nil {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}
@@ -202,7 +202,7 @@ func TestPreloadInputs(t *testing.T) {
 }
 
 func TestInputFactory(t *testing.T) {
-	ctx, err := newRunnerContext()
+	ctx, err := newRunnerContext(t)
 	if err != nil {
 		t.Fatalf("RunnerContext creation failed with %q", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"testing"
 	"time"
 )
 
@@ -14,8 +15,8 @@ const (
 	headCommit = "d129ffad215c8c87d2e646b959f31e5f279c1cff"
 )
 
-func newGraderContext() (*Context, error) {
-	dirname, err := ioutil.TempDir("/tmp", "gradertest")
+func newGraderContext(t *testing.T) (*Context, error) {
+	dirname, err := ioutil.TempDir("/tmp", t.Name())
 	if err != nil {
 		return nil, err
 	}

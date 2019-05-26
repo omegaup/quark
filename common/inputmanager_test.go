@@ -149,7 +149,7 @@ func TestInputManager(t *testing.T) {
 }
 
 func TestPreloadInputs(t *testing.T) {
-	dirname, err := ioutil.TempDir("/tmp", "testsha1sum")
+	dirname, err := ioutil.TempDir("/tmp", t.Name())
 	if err != nil {
 		t.Fatalf("ioutil.TempDir failed with %q", err)
 	}

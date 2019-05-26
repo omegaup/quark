@@ -16,7 +16,7 @@ import (
 )
 
 func TestPreloadInputs(t *testing.T) {
-	ctx, err := newGraderContext()
+	ctx, err := newGraderContext(t)
 	if err != nil {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
@@ -155,7 +155,7 @@ func TestPreloadInputs(t *testing.T) {
 }
 
 func TestTransmitInput(t *testing.T) {
-	ctx, err := newGraderContext()
+	ctx, err := newGraderContext(t)
 	if err != nil {
 		t.Fatalf("GraderContext creation failed with %q", err)
 	}
