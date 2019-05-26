@@ -4,11 +4,12 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
-	"errors"
+	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	git "github.com/lhchavez/git2go"
 	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/grader/v1compat"
+	"github.com/pkg/errors"
 	"io"
 	"net/http"
 	"os"
@@ -16,6 +17,177 @@ import (
 	"strconv"
 	"strings"
 )
+
+// A ProblemInformation represents information from the problem.
+type ProblemInformation struct {
+	InputHash string
+	Settings  *common.ProblemSettings
+}
+
+// GetProblemInformation returns the ProblemInformation obtained from the git
+// repository located at the provided repository path.
+func GetProblemInformation(repositoryPath string) (*ProblemInformation, error) {
+	repository, err := git.OpenRepository(repositoryPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to open %s", repositoryPath)
+	}
+	defer repository.Free()
+	privateBranchRef, err := repository.References.Lookup("refs/heads/private")
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to find the private branch for %s", repositoryPath)
+	}
+	defer privateBranchRef.Free()
+	privateBranchObject, err := privateBranchRef.Peel(git.ObjectCommit)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to peel the private branch for %s", repositoryPath)
+	}
+	defer privateBranchObject.Free()
+	privateBranchCommit, err := privateBranchObject.AsCommit()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to find private branch commit for %s", repositoryPath)
+	}
+	defer privateBranchCommit.Free()
+	privateBranchTree, err := privateBranchCommit.Tree()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to find private branch commit's tree for %s", repositoryPath)
+	}
+	defer privateBranchTree.Free()
+
+	settingsJSONEntry := privateBranchTree.EntryByName("settings.json")
+	if settingsJSONEntry == nil {
+		return nil, errors.Errorf("failed to find settings.json for %s", repositoryPath)
+	}
+	settingsJSONObject, err := repository.LookupBlob(settingsJSONEntry.Id)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to lookup settings.json for %s", repositoryPath)
+	}
+	defer settingsJSONObject.Free()
+	var problemSettings common.ProblemSettings
+	if err := json.Unmarshal(settingsJSONObject.Contents(), &problemSettings); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal settings.json for %s", repositoryPath)
+	}
+
+	return &ProblemInformation{
+		privateBranchTree.Id().String(),
+		&problemSettings,
+	}, nil
+}
+
+// CreateArchiveFromGit creates an archive that can be sent to a Runner as an
+// Input from a git repository.
+func CreateArchiveFromGit(
+	archivePath string,
+	repositoryPath string,
+	inputHash string,
+) (int64, error) {
+	repository, err := git.OpenRepository(repositoryPath)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to open repository for %s:%s", repositoryPath, inputHash)
+	}
+	defer repository.Free()
+
+	treeOid, err := git.NewOid(inputHash)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to parse tree hash for %s:%s", repositoryPath, inputHash)
+	}
+	tree, err := repository.LookupTree(treeOid)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to lookup tree for %s:%s", repositoryPath, inputHash)
+	}
+	defer tree.Free()
+	odb, err := repository.Odb()
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to get odb for %s:%s", repositoryPath, inputHash)
+	}
+	defer odb.Free()
+
+	tmpFd, err := os.Create(archivePath)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to create archive for %s:%s", repositoryPath, inputHash)
+	}
+	defer tmpFd.Close()
+
+	gz := gzip.NewWriter(tmpFd)
+	defer gz.Close()
+
+	archive := tar.NewWriter(gz)
+	defer archive.Close()
+
+	var walkErr error
+	foundSettings := false
+	var uncompressedSize int64
+	tree.Walk(func(parent string, entry *git.TreeEntry) int {
+		entryPath := path.Join(parent, entry.Name)
+		if entryPath == "settings.json" {
+			foundSettings = true
+		}
+		switch entry.Type {
+		case git.ObjectTree:
+			hdr := &tar.Header{
+				Name:     entryPath,
+				Typeflag: tar.TypeDir,
+				Mode:     0755,
+				Size:     0,
+			}
+			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
+				walkErr = errors.Wrapf(walkErr, "failed to write header for tree %s", entryPath)
+				return -1
+			}
+
+		case git.ObjectBlob:
+			var blob *git.Blob
+			blob, walkErr = repository.LookupBlob(entry.Id)
+			if walkErr != nil {
+				walkErr = errors.Wrapf(walkErr, "failed to lookup blob %s", entryPath)
+				return -1
+			}
+			defer blob.Free()
+
+			hdr := &tar.Header{
+				Name:     entryPath,
+				Typeflag: tar.TypeReg,
+				Mode:     0644,
+				Size:     blob.Size(),
+			}
+			uncompressedSize += blob.Size()
+			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
+				walkErr = errors.Wrapf(walkErr, "failed to write header for blob %s", entryPath)
+				return -1
+			}
+
+			// Attempt to uncompress this object on the fly from the gzip stream
+			// rather than decompressing completely it in memory. This is only
+			// possible if the object is not deltified.
+			stream, err := odb.NewReadStream(entry.Id)
+			if err == nil {
+				defer stream.Free()
+				if _, walkErr = io.Copy(archive, stream); walkErr != nil {
+					walkErr = errors.Wrapf(walkErr, "failed to copy blob stream %s", entryPath)
+					return -1
+				}
+			} else {
+				// That particular object cannot be streamed. Allocate the blob in
+				// memory and write it to the archive.
+				if _, walkErr = archive.Write(blob.Contents()); walkErr != nil {
+					walkErr = errors.Wrapf(walkErr, "failed to write blob %s", entryPath)
+					return -1
+				}
+			}
+		}
+		return 0
+	})
+	if walkErr != nil {
+		return 0, errors.Wrapf(walkErr, "failed to create archive for %s:%s", repositoryPath, inputHash)
+	}
+	if !foundSettings {
+		return 0, errors.Errorf(
+			"Could not find `settings.json` in %s:%s",
+			repositoryPath,
+			inputHash,
+		)
+	}
+	return uncompressedSize, nil
+}
 
 type graderBaseInput struct {
 	common.BaseInput
@@ -38,7 +210,7 @@ func (input *graderBaseInput) Verify() error {
 		return err
 	}
 	if storedHash != fmt.Sprintf("%0x", hash) {
-		return errors.New("Hash verification failed")
+		return stderrors.New("Hash verification failed")
 	}
 	uncompressedSize, err := input.getStoredLength()
 	if err != nil {
@@ -125,7 +297,7 @@ func (input *Input) Persist() error {
 	}
 	tmpPath := fmt.Sprintf("%s.tmp", input.archivePath)
 	defer os.Remove(tmpPath)
-	uncompressedSize, err := input.createArchiveFromGit(tmpPath)
+	uncompressedSize, err := CreateArchiveFromGit(tmpPath, input.repositoryPath, input.Hash())
 	if err != nil {
 		return err
 	}
@@ -175,108 +347,6 @@ func (input *Input) Persist() error {
 	return nil
 }
 
-func (input *Input) createArchiveFromGit(archivePath string) (int64, error) {
-	repository, err := git.OpenRepository(input.repositoryPath)
-	if err != nil {
-		return 0, err
-	}
-	defer repository.Free()
-
-	treeOid, err := git.NewOid(input.Hash())
-	if err != nil {
-		return 0, err
-	}
-
-	tree, err := repository.LookupTree(treeOid)
-	if err != nil {
-		return 0, err
-	}
-	defer tree.Free()
-	odb, err := repository.Odb()
-	if err != nil {
-		return 0, err
-	}
-	defer odb.Free()
-
-	tmpFd, err := os.Create(archivePath)
-	if err != nil {
-		return 0, err
-	}
-	defer tmpFd.Close()
-
-	gz := gzip.NewWriter(tmpFd)
-	defer gz.Close()
-
-	archive := tar.NewWriter(gz)
-	defer archive.Close()
-
-	var walkErr error
-	foundSettings := false
-	var uncompressedSize int64
-	tree.Walk(func(parent string, entry *git.TreeEntry) int {
-		entryPath := path.Join(parent, entry.Name)
-		if entryPath == "settings.json" {
-			foundSettings = true
-		}
-		switch entry.Type {
-		case git.ObjectTree:
-			hdr := &tar.Header{
-				Name:     entryPath,
-				Typeflag: tar.TypeDir,
-				Mode:     0755,
-				Size:     0,
-			}
-			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
-				return -1
-			}
-		case git.ObjectBlob:
-			blob, walkErr := repository.LookupBlob(entry.Id)
-			if walkErr != nil {
-				return -1
-			}
-			defer blob.Free()
-
-			hdr := &tar.Header{
-				Name:     entryPath,
-				Typeflag: tar.TypeReg,
-				Mode:     0644,
-				Size:     blob.Size(),
-			}
-			uncompressedSize += blob.Size()
-			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
-				return -1
-			}
-
-			stream, err := odb.NewReadStream(entry.Id)
-			if err == nil {
-				defer stream.Free()
-				if _, walkErr := io.Copy(archive, stream); walkErr != nil {
-					return -1
-				}
-			} else {
-				// That particular object cannot be streamed. Allocate the blob in
-				// memory and write it to the archive.
-				if _, walkErr := archive.Write(blob.Contents()); walkErr != nil {
-					return -1
-				}
-			}
-		}
-		return 0
-	})
-
-	if walkErr != nil {
-		return 0, walkErr
-	}
-	if !foundSettings {
-		return 0, fmt.Errorf(
-			"Could not find `settings.json` in %s:%s",
-			input.repositoryPath,
-			input.Hash(),
-		)
-	}
-	return uncompressedSize, nil
-}
-
 // InputFactory is a common.InputFactory that can store specific versions of a
 // problem's git repository into a .tar.gz file that can be easily shipped to
 // runners.
@@ -314,7 +384,7 @@ func (factory *InputFactory) NewInput(
 				fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
 			),
 		},
-		repositoryPath: v1compat.GetRepositoryPath(
+		repositoryPath: GetRepositoryPath(
 			factory.config.Grader.RuntimePath,
 			factory.problemName,
 		),
@@ -367,4 +437,16 @@ func (factory *CachedInputFactory) GetInputHash(
 		path.Base(dirname),
 		strings.TrimSuffix(filename, extension),
 	), true
+}
+
+// GetRepositoryPath returns the path of a problem repository.
+func GetRepositoryPath(
+	root string,
+	problemName string,
+) string {
+	return path.Join(
+		root,
+		"problems.git",
+		problemName,
+	)
 }

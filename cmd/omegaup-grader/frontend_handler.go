@@ -11,7 +11,6 @@ import (
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
-	"github.com/omegaup/quark/grader/v1compat"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 	"io"
@@ -110,7 +109,7 @@ func updateDatabase(
 	}
 }
 
-func v1CompatBroadcastRun(
+func broadcastRun(
 	ctx *grader.Context,
 	db *sql.DB,
 	client *http.Client,
@@ -219,7 +218,7 @@ func runPostProcessor(
 			updateDatabase(ctx, db, run)
 		}
 		if ctx.Config.Grader.V1.SendBroadcast {
-			if err := v1CompatBroadcastRun(ctx, db, client, run); err != nil {
+			if err := broadcastRun(ctx, db, client, run); err != nil {
 				ctx.Log.Error("Error sending run broadcast", "err", err)
 			}
 		}
@@ -250,8 +249,8 @@ func getPendingRuns(ctx *grader.Context, db *sql.DB) ([]int64, error) {
 	return runIds, nil
 }
 
-// v1CompatGradeDir gets the new-style Run ID-based path.
-func v1CompatGradeDir(ctx *grader.Context, runID int64) string {
+// gradeDir gets the new-style Run ID-based path.
+func gradeDir(ctx *grader.Context, runID int64) string {
 	return path.Join(
 		ctx.Config.Grader.V1.RuntimeGradePath,
 		fmt.Sprintf("%02d/%02d/%d", runID%100, (runID%10000)/100, runID),
@@ -262,8 +261,8 @@ func newRunContext(
 	ctx *grader.Context,
 	runCtx *grader.RunContext,
 ) (*grader.RunContext, error) {
-	runCtx.GradeDir = v1CompatGradeDir(ctx, runCtx.ID)
-	gitProblemInfo, err := v1compat.GetProblemInformation(v1compat.GetRepositoryPath(
+	runCtx.GradeDir = gradeDir(ctx, runCtx.ID)
+	gitProblemInfo, err := grader.GetProblemInformation(grader.GetRepositoryPath(
 		ctx.Config.Grader.V1.RuntimePath,
 		runCtx.ProblemName,
 	))
@@ -378,7 +377,7 @@ func injectRuns(
 		ctx.Metrics.CounterAdd("grader_runs_total", 1)
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
-			v1compat.NewInputFactory(
+			grader.NewInputFactory(
 				runCtx.ProblemName,
 				&ctx.Config,
 			),
@@ -715,7 +714,7 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 		}
 
 		filePath := path.Join(
-			v1CompatGradeDir(ctx, request.RunID),
+			gradeDir(ctx, request.RunID),
 			request.Filename,
 		)
 		f, err := os.Open(filePath)
