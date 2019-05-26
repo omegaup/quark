@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/elazarl/go-bindata-assetfs"
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
@@ -498,15 +497,6 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	finishedRunsChan := make(chan *grader.RunInfo, 1)
 	graderContext().InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
 	go v1CompatRunPostProcessor(db, finishedRunsChan, client)
-
-	mux.Handle("/", http.FileServer(&wrappedFileSystem{
-		fileSystem: &assetfs.AssetFS{
-			Asset:     Asset,
-			AssetDir:  AssetDir,
-			AssetInfo: AssetInfo,
-			Prefix:    "data",
-		},
-	}))
 
 	mux.Handle("/metrics", prometheus.Handler())
 

@@ -1,7 +1,5 @@
 package main
 
-//go:generate ${GOPATH}/bin/go-bindata -nomemcopy data/dist/...
-
 import (
 	"bytes"
 	"compress/gzip"
@@ -23,7 +21,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -33,7 +30,6 @@ import (
 var (
 	version    = flag.Bool("version", false, "Print the version and exit")
 	insecure   = flag.Bool("insecure", false, "Do not use TLS")
-	skipAssets = flag.Bool("skip-assets", false, "Do not use pre-packaged assets")
 	configPath = flag.String(
 		"config",
 		"/etc/omegaup/grader/config.json",
@@ -123,21 +119,6 @@ func readBase64File(filename string) (string, error) {
 	}
 	enc.Close()
 	return buf.String(), nil
-}
-
-type wrappedFileSystem struct {
-	fileSystem http.FileSystem
-}
-
-func (fs *wrappedFileSystem) Open(name string) (http.File, error) {
-	if *skipAssets {
-		path := "/data" + filepath.Clean(filepath.Join("/", name))
-		return os.Open(path)
-	}
-	if file, err := fs.fileSystem.Open(name); err == nil {
-		return file, nil
-	}
-	return nil, os.ErrNotExist
 }
 
 func queueEventsProcessor(events <-chan *grader.QueueEvent) {

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner"
@@ -209,15 +208,6 @@ func registerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB, insec
 	if err != nil {
 		panic(err)
 	}
-
-	mux.Handle("/", http.FileServer(&wrappedFileSystem{
-		fileSystem: &assetfs.AssetFS{
-			Asset:     Asset,
-			AssetDir:  AssetDir,
-			AssetInfo: AssetInfo,
-			Prefix:    "data/dist/admin",
-		},
-	}))
 
 	mux.HandleFunc("/monitoring/benchmark/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()

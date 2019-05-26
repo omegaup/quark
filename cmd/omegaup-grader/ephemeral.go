@@ -3,7 +3,6 @@ package main
 import (
 	"compress/gzip"
 	"encoding/json"
-	"github.com/elazarl/go-bindata-assetfs"
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
@@ -309,12 +308,4 @@ func registerEphemeralHandlers(ctx *grader.Context, mux *http.ServeMux) {
 	}()
 
 	mux.Handle("/ephemeral/run/", runHandler)
-	mux.Handle("/ephemeral/", http.FileServer(&wrappedFileSystem{
-		fileSystem: &assetfs.AssetFS{
-			Asset:     Asset,
-			AssetDir:  AssetDir,
-			AssetInfo: AssetInfo,
-			Prefix:    "data/dist/",
-		},
-	}))
 }
