@@ -61,7 +61,7 @@ type runGradeResource struct {
 	Filename string `json:"filename"`
 }
 
-func v1CompatUpdateDatabase(
+func updateDatabase(
 	ctx *grader.Context,
 	db *sql.DB,
 	run *grader.RunInfo,
@@ -199,13 +199,13 @@ func v1CompatBroadcastRun(
 
 	message.Message = string(marshaled)
 
-	if err := v1CompatBroadcast(ctx, client, &message); err != nil {
+	if err := broadcast(ctx, client, &message); err != nil {
 		ctx.Log.Error("Error sending run broadcast", "err", err)
 	}
 	return nil
 }
 
-func v1CompatRunPostProcessor(
+func runPostProcessor(
 	db *sql.DB,
 	finishedRuns <-chan *grader.RunInfo,
 	client *http.Client,
@@ -216,7 +216,7 @@ func v1CompatRunPostProcessor(
 			ctx.Metrics.CounterAdd("grader_runs_je", 1)
 		}
 		if ctx.Config.Grader.V1.UpdateDatabase {
-			v1CompatUpdateDatabase(ctx, db, run)
+			updateDatabase(ctx, db, run)
 		}
 		if ctx.Config.Grader.V1.SendBroadcast {
 			if err := v1CompatBroadcastRun(ctx, db, client, run); err != nil {
@@ -226,7 +226,7 @@ func v1CompatRunPostProcessor(
 	}
 }
 
-func v1CompatGetPendingRuns(ctx *grader.Context, db *sql.DB) ([]int64, error) {
+func getPendingRuns(ctx *grader.Context, db *sql.DB) ([]int64, error) {
 	rows, err := db.Query(
 		`SELECT
 			run_id
@@ -258,7 +258,7 @@ func v1CompatGradeDir(ctx *grader.Context, runID int64) string {
 	)
 }
 
-func v1CompatNewRunContext(
+func newRunContext(
 	ctx *grader.Context,
 	runCtx *grader.RunContext,
 ) (*grader.RunContext, error) {
@@ -282,7 +282,7 @@ func v1CompatNewRunContext(
 	return runCtx, nil
 }
 
-func v1CompatNewRunContextFromID(
+func newRunContextFromID(
 	ctx *grader.Context,
 	db *sql.DB,
 	runId int64,
@@ -337,10 +337,10 @@ func v1CompatNewRunContextFromID(
 	} else {
 		runCtx.Run.MaxScore = big.NewRat(1, 1)
 	}
-	return v1CompatNewRunContext(ctx, runCtx)
+	return newRunContext(ctx, runCtx)
 }
 
-func v1CompatReadSource(ctx *grader.Context, runCtx *grader.RunContext) error {
+func readSource(ctx *grader.Context, runCtx *grader.RunContext) error {
 	contents, err := ioutil.ReadFile(
 		path.Join(
 			ctx.Config.Grader.V1.RuntimePath,
@@ -356,14 +356,14 @@ func v1CompatReadSource(ctx *grader.Context, runCtx *grader.RunContext) error {
 	return nil
 }
 
-func v1CompatInjectRuns(
+func injectRuns(
 	ctx *grader.Context,
 	runs *grader.Queue,
 	priority grader.QueuePriority,
 	runCtxs ...*grader.RunContext,
 ) error {
 	for _, runCtx := range runCtxs {
-		if err := v1CompatReadSource(ctx, runCtx); err != nil {
+		if err := readSource(ctx, runCtx); err != nil {
 			ctx.Log.Error(
 				"Error getting run source",
 				"err", err,
@@ -396,7 +396,7 @@ func v1CompatInjectRuns(
 	return nil
 }
 
-func v1CompatBroadcast(
+func broadcast(
 	ctx *grader.Context,
 	client *http.Client,
 	message *broadcaster.Message,
@@ -424,12 +424,12 @@ func v1CompatBroadcast(
 	return nil
 }
 
-func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
+func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	runs, err := graderContext().QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
-	runIds, err := v1CompatGetPendingRuns(graderContext(), db)
+	runIds, err := getPendingRuns(graderContext(), db)
 	if err != nil {
 		panic(err)
 	}
@@ -439,7 +439,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 	go func() {
 		graderContext().Log.Info("Injecting pending runs", "count", len(runIds))
 		for _, runId := range runIds {
-			runCtx, err := v1CompatNewRunContextFromID(graderContext(), db, runId)
+			runCtx, err := newRunContextFromID(graderContext(), db, runId)
 			if err != nil {
 				graderContext().Log.Error(
 					"Error getting run context",
@@ -448,7 +448,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 				)
 				continue
 			}
-			if err := v1CompatInjectRuns(
+			if err := injectRuns(
 				graderContext(),
 				runs,
 				grader.QueuePriorityNormal,
@@ -496,7 +496,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 
 	finishedRunsChan := make(chan *grader.RunInfo, 1)
 	graderContext().InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
-	go v1CompatRunPostProcessor(db, finishedRunsChan, client)
+	go runPostProcessor(db, finishedRunsChan, client)
 
 	mux.Handle("/metrics", prometheus.Handler())
 
@@ -552,7 +552,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if runCtx, err = v1CompatNewRunContextFromID(ctx, db, int64(runID)); err != nil {
+		if runCtx, err = newRunContextFromID(ctx, db, int64(runID)); err != nil {
 			ctx.Log.Error(
 				"/run/new/",
 				"runID", runID,
@@ -584,7 +584,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 
 		io.Copy(f, r.Body)
 
-		if err = v1CompatInjectRuns(ctx, runs, grader.QueuePriorityNormal, runCtx); err != nil {
+		if err = injectRuns(ctx, runs, grader.QueuePriorityNormal, runCtx); err != nil {
 			ctx.Log.Info("/run/new/", "guid", runCtx.GUID, "response", "internal server error", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -611,7 +611,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 		}
 		var runCtxs []*grader.RunContext
 		for _, runID := range request.RunIDs {
-			runCtx, err := v1CompatNewRunContextFromID(ctx, db, runID)
+			runCtx, err := newRunContextFromID(ctx, db, runID)
 			if err != nil {
 				graderContext().Log.Error(
 					"Error getting run context",
@@ -623,7 +623,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 			}
 			runCtxs = append(runCtxs, runCtx)
 		}
-		if err = v1CompatInjectRuns(ctx, runs, priority, runCtxs...); err != nil {
+		if err = injectRuns(ctx, runs, priority, runCtxs...); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -757,7 +757,7 @@ func registerV1CompatHandlers(mux *http.ServeMux, db *sql.DB) {
 			return
 		}
 		ctx.Log.Info("/broadcast/", "message", message)
-		if err := v1CompatBroadcast(ctx, client, &message); err != nil {
+		if err := broadcast(ctx, client, &message); err != nil {
 			ctx.Log.Error("Error sending broadcast message", "err", err)
 		}
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")

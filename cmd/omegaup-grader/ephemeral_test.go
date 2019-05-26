@@ -52,7 +52,7 @@ func TestEphemeralGrader(t *testing.T) {
 	ctx := newGraderContext(t)
 	mux := http.NewServeMux()
 	registerEphemeralHandlers(ctx, mux)
-	registerHandlers(ctx, mux, nil, true)
+	registerRunnerHandlers(ctx, mux, nil, true)
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 

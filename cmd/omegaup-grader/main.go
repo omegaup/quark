@@ -221,14 +221,28 @@ func main() {
 			),
 		)
 	}
+	{
+		mux := http.NewServeMux()
+		registerRunnerHandlers(ctx, mux, db, *insecure)
+		servers = append(
+			servers,
+			common.RunServer(
+				&ctx.Config.TLS,
+				mux,
+				&wg,
+				fmt.Sprintf(":%d", ctx.Config.Grader.Port),
+				*insecure,
+			),
+		)
+	}
 
 	queueEventsChan := make(chan *grader.QueueEvent, 1)
 	graderContext().QueueManager.AddEventListener(queueEventsChan)
 	go queueEventsProcessor(queueEventsChan)
 
-	mux := http.DefaultServeMux
-	if ctx.Config.Grader.V1.Enabled {
-		registerV1CompatHandlers(mux, db)
+	{
+		mux := http.DefaultServeMux
+		registerFrontendHandlers(mux, db)
 		servers = append(
 			servers,
 			common.RunServer(
@@ -239,20 +253,7 @@ func main() {
 				*insecure,
 			),
 		)
-		mux = http.NewServeMux()
 	}
-
-	registerHandlers(ctx, mux, db, *insecure)
-	servers = append(
-		servers,
-		common.RunServer(
-			&ctx.Config.TLS,
-			mux,
-			&wg,
-			fmt.Sprintf(":%d", ctx.Config.Grader.Port),
-			*insecure,
-		),
-	)
 
 	ctx.Log.Info(
 		"omegaUp grader ready",

@@ -146,7 +146,7 @@ func processRun(
 	return &processRunStatus{http.StatusOK, false}
 }
 
-func registerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB, insecure bool) {
+func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB, insecure bool) {
 	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
