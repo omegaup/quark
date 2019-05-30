@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/omegaup/quark/common"
+	"github.com/pkg/errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -289,7 +290,7 @@ func (input *Input) Persist() error {
 		resp.Header.Get("X-Content-Uncompressed-Size"), 10, 64,
 	)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse the X-Content-Uncompressed-Size header")
 	}
 
 	return input.persistFromTarStream(

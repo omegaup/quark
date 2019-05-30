@@ -755,7 +755,7 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		ctx.Log.Info("/broadcast/", "message", message)
+		ctx.Log.Debug("/broadcast/", "message", message)
 		if err := broadcast(ctx, client, &message); err != nil {
 			ctx.Log.Error("Error sending broadcast message", "err", err)
 		}
