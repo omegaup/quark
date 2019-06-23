@@ -26,12 +26,12 @@ var (
 	}
 )
 
-type runHandler struct {
+type ephemeralRunHandler struct {
 	ephemeralRunManager *grader.EphemeralRunManager
 	ctx                 *grader.Context
 }
 
-func (h *runHandler) validateRequest(
+func (h *ephemeralRunHandler) validateRequest(
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 ) error {
 	if ephemeralRunRequest.Input.Limits == nil {
@@ -53,9 +53,8 @@ func (h *runHandler) validateRequest(
 	return nil
 }
 
-func (h *runHandler) addAndWaitForRun(
+func (h *ephemeralRunHandler) addAndWaitForRun(
 	w http.ResponseWriter,
-	r *http.Request,
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 	runs *grader.Queue,
 ) error {
@@ -198,7 +197,7 @@ func (h *runHandler) addAndWaitForRun(
 	return nil
 }
 
-func (h *runHandler) saveOriginalRequest(
+func (h *ephemeralRunHandler) saveOriginalRequest(
 	runCtx *grader.RunContext,
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 ) error {
@@ -228,7 +227,7 @@ func (h *runHandler) saveOriginalRequest(
 	return nil
 }
 
-func (h *runHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.ctx.Log.Info("run request", "path", r.URL.Path)
 	tokens := strings.Split(r.URL.Path, "/")
 
@@ -250,7 +249,7 @@ func (h *runHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		err = h.addAndWaitForRun(w, r, &ephemeralRunRequest, runs)
+		err = h.addAndWaitForRun(w, &ephemeralRunRequest, runs)
 		if err != nil {
 			h.ctx.Log.Error("Failed to perform ephemeral run", "err", err)
 		}
@@ -292,20 +291,20 @@ func registerEphemeralHandlers(ctx *grader.Context, mux *http.ServeMux) {
 		panic(err)
 	}
 
-	runHandler := &runHandler{
+	ephemeralRunHandler := &ephemeralRunHandler{
 		ephemeralRunManager: grader.NewEphemeralRunManager(ctx),
 		ctx:                 ctx,
 	}
 	go func() {
-		if err := runHandler.ephemeralRunManager.Initialize(); err != nil {
+		if err := ephemeralRunHandler.ephemeralRunManager.Initialize(); err != nil {
 			ctx.Log.Error(
 				"Failed to fully initalize the ephemeral run manager",
 				"err", err,
 			)
 		} else {
-			ctx.Log.Info("Ephemeral run manager ready", "manager", runHandler.ephemeralRunManager)
+			ctx.Log.Info("Ephemeral run manager ready", "manager", ephemeralRunHandler.ephemeralRunManager)
 		}
 	}()
 
-	mux.Handle("/ephemeral/run/", runHandler)
+	mux.Handle("/ephemeral/run/", ephemeralRunHandler)
 }
