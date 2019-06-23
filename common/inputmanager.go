@@ -4,9 +4,10 @@ import (
 	"container/list"
 	"crypto/sha1"
 	"encoding/json"
-	"errors"
+	stderrors "errors"
 	"fmt"
 	base "github.com/omegaup/go-base"
+	"github.com/pkg/errors"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -16,25 +17,10 @@ import (
 	"sync"
 )
 
-// Lockable is the interface that sync.Mutex implements.
-type Lockable interface {
-	Lock()
-	Unlock()
-}
-
-// RefCounted is the interface that provides reference-counted semantics.
-//
-// Once the final reference has been released, the object is expected to
-// release all resources.
-type RefCounted interface {
-	Acquire()
-
-	// Unfortunately, Go always invokes the methods of an embedded type with the
-	// embedded type as the receiver (rather than the outer type), effectively
-	// upcasting the pointer and losing the actual type. In order to avoid that,
-	// we need to pass the Input again as a parameter.
-	Release(Input)
-}
+var (
+	// ErrUnimplemented is an error that is returned when a method is not implemented.
+	ErrUnimplemented = stderrors.New("Unimplemented")
+)
 
 // Input represents a problem's input set.
 //
@@ -42,8 +28,7 @@ type RefCounted interface {
 // while there is at least one reference to it. Once the last reference is
 // released, it will be inserted into its associated InputManager.
 type Input interface {
-	Lockable
-	RefCounted
+	base.SizedEntry
 
 	// Path returns the path to the uncompressed representation of the Input
 	// on-disk.
@@ -57,9 +42,6 @@ type Input interface {
 	// its InputManager.
 	Committed() bool
 
-	// Size returns the number of bytes of the Input's on-disk representation.
-	Size() int64
-
 	// Verify ensures that the version of the Input stored in the filesystem
 	// exists and is consistent, and commits it so that it can be added to the
 	// InputManager. It is expected that Size() returns a valid size after
@@ -68,6 +50,8 @@ type Input interface {
 
 	// Persist stores the Input into the filesystem in a form that is
 	// easily consumed and can be verified for consistency after restarting.
+	// The files can be garbage collected later if there are no outstanding
+	// references to the input and there is disk space pressure.
 	Persist() error
 
 	// Delete removes the filesystem version of the Input to free space.
@@ -76,6 +60,11 @@ type Input interface {
 	// Settings returns the problem's settings for the Input. Problems can have
 	// different ProblemSettings on different Inputs.
 	Settings() *ProblemSettings
+}
+
+// TransmittableInput is an input that can be transmitted over HTTP.
+type TransmittableInput interface {
+	Input
 
 	// Transmit sends a serialized version of the Input over HTTP. It should be a
 	// .tar.gz file with the Content-SHA1 header set to the hexadecimal
@@ -83,13 +72,31 @@ type Input interface {
 	Transmit(http.ResponseWriter) error
 }
 
-// BaseInput is an abstract struct that provides most of the functions required
-// to implement Input.
+// InputRef represents a reference to an Input
+type InputRef struct {
+	Input Input
+	ref   *base.SizedEntryRef
+	mgr   *InputManager
+}
+
+// Release marks the Input as not being used anymore, so it becomes eligible
+// for eviction.
+func (i *InputRef) Release() {
+	i.mgr.lruCache.Put(i.ref)
+
+	// Prevent double-release.
+	i.Input = nil
+	i.ref = nil
+	i.mgr = nil
+}
+
+// BaseInput is a struct that provides most of the functions required to
+// implement Input.
 type BaseInput struct {
 	sync.Mutex
 	committed bool
 	refcount  int
-	size      int64
+	size      base.Byte
 	hash      string
 	mgr       *InputManager
 	settings  ProblemSettings
@@ -114,7 +121,7 @@ func (input *BaseInput) Committed() bool {
 }
 
 // Size returns the total disk size used by the Input.
-func (input *BaseInput) Size() int64 {
+func (input *BaseInput) Size() base.Byte {
 	return input.size
 }
 
@@ -123,35 +130,11 @@ func (input *BaseInput) Hash() string {
 	return input.hash
 }
 
-// Reserve ensures that there are at least size bytes available in the input
-// cache. This might evict older, unused Inputs.
-func (input *BaseInput) Reserve(size int64) {
-	input.mgr.Reserve(size)
-}
-
 // Commit adds the Input to the set of cached inputs, and also adds its size to
 // the total committed size.
 func (input *BaseInput) Commit(size int64) {
-	input.size = size
+	input.size = base.Byte(size)
 	input.committed = true
-}
-
-// Verify ensures that the disk representation of the Input is still valid. It
-// typically does this by computing the hash of all files.
-func (input *BaseInput) Verify() error {
-	return errors.New("Unimplemented")
-}
-
-// Persist writes all the files associated with the Input to disk. The files
-// can be garbage collected later if there are no outstanding references to the
-// input and there is disk space pressure.
-func (input *BaseInput) Persist() error {
-	return errors.New("Unimplemented")
-}
-
-// Delete deletes all the files associated with the Input.
-func (input *BaseInput) Delete() error {
-	return nil
 }
 
 // Settings returns the ProblemSettings associated with the current Input.
@@ -159,40 +142,11 @@ func (input *BaseInput) Settings() *ProblemSettings {
 	return &input.settings
 }
 
-// Acquire increases the refcount of the Input. This makes it ineligible for
-// garbage collection.
-func (input *BaseInput) Acquire() {
-	input.refcount++
-}
-
-// Release decreases the refcount of the Input. Once there are no outstanding
-// references to this input, it can be garbage collected if needed.
-func (input *BaseInput) Release(outerInput Input) {
-	input.Lock()
-	defer input.Unlock()
-
-	input.refcount--
-	if input.refcount == 0 {
-		// There are no outstanding references to this input. Return it to the
-		// input manager where it can be deleted if we need more space.
-		input.mgr.Insert(outerInput)
-	}
-}
-
-// Transmit sends the input across HTTP.
-func (input *BaseInput) Transmit(w http.ResponseWriter) error {
-	return errors.New("Unimplemented")
-}
-
 // InputManager handles a pool of recently-used input sets. The pool has a
 // fixed maximum size with a least-recently used eviction policy.
 type InputManager struct {
-	sync.Mutex
-	mapping   map[string]*inputEntry
-	evictList *list.List
-	ctx       *Context
-	totalSize int64
-	sizeLimit base.Byte
+	ctx      *Context
+	lruCache *base.LRUCache
 }
 
 // inputEntry represents an entry in the InputManager.
@@ -252,59 +206,29 @@ func (factory *IdentityInputFactory) NewInput(hash string, mgr *InputManager) In
 // NewInputManager creates a new InputManager with the provided Context.
 func NewInputManager(ctx *Context) *InputManager {
 	return &InputManager{
-		mapping:   make(map[string]*inputEntry),
-		evictList: list.New(),
-		ctx:       ctx,
-		sizeLimit: ctx.Config.InputManager.CacheSize,
+		ctx:      ctx,
+		lruCache: base.NewLRUCache(base.Byte(ctx.Config.InputManager.CacheSize)),
 	}
 }
 
-func (mgr *InputManager) getEntry(hash string, factory InputFactory) *inputEntry {
-	mgr.Lock()
-	defer mgr.Unlock()
-
-	return mgr.getEntryLocked(hash, factory)
-}
-
-func (mgr *InputManager) getEntryLocked(
-	hash string,
-	factory InputFactory,
-) *inputEntry {
-	if ent, ok := mgr.mapping[hash]; ok {
-		return ent
+// Get returns a reference to an Input (in the form of an InputRef) for the
+// provided hash. InputRef.Release() must be called once the input is no longer
+// needed so that it can be garbage-collected.
+func (mgr *InputManager) Get(hash string) (*InputRef, error) {
+	entryRef, err := mgr.lruCache.Get(
+		hash,
+		func(hash string) (base.SizedEntry, error) {
+			return nil, errors.Errorf("hash %s not found", hash)
+		},
+	)
+	if err != nil {
+		return nil, err
 	}
-
-	if factory == nil {
-		panic(fmt.Errorf("hash %s not found and factory is nil", hash))
-	}
-
-	input := factory.NewInput(hash, mgr)
-	if input == nil {
-		panic(fmt.Errorf("input nil for hash %s", hash))
-	}
-	entry := &inputEntry{
-		input: input,
-	}
-	mgr.mapping[hash] = entry
-	return entry
-}
-
-// Get returns the Input for a specified hash, if it is already present in the
-// pool. If it is present, it will increment its reference-count and transfer
-// the ownership of the reference to the caller. It is the caller's
-// responsibility to release the ownership of the Input.
-func (mgr *InputManager) Get(hash string) (Input, error) {
-	mgr.Lock()
-	defer mgr.Unlock()
-
-	if ent, ok := mgr.mapping[hash]; ok {
-		ent.input.Lock()
-		defer ent.input.Unlock()
-
-		ent.input.Acquire()
-		return ent.input, nil
-	}
-	return nil, fmt.Errorf("hash %s not found", hash)
+	return &InputRef{
+		Input: entryRef.Value.(Input),
+		mgr:   mgr,
+		ref:   entryRef,
+	}, nil
 }
 
 // Add associates an opaque identifier (the hash) with an Input in the
@@ -314,94 +238,49 @@ func (mgr *InputManager) Get(hash string) (Input, error) {
 // created. The Input will be validated if it has not been committed to the
 // InputManager, but will still not be accounted into the size limit since
 // there is at least one live reference to it.
-func (mgr *InputManager) Add(hash string, factory InputFactory) (Input, error) {
-	entry := mgr.getEntry(hash, factory)
-	input := entry.input
-
-	input.Lock()
-	defer input.Unlock()
-
-	if entry.listElement != nil {
-		// This Input did not have any outstanding references and was in the
-		// evict list. Remove from it so it does not get accidentally evicted.
-		mgr.totalSize -= input.Size()
-		mgr.evictList.Remove(entry.listElement)
-		entry.listElement = nil
-	}
-
-	if !input.Committed() {
-		// This operation can take a while.
-		if err := input.Verify(); err != nil {
-			mgr.ctx.Log.Warn("Hash verification failed. Regenerating",
-				"path", input.Hash(), "err", err)
-			input.Delete()
-
-			if err := input.Persist(); err != nil {
-				mgr.ctx.Log.Error(
-					"Error creating archive",
-					"hash", input.Hash(),
-					"err", err,
-				)
-				delete(mgr.mapping, hash)
-				return nil, err
+func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, error) {
+	entryRef, err := mgr.lruCache.Get(
+		hash,
+		func(hash string) (base.SizedEntry, error) {
+			input := factory.NewInput(hash, mgr)
+			if input.Committed() {
+				// No further processing necessary.
+				return input, nil
 			}
-			mgr.ctx.Log.Info("Generated input", "hash", input.Hash(), "size", input.Size())
-		} else {
-			mgr.ctx.Log.Debug("Reusing input", "hash", input.Hash(), "size", input.Size())
-		}
+			// This operation can take a while.
+			if err := input.Verify(); err != nil {
+				mgr.ctx.Log.Warn("Hash verification failed. Regenerating",
+					"path", input.Hash(), "err", err)
+				input.Delete()
+
+				if err := input.Persist(); err != nil {
+					mgr.ctx.Log.Error(
+						"Error creating archive",
+						"hash", input.Hash(),
+						"err", err,
+					)
+					return nil, err
+				}
+				mgr.ctx.Log.Info("Generated input", "hash", input.Hash(), "size", input.Size())
+			} else {
+				mgr.ctx.Log.Debug("Reusing input", "hash", input.Hash(), "size", input.Size())
+			}
+			return input, nil
+		},
+	)
+	if err != nil {
+		return nil, err
 	}
-	input.Acquire()
-	return input, nil
+	return &InputRef{
+		Input: entryRef.Value.(Input),
+		mgr:   mgr,
+		ref:   entryRef,
+	}, nil
 }
 
-// Insert adds an already-created Input to the pool, possibly evicting old
-// entries to free enough space such that the total size of Inputs in the pool
-// is still within the limit. This should only be called when there are no
-// references to the Input.
-func (mgr *InputManager) Insert(input Input) {
-	mgr.Lock()
-	defer mgr.Unlock()
-
-	mgr.totalSize += input.Size()
-	entry := mgr.getEntryLocked(input.Hash(), NewIdentityInputFactory(input))
-	entry.listElement = mgr.evictList.PushFront(input)
-
-	// After inserting the input, trim the cache.
-	mgr.reserveLocked(0)
-}
-
-// Reserve evicts Inputs from the pool to make the specified size available.
-func (mgr *InputManager) Reserve(size int64) {
-	mgr.Lock()
-	defer mgr.Unlock()
-
-	mgr.reserveLocked(size)
-}
-
-// reserveLocked evicts elements as necessary so that the current commited size
-// plus the specified size is below the allowed limit.
-func (mgr *InputManager) reserveLocked(size int64) {
-	for mgr.evictList.Len() > 0 && mgr.totalSize+size > mgr.sizeLimit.Bytes() {
-		element := mgr.evictList.Back()
-		evictedInput := element.Value.(Input)
-
-		mgr.totalSize -= evictedInput.Size()
-		mgr.evictList.Remove(element)
-
-		delete(mgr.mapping, evictedInput.Hash())
-		mgr.ctx.Log.Info(
-			"Evicting an input",
-			"input", evictedInput,
-			"size", evictedInput.Size(),
-			"err", evictedInput.Delete(),
-		)
-	}
-}
-
-// Size returns the total size (in bytes) of cached Inputs in the InputManager.
-// This does not count any Inputs with live references.
-func (mgr *InputManager) Size() int64 {
-	return mgr.totalSize
+// Size returns the total size of Inputs in the InputManager.
+func (mgr *InputManager) Size() base.Byte {
+	return mgr.lruCache.Size()
 }
 
 // PreloadInputs reads all files in path, runs them through the specified
@@ -432,12 +311,12 @@ func (mgr *InputManager) PreloadInputs(
 
 			// Make sure no other I/O is being made while we pre-fetch this input.
 			ioLock.Lock()
-			input, err := mgr.Add(hash, factory)
+			inputRef, err := mgr.Add(hash, factory)
 			if err != nil {
 				os.RemoveAll(path.Join(dirname, info.Name()))
 				mgr.ctx.Log.Error("Cached input corrupted", "hash", hash)
 			} else {
-				input.Release(input)
+				inputRef.Release()
 			}
 			ioLock.Unlock()
 		}
@@ -449,15 +328,12 @@ func (mgr *InputManager) PreloadInputs(
 
 // MarshalJSON returns the JSON representation of the InputManager.
 func (mgr *InputManager) MarshalJSON() ([]byte, error) {
-	mgr.Lock()
-	defer mgr.Unlock()
-
 	status := struct {
-		Size  int64
+		Size  base.Byte
 		Count int
 	}{
-		Size:  mgr.Size(),
-		Count: len(mgr.mapping),
+		Size:  mgr.lruCache.Size(),
+		Count: mgr.lruCache.EntryCount(),
 	}
 
 	return json.MarshalIndent(status, "", "  ")

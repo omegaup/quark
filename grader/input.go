@@ -264,6 +264,10 @@ func (input *graderBaseInput) Delete() error {
 	return os.Remove(input.archivePath)
 }
 
+func (input *graderBaseInput) Release() {
+	input.Delete()
+}
+
 // Transmit sends a serialized version of the Input to the runner. It sends a
 // .tar.gz file with the Content-SHA1 header with the hexadecimal
 // representation of its SHA-1 hash.
@@ -347,6 +351,13 @@ func (input *Input) Persist() error {
 	return nil
 }
 
+// Transmit sends a serialized version of the Input to the runner. It sends a
+// .tar.gz file with the Content-SHA1 header with the hexadecimal
+// representation of its SHA-1 hash.
+func (input *Input) Transmit(w http.ResponseWriter) error {
+	return input.graderBaseInput.Transmit(w)
+}
+
 // InputFactory is a common.InputFactory that can store specific versions of a
 // problem's git repository into a .tar.gz file that can be easily shipped to
 // runners.
@@ -391,6 +402,14 @@ func (factory *InputFactory) NewInput(
 	}
 }
 
+type cachedInput struct {
+	graderBaseInput
+}
+
+func (input *cachedInput) Persist() error {
+	return common.ErrUnimplemented
+}
+
 // A CachedInputFactory is a grader-specific CachedInputFactory. It reads
 // all its inputs from the filesystem, and validates that they have not been
 // accidentally corrupted by comparing the input against its hash.
@@ -410,15 +429,17 @@ func (factory *CachedInputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
-	return &graderBaseInput{
-		BaseInput: *common.NewBaseInput(
-			hash,
-			mgr,
-		),
-		archivePath: path.Join(
-			factory.inputPath,
-			fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
-		),
+	return &cachedInput{
+		graderBaseInput{
+			BaseInput: *common.NewBaseInput(
+				hash,
+				mgr,
+			),
+			archivePath: path.Join(
+				factory.inputPath,
+				fmt.Sprintf("%s/%s.tar.gz", hash[:2], hash[2:]),
+			),
+		},
 	}
 }
 

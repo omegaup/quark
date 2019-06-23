@@ -232,14 +232,14 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			return
 		}
 		hash := res[1]
-		input, err := ctx.InputManager.Get(hash)
+		inputRef, err := ctx.InputManager.Get(hash)
 		if err != nil {
 			ctx.Log.Error("Input not found", "hash", hash)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		defer input.Release(input)
-		if err := input.Transmit(w); err != nil {
+		defer inputRef.Release()
+		if err := inputRef.Input.(common.TransmittableInput).Transmit(w); err != nil {
 			ctx.Log.Error("Error transmitting input", "hash", hash, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		}

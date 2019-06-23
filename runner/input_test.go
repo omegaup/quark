@@ -156,15 +156,15 @@ func TestPreloadInputs(t *testing.T) {
 			t.Fatalf("Failed to create InputFactory: %q", err)
 		}
 		inputManager := common.NewInputManager(ctx)
-		AplusBInput, err := inputManager.Add(AplusB.Hash(), AplusB)
+		AplusBInputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
 		if err != nil {
 			t.Fatalf("Failed to create Input: %q", err)
 		}
-		AplusBHash = AplusBInput.Hash()
-		if err = AplusBInput.Persist(); err != nil {
+		AplusBHash = AplusBInputRef.Input.Hash()
+		if err = AplusBInputRef.Input.Persist(); err != nil {
 			t.Fatalf("Failed to persist Input: %q", err)
 		}
-		AplusBInput.Release(AplusBInput)
+		AplusBInputRef.Release()
 	}
 	inputManager.PreloadInputs(
 		inputPath,
@@ -185,10 +185,7 @@ func TestPreloadInputs(t *testing.T) {
 		{AplusBHash, true},
 	}
 	for _, het := range hashentries {
-		input, err := inputManager.Get(het.hash)
-		if input != nil {
-			defer input.Release(input)
-		}
+		inputRef, err := inputManager.Get(het.hash)
 		if het.valid {
 			if err != nil {
 				t.Errorf("InputManager.Get(%q) == %q, want nil", het.hash, err)
@@ -197,6 +194,9 @@ func TestPreloadInputs(t *testing.T) {
 			if err == nil {
 				t.Errorf("InputManager.Get(%q) == %q, want !nil", het.hash, err)
 			}
+		}
+		if inputRef != nil {
+			inputRef.Release()
 		}
 	}
 }
@@ -313,10 +313,7 @@ func TestInputFactory(t *testing.T) {
 	}
 	factory := NewInputFactory(http.DefaultClient, &ctx.Config, baseURL)
 	for _, het := range hashentries {
-		input, err := inputManager.Add(het.hash, factory)
-		if input != nil {
-			defer input.Release(input)
-		}
+		inputRef, err := inputManager.Add(het.hash, factory)
 		if het.valid {
 			if err != nil {
 				t.Errorf("Input creation failed with %q", err)
@@ -325,6 +322,9 @@ func TestInputFactory(t *testing.T) {
 			if err == nil {
 				t.Errorf("Input creation succeeded, but was expected to fail")
 			}
+		}
+		if inputRef != nil {
+			inputRef.Release()
 		}
 	}
 }

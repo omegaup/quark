@@ -125,6 +125,10 @@ func (input *runnerBaseInput) Delete() error {
 	return os.RemoveAll(input.path)
 }
 
+func (input *runnerBaseInput) Release() {
+	input.Delete()
+}
+
 func (input *runnerBaseInput) getStoredHashes() (map[string]string, error) {
 	result := make(map[string]string)
 	dir := filepath.Dir(input.path)
@@ -172,8 +176,6 @@ func (input *runnerBaseInput) persistFromTarStream(
 		return err
 	}
 	defer os.RemoveAll(tmpPath)
-
-	input.Reserve(uncompressedSize)
 
 	hasher := common.NewHashReader(r, sha1.New())
 	var uncompressedReader io.Reader
@@ -301,6 +303,24 @@ func (input *Input) Persist() error {
 	)
 }
 
+// Delete removes the filesystem files for the Input.
+func (input *Input) Delete() error {
+	return input.runnerBaseInput.Delete()
+}
+
+// Release removes the filesystem files for the Input.
+func (input *Input) Release() {
+	input.Delete()
+}
+
+type cachedInput struct {
+	runnerBaseInput
+}
+
+func (input *cachedInput) Persist() error {
+	return common.ErrUnimplemented
+}
+
 // CachedInputFactory restores Inputs from a directory in the filesystem.
 type CachedInputFactory struct {
 	cachePath string
@@ -318,12 +338,14 @@ func (factory *CachedInputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
-	return &runnerBaseInput{
-		BaseInput: *common.NewBaseInput(
-			hash,
-			mgr,
-		),
-		path: path.Join(factory.cachePath, fmt.Sprintf("%s/%s", hash[:2], hash[2:])),
+	return &cachedInput{
+		runnerBaseInput{
+			BaseInput: *common.NewBaseInput(
+				hash,
+				mgr,
+			),
+			path: path.Join(factory.cachePath, fmt.Sprintf("%s/%s", hash[:2], hash[2:])),
+		},
 	}
 }
 

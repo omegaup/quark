@@ -11,14 +11,18 @@ func addRun(
 	t *testing.T,
 	ctx *Context,
 	queue *Queue,
-	input common.Input,
+	hash string,
 	priority QueuePriority,
 ) *RunContext {
+	inputRef, err := ctx.InputManager.Get(hash)
+	if err != nil {
+		t.Fatalf("Failed to get input back: %q", err)
+	}
 	runCtx := NewEmptyRunContext(ctx)
 	runCtx.Priority = priority
-	runCtx.Run.InputHash = input.Hash()
+	runCtx.Run.InputHash = inputRef.Input.Hash()
 	runCtx.Run.Source = "print 3"
-	if err := AddRunContext(ctx, runCtx, input); err != nil {
+	if err := AddRunContext(ctx, runCtx, inputRef); err != nil {
 		t.Fatalf("AddRunContext failed with %q", err)
 	}
 	originalLength := len(queue.runs[priority])
@@ -80,11 +84,7 @@ func TestQueue(t *testing.T) {
 		t.Fatalf("Failed to create Input: %q", err)
 	}
 	ctx.InputManager.Add(AplusB.Hash(), AplusB)
-	input, err := ctx.InputManager.Get(AplusB.Hash())
-	if err != nil {
-		t.Fatalf("Failed to get input back: %q", err)
-	}
-	addRun(t, ctx, queue, input, QueuePriorityNormal)
+	addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityNormal)
 
 	closeNotifier := make(chan bool, 1)
 
@@ -171,17 +171,13 @@ func TestQueuePriorities(t *testing.T) {
 		t.Fatalf("Failed to create Input: %q", err)
 	}
 	ctx.InputManager.Add(AplusB.Hash(), AplusB)
-	input, err := ctx.InputManager.Get(AplusB.Hash())
-	if err != nil {
-		t.Fatalf("Failed to get input back: %q", err)
-	}
 
 	closeNotifier := make(chan bool, 1)
 
-	ephemeralPriority := addRun(t, ctx, queue, input, QueuePriorityEphemeral)
-	lowPriority := addRun(t, ctx, queue, input, QueuePriorityLow)
-	normalPriority := addRun(t, ctx, queue, input, QueuePriorityNormal)
-	highPriority := addRun(t, ctx, queue, input, QueuePriorityHigh)
+	ephemeralPriority := addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityEphemeral)
+	lowPriority := addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityLow)
+	normalPriority := addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityNormal)
+	highPriority := addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityHigh)
 
 	var runCtx *RunContext
 	runCtx, _, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier)

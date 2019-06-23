@@ -116,11 +116,12 @@ func TestPreloadInputs(t *testing.T) {
 			t.Fatalf("Failed to create InputFactory: %q", err)
 		}
 		inputManager := common.NewInputManager(&ctx.Context)
-		AplusBInput, err := inputManager.Add(AplusB.Hash(), AplusB)
+		AplusBInputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
 		if err != nil {
 			t.Fatalf("Failed to create Input: %q", err)
 		}
-		AplusBHash = AplusBInput.Hash()
+		AplusBHash = AplusBInputRef.Input.Hash()
+		AplusBInputRef.Release()
 	}
 	ctx.InputManager.PreloadInputs(
 		cachePath,
@@ -138,10 +139,7 @@ func TestPreloadInputs(t *testing.T) {
 		{AplusBHash, true},
 	}
 	for _, het := range hashentries {
-		input, err := ctx.InputManager.Get(het.hash)
-		if input != nil {
-			defer input.Release(input)
-		}
+		inputRef, err := ctx.InputManager.Get(het.hash)
 		if het.valid {
 			if err != nil {
 				t.Errorf("InputManager.Get(%q) == %q, want nil", het.hash, err)
@@ -150,6 +148,9 @@ func TestPreloadInputs(t *testing.T) {
 			if err == nil {
 				t.Errorf("InputManager.Get(%q) == %q, want !nil", het.hash, err)
 			}
+		}
+		if inputRef != nil {
+			inputRef.Release()
 		}
 	}
 }
@@ -164,19 +165,19 @@ func TestTransmitInput(t *testing.T) {
 		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
 	}
 
-	input, err := ctx.InputManager.Add(
+	inputRef, err := ctx.InputManager.Add(
 		headCommit,
 		NewInputFactory("test", &ctx.Config),
 	)
 	if err != nil {
 		t.Fatalf("Failed to get the input: %q", err)
 	}
-	defer input.Release(input)
-	if err := input.Verify(); err != nil {
+	defer inputRef.Release()
+	if err := inputRef.Input.Verify(); err != nil {
 		t.Fatalf("Failed to verify the input: %q", err)
 	}
 
-	graderInput := input.(*Input)
+	graderInput := inputRef.Input.(*Input)
 	w := httptest.NewRecorder()
 	if err := graderInput.Transmit(w); err != nil {
 		t.Fatalf("Failed to transmit input: %q", err)

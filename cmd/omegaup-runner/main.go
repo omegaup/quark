@@ -156,7 +156,7 @@ func main() {
 				run.Debug = true
 			}
 
-			input, err := inputManager.Add(
+			inputRef, err := inputManager.Add(
 				run.InputHash,
 				runner.NewCachedInputFactory(*input),
 			)
@@ -164,9 +164,9 @@ func main() {
 				ctx.Log.Error("Error loading input", "hash", run.InputHash, "err", err)
 				return
 			}
-			defer input.Release(input)
+			defer inputRef.Release()
 
-			results, err := runner.Grade(ctx, nil, &run, input, sandbox)
+			results, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
 			if err != nil {
 				ctx.Log.Error("Error grading run", "err", err)
 				return
@@ -513,14 +513,14 @@ func gradeRun(
 	if err != nil {
 		panic(err)
 	}
-	input, err := inputManager.Add(
+	inputRef, err := inputManager.Add(
 		run.InputHash,
 		runner.NewInputFactory(client, &ctx.Config, baseURL),
 	)
 	if err != nil {
 		return nil, err
 	}
-	defer input.Release(input)
+	defer inputRef.Release()
 	ctx.EventCollector.Add(inputEvent)
 
 	// Send the header as soon as possible to avoid a timeout.
@@ -529,5 +529,5 @@ func gradeRun(
 		return nil, err
 	}
 
-	return runner.Grade(ctx, filesWriter, run, input, sandbox)
+	return runner.Grade(ctx, filesWriter, run, inputRef.Input, sandbox)
 }

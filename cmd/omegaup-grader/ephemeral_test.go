@@ -95,16 +95,16 @@ func TestEphemeralGrader(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
-			input, err := inputManager.Add(
+			inputRef, err := inputManager.Add(
 				run.InputHash,
 				runner.NewInputFactory(ts.Client(), &ctx.Config, baseURL),
 			)
 			if err != nil {
 				panic(err)
 			}
-			defer input.Release(input)
+			defer inputRef.Release()
 
-			result, err := runner.Grade(&ctx.Context, filesWriter, &run, input, &runner.NoopSandbox{})
+			result, err := runner.Grade(&ctx.Context, filesWriter, &run, inputRef.Input, &runner.NoopSandbox{})
 			if err != nil {
 				panic(err)
 			}

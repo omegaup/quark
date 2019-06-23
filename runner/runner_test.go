@@ -200,10 +200,11 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	}
 	inputManager.Add(AplusB.Hash(), AplusB)
 
-	input, err := inputManager.Get(AplusB.Hash())
+	inputRef, err := inputManager.Get(AplusB.Hash())
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}
+	defer inputRef.Release()
 
 	runtests := []runnerTestCase{
 		{
@@ -520,11 +521,11 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				&common.Run{
 					AttemptID: uint64(idx),
 					Language:  rte.language,
-					InputHash: input.Hash(),
+					InputHash: inputRef.Input.Hash(),
 					Source:    rte.source,
 					MaxScore:  rte.maxScore,
 				},
-				input,
+				inputRef.Input,
 				wrapper.sandbox(&rte),
 			)
 			if err != nil {
@@ -595,10 +596,11 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 	}
 	inputManager.Add(AplusB.Hash(), AplusB)
 
-	input, err := inputManager.Get(AplusB.Hash())
+	inputRef, err := inputManager.Get(AplusB.Hash())
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}
+	defer inputRef.Release()
 
 	runtests := []runnerTestCase{
 		{
@@ -652,11 +654,11 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 				&common.Run{
 					AttemptID: uint64(idx),
 					Language:  rte.language,
-					InputHash: input.Hash(),
+					InputHash: inputRef.Input.Hash(),
 					Source:    rte.source,
 					MaxScore:  rte.maxScore,
 				},
-				input,
+				inputRef.Input,
 				omegajail,
 			)
 			if err != nil {
@@ -748,10 +750,11 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	}
 	inputManager.Add(AplusB.Hash(), AplusB)
 
-	input, err := inputManager.Get(AplusB.Hash())
+	inputRef, err := inputManager.Get(AplusB.Hash())
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}
+	defer inputRef.Release()
 
 	runtests := []runnerTestCase{
 		{
@@ -792,11 +795,11 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				&common.Run{
 					AttemptID: uint64(idx),
 					Language:  rte.language,
-					InputHash: input.Hash(),
+					InputHash: inputRef.Input.Hash(),
 					Source:    rte.source,
 					MaxScore:  rte.maxScore,
 				},
-				input,
+				inputRef.Input,
 				wrapper.sandbox(&rte),
 			)
 			if err != nil {
@@ -896,10 +899,11 @@ func TestLibinteractive(t *testing.T) {
 	}
 	inputManager.Add(AplusB.Hash(), AplusB)
 
-	input, err := inputManager.Get(AplusB.Hash())
+	inputRef, err := inputManager.Get(AplusB.Hash())
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}
+	defer inputRef.Release()
 
 	runtests := []runnerTestCase{
 		{
@@ -1011,11 +1015,11 @@ func TestLibinteractive(t *testing.T) {
 				&common.Run{
 					AttemptID: uint64(idx),
 					Language:  rte.language,
-					InputHash: input.Hash(),
+					InputHash: inputRef.Input.Hash(),
 					Source:    rte.source,
 					MaxScore:  rte.maxScore,
 				},
-				input,
+				inputRef.Input,
 				omegajail,
 			)
 			if err != nil {

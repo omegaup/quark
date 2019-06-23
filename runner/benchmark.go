@@ -200,7 +200,7 @@ func RunHostBenchmark(
 
 	benchmarkResults := make(BenchmarkResults)
 	for idx, benchmarkCase := range cases {
-		input, err := inputManager.Add(
+		inputRef, err := inputManager.Add(
 			benchmarkCase.hash,
 			newRunnerTarInputFactory(
 				&ctx.Config,
@@ -211,7 +211,7 @@ func RunHostBenchmark(
 		if err != nil {
 			return nil, err
 		}
-		defer input.Release(input)
+		defer inputRef.Release()
 
 		run := common.Run{
 			AttemptID: uint64(idx),
@@ -221,7 +221,7 @@ func RunHostBenchmark(
 			MaxScore:  big.NewRat(1, 1),
 			Debug:     false,
 		}
-		results, err := Grade(ctx, nil, &run, input, sandbox)
+		results, err := Grade(ctx, nil, &run, inputRef.Input, sandbox)
 		if err != nil {
 			return nil, err
 		}

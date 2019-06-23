@@ -303,7 +303,7 @@ type RunContext struct {
 	runningFlag int32
 	// A reference to the Input so that it is not evicted while RunContext is
 	// still active
-	input common.Input
+	inputRef *common.InputRef
 
 	tries        int
 	queue        *Queue
@@ -322,9 +322,9 @@ type RunContext struct {
 func AddRunContext(
 	ctx *Context,
 	run *RunContext,
-	input common.Input,
+	inputRef *common.InputRef,
 ) error {
-	run.input = input
+	run.inputRef = inputRef
 	run.context = ctx.Context.DebugContext("id", run.ID)
 
 	run.Config = &run.context.Config
@@ -384,9 +384,9 @@ func (run *RunContext) Close() {
 		postProcessor = run.monitor.PostProcessor
 		run.monitor.Remove(run.Run.AttemptID)
 	}
-	if run.input != nil {
-		run.input.Release(run.input)
-		run.input = nil
+	if run.inputRef != nil {
+		run.inputRef.Release()
+		run.inputRef = nil
 	}
 	if err := os.MkdirAll(run.GradeDir, 0755); err != nil {
 		run.Log.Error("Unable to create grade dir", "err", err)

@@ -42,6 +42,18 @@ func (input *testInput) Verify() error {
 	return nil
 }
 
+func (input *testInput) Delete() error {
+	return nil
+}
+
+func (input *testInput) Release() {
+	input.Delete()
+}
+
+func (input *testInput) Persist() error {
+	return ErrUnimplemented
+}
+
 type testInputFactory struct {
 	size int64
 }
@@ -109,35 +121,36 @@ func TestInputManager(t *testing.T) {
 	if _, err := inputManager.Get("0"); err == nil {
 		t.Errorf("InputManager.Get(\"0\") == %q, want !nil", err)
 	}
-	input, err := inputManager.Add("0", &testInputFactory{size: 1024})
+	inputRef, err := inputManager.Add("0", &testInputFactory{size: 1024})
 	if err != nil {
 		t.Errorf("InputManager.Add(\"0\") failed with %q", err)
 	}
-	if !input.Committed() {
-		t.Errorf("Input.Committed() == %t, want %t", input.Committed(), true)
+	if !inputRef.Input.Committed() {
+		t.Errorf("Input.Committed() == %t, want %t", inputRef.Input.Committed(), true)
 	}
-	if inputManager.Size() != 0 {
-		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 0)
-	}
-	input.Release(input)
 	if inputManager.Size() != 1024 {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 1024)
 	}
-	input, err = inputManager.Get("0")
+	inputRef.Release()
+	if inputManager.Size() != 1024 {
+		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 1024)
+	}
+
+	inputRef, err = inputManager.Get("0")
 	if err != nil {
 		t.Errorf("InputManager.Get(\"0\") == %q, want nil", err)
 	}
-	input.Release(input)
+	inputRef.Release()
 
 	// Add a new input (hash = 1)
 	if _, err := inputManager.Get("1"); err == nil {
 		t.Errorf("InputManager.Get(\"1\") == %q, want !nil", err)
 	}
-	input, err = inputManager.Add("1", &testInputFactory{size: 1024})
+	inputRef, err = inputManager.Add("1", &testInputFactory{size: 1024})
 	if err != nil {
 		t.Errorf("InputManager.Add(\"1\") failed with %q", err)
 	}
-	input.Release(input)
+	inputRef.Release()
 
 	// This should evict the old input and make it not accessible anymore.
 	if inputManager.Size() != 1024 {

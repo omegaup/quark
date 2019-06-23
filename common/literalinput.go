@@ -397,7 +397,7 @@ func NewLiteralInputFactory(
 			tarfile:          tarfile,
 			settings:         settings,
 			persistMode:      persistMode,
-			uncompressedSize: uncompressedSize,
+			uncompressedSize: base.Byte(uncompressedSize),
 		},
 	}, nil
 }
@@ -431,7 +431,14 @@ type inMemoryInput struct {
 	tarfile          *bytes.Buffer
 	settings         *ProblemSettings
 	persistMode      LiteralPersistMode
-	uncompressedSize int64
+	uncompressedSize base.Byte
+}
+
+// Verify ensures that the disk representation of the Input is still valid.
+// This returns ErrUnimplemented unconditionally so that it is always
+// persisted.
+func (input *inMemoryInput) Verify() error {
+	return ErrUnimplemented
 }
 
 func (input *inMemoryInput) Path() string {
@@ -442,7 +449,7 @@ func (input *inMemoryInput) Settings() *ProblemSettings {
 	return input.settings
 }
 
-func (input *inMemoryInput) Size() int64 {
+func (input *inMemoryInput) Size() base.Byte {
 	return input.uncompressedSize
 }
 
@@ -454,7 +461,7 @@ func (input *inMemoryInput) Persist() error {
 		if err := ioutil.WriteFile(input.archivePath, input.tarfile.Bytes(), 0644); err != nil {
 			return nil
 		}
-		lengthContents := []byte(strconv.FormatInt(input.uncompressedSize, 10))
+		lengthContents := []byte(strconv.FormatInt(input.uncompressedSize.Bytes(), 10))
 		if err := ioutil.WriteFile(fmt.Sprintf("%s.len", input.archivePath), lengthContents, 0644); err != nil {
 			return nil
 		}
@@ -525,7 +532,7 @@ func (input *inMemoryInput) Transmit(w http.ResponseWriter) error {
 	w.Header().Add("Content-Type", "application/x-gzip")
 	w.Header().Add("Content-SHA1", input.hash)
 	w.Header().Add(
-		"X-Content-Uncompressed-Size", strconv.FormatInt(input.uncompressedSize, 10),
+		"X-Content-Uncompressed-Size", strconv.FormatInt(input.uncompressedSize.Bytes(), 10),
 	)
 	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, fd)
@@ -545,6 +552,10 @@ func (input *inMemoryInput) Delete() error {
 		return os.RemoveAll(input.path)
 	}
 	return nil
+}
+
+func (input *inMemoryInput) Release() {
+	input.Delete()
 }
 
 func createTar(buf *bytes.Buffer, files *map[string][]byte) error {
