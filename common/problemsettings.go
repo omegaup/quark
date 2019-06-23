@@ -151,3 +151,55 @@ var (
 		TimeLimit:            base.Duration(time.Duration(1) * time.Second),
 	}
 )
+
+// SolutionSettings represents a single testcase with an expected score range
+// and/or verdict. At least one of those must be present.
+type SolutionSettings struct {
+	Filename   string     `json:"filename"`
+	ScoreRange []*big.Rat `json:"score_range,omitempty"`
+	Verdict    string     `json:"verdict,omitempty"`
+}
+
+// MarshalJSON implements the json.Marshaler interface.
+func (s *SolutionSettings) MarshalJSON() ([]byte, error) {
+	var scoreRange []float64
+	for _, score := range s.ScoreRange {
+		scoreRange = append(scoreRange, RationalToFloat(score))
+	}
+	return json.Marshal(&struct {
+		Filename   string    `json:"filename"`
+		ScoreRange []float64 `json:"score_range,omitempty"`
+		Verdict    string    `json:"verdict,omitempty"`
+	}{
+		Filename:   s.Filename,
+		ScoreRange: scoreRange,
+		Verdict:    s.Verdict,
+	})
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (s *SolutionSettings) UnmarshalJSON(data []byte) error {
+	settings := struct {
+		Filename   string    `json:"filename"`
+		ScoreRange []float64 `json:"score_range,omitempty"`
+		Verdict    string    `json:"verdict,omitempty"`
+	}{}
+
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return err
+	}
+
+	s.Filename = settings.Filename
+	for _, score := range settings.ScoreRange {
+		s.ScoreRange = append(s.ScoreRange, FloatToRational(score))
+	}
+	s.Verdict = settings.Verdict
+
+	return nil
+}
+
+// TestsSettings represent the tests that are to be run against the problem
+// itself. They are stored in tests/settings.json.
+type TestsSettings struct {
+	Solutions []SolutionSettings `json:"solutions"`
+}
