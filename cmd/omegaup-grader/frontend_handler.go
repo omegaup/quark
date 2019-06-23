@@ -11,7 +11,7 @@ import (
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
@@ -497,7 +497,7 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	graderContext().InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
 	go runPostProcessor(db, finishedRunsChan, client)
 
-	mux.Handle("/metrics", prometheus.Handler())
+	mux.Handle("/metrics", promhttp.Handler())
 
 	mux.HandleFunc("/grader/status/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := graderContext()

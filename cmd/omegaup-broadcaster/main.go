@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"math"
 	"net/http"
 	_ "net/http/pprof"
@@ -222,7 +222,7 @@ func main() {
 	client := http.Client{}
 
 	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", prometheus.Handler())
+	metricsMux.Handle("/metrics", promhttp.Handler())
 	go func() {
 		addr := fmt.Sprintf(":%d", ctx.Config.Metrics.Port)
 		ctx.Log.Error(

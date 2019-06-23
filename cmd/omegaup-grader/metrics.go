@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/omegaup/quark/grader"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/load"
 	"github.com/shirou/gopsutil/mem"
@@ -187,7 +188,7 @@ func setupMetrics(ctx *grader.Context) {
 	ctx.Metrics = &prometheusMetrics{}
 
 	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", prometheus.Handler())
+	metricsMux.Handle("/metrics", promhttp.Handler())
 	go func() {
 		addr := fmt.Sprintf(":%d", ctx.Config.Metrics.Port)
 		ctx.Log.Error(
