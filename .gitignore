@@ -20,7 +20,6 @@ _cgo_gotypes.go
 _cgo_export.*
 
 _testmain.go
-bindata.go
 cmd/omegaup-grader/data/dist/ephemeral/index.js*
 
 node_modules/
