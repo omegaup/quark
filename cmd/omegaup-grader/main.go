@@ -204,12 +204,29 @@ func main() {
 		panic(err)
 	}
 
+	if _, err := ctx.QueueManager.Get(grader.DefaultQueueName); err != nil {
+		panic(err)
+	}
+
+	ephemeralRunManager := grader.NewEphemeralRunManager(ctx)
+	go func() {
+		if err := ephemeralRunManager.Initialize(); err != nil {
+			ctx.Log.Error(
+				"Failed to fully initalize the ephemeral run manager",
+				"err", err,
+			)
+		} else {
+			ctx.Log.Info("Ephemeral run manager ready", "manager", ephemeralRunManager)
+		}
+	}()
+
 	setupMetrics(ctx)
 	var servers []*http.Server
 	var wg sync.WaitGroup
 	{
 		mux := http.NewServeMux()
-		registerEphemeralHandlers(ctx, mux)
+		registerEphemeralHandlers(ctx, mux, ephemeralRunManager)
+		registerCIHandlers(ctx, mux, ephemeralRunManager)
 		servers = append(
 			servers,
 			common.RunServer(

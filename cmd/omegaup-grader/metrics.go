@@ -88,6 +88,12 @@ var (
 			Help:      "Number of graded ephemeral runs",
 			Name:      "ephemeral_runs_total",
 		}),
+		"grader_ci_jobs_total": prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "quark",
+			Subsystem: "grader",
+			Help:      "Number of CI jobs",
+			Name:      "ci_jobs_total",
+		}),
 		"grader_runs_total": prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: "quark",
 			Subsystem: "grader",

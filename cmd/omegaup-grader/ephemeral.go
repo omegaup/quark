@@ -26,6 +26,37 @@ var (
 	}
 )
 
+func saveEphemeralRunRequest(
+	ctx *grader.Context,
+	runCtx *grader.RunContext,
+	ephemeralRunRequest *grader.EphemeralRunRequest,
+) error {
+	f, err := os.OpenFile(
+		path.Join(runCtx.GradeDir, "request.json.gz"),
+		os.O_CREATE|os.O_WRONLY,
+		0644,
+	)
+	if err != nil {
+		ctx.Log.Error("Error opening request.json.gz file for writing", "err", err)
+		return err
+	}
+	defer f.Close()
+
+	// Not doing `defer zw.Close()`, because it can fail and we want to make this
+	// operation fail altogether if it does.
+	zw := gzip.NewWriter(f)
+	if err = json.NewEncoder(zw).Encode(ephemeralRunRequest); err != nil {
+		zw.Close()
+		ctx.Log.Error("Error marshaling json", "err", err)
+		return err
+	}
+	if err = zw.Close(); err != nil {
+		ctx.Log.Error("Error closing gzip stream", "err", err)
+		return err
+	}
+	return nil
+}
+
 type ephemeralRunHandler struct {
 	ephemeralRunManager *grader.EphemeralRunManager
 	ctx                 *grader.Context
@@ -187,7 +218,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 	}
 
 	// Finally commit the run to the manager.
-	if err = h.saveOriginalRequest(runCtx, ephemeralRunRequest); err != nil {
+	if err = saveEphemeralRunRequest(h.ctx, runCtx, ephemeralRunRequest); err != nil {
 		return err
 	}
 	h.ephemeralRunManager.Commit(runCtx)
@@ -197,42 +228,16 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 	return nil
 }
 
-func (h *ephemeralRunHandler) saveOriginalRequest(
-	runCtx *grader.RunContext,
-	ephemeralRunRequest *grader.EphemeralRunRequest,
-) error {
-	f, err := os.OpenFile(
-		path.Join(runCtx.GradeDir, "request.json.gz"),
-		os.O_CREATE|os.O_WRONLY,
-		0644,
-	)
-	if err != nil {
-		h.ctx.Log.Error("Error opening request.json.gz file for writing", "err", err)
-		return err
-	}
-	defer f.Close()
-
-	// Not doing `defer zw.Close()`, because it can fail and we want to make this
-	// operation fail altogether if it does.
-	zw := gzip.NewWriter(f)
-	if err = json.NewEncoder(zw).Encode(ephemeralRunRequest); err != nil {
-		zw.Close()
-		h.ctx.Log.Error("Error marshaling json", "err", err)
-		return err
-	}
-	if err = zw.Close(); err != nil {
-		h.ctx.Log.Error("Error closing gzip stream", "err", err)
-		return err
-	}
-	return nil
-}
-
 func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.ctx.Log.Info("run request", "path", r.URL.Path)
+	h.ctx.Log.Info("ephemeral run request", "path", r.URL.Path)
 	tokens := strings.Split(r.URL.Path, "/")
 
 	if len(tokens) == 5 && tokens[3] == "new" && tokens[4] == "" {
-		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -255,7 +260,7 @@ func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		}
 	} else if len(tokens) == 5 {
 		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 
@@ -285,26 +290,14 @@ func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func registerEphemeralHandlers(ctx *grader.Context, mux *http.ServeMux) {
-	_, err := ctx.QueueManager.Get(grader.DefaultQueueName)
-	if err != nil {
-		panic(err)
-	}
-
+func registerEphemeralHandlers(
+	ctx *grader.Context,
+	mux *http.ServeMux,
+	ephemeralRunManager *grader.EphemeralRunManager,
+) {
 	ephemeralRunHandler := &ephemeralRunHandler{
-		ephemeralRunManager: grader.NewEphemeralRunManager(ctx),
+		ephemeralRunManager: ephemeralRunManager,
 		ctx:                 ctx,
 	}
-	go func() {
-		if err := ephemeralRunHandler.ephemeralRunManager.Initialize(); err != nil {
-			ctx.Log.Error(
-				"Failed to fully initalize the ephemeral run manager",
-				"err", err,
-			)
-		} else {
-			ctx.Log.Info("Ephemeral run manager ready", "manager", ephemeralRunHandler.ephemeralRunManager)
-		}
-	}()
-
 	mux.Handle("/ephemeral/run/", ephemeralRunHandler)
 }

@@ -192,6 +192,14 @@ func LanguageFileExtension(language string) string {
 	return language
 }
 
+// FileExtensionLanguage returns the language for a particular file extension.
+func FileExtensionLanguage(extension string) string {
+	if extension == "cpp" {
+		return "cpp11"
+	}
+	return extension
+}
+
 // LiteralInputFactory is an InputFactory that will return an Input version of
 // the specified LiteralInput when asked for an input.
 type LiteralInputFactory struct {
