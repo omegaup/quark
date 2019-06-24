@@ -203,3 +203,20 @@ func (s *SolutionSettings) UnmarshalJSON(data []byte) error {
 type TestsSettings struct {
 	Solutions []SolutionSettings `json:"solutions"`
 }
+
+var (
+	// VerdictList is the sorted list of verdicts from worse to better.
+	VerdictList = []string{
+		"JE",
+		"CE",
+		"MLE",
+		"RFE",
+		"RTE",
+		"TLE",
+		"OLE",
+		"WA",
+		"PA",
+		"AC",
+		"OK",
+	}
+)

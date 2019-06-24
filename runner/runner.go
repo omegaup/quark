@@ -1286,24 +1286,11 @@ func getCompileError(errorFile string) string {
 }
 
 func worseVerdict(a, b string) string {
-	verdictList := []string{
-		"JE",
-		"CE",
-		"MLE",
-		"RFE",
-		"RTE",
-		"TLE",
-		"OLE",
-		"WA",
-		"PA",
-		"AC",
-		"OK",
-	}
-	idxA := sliceIndex(len(verdictList),
-		func(i int) bool { return verdictList[i] == a })
-	idxB := sliceIndex(len(verdictList),
-		func(i int) bool { return verdictList[i] == b })
-	return verdictList[min(idxA, idxB)]
+	idxA := sliceIndex(len(common.VerdictList),
+		func(i int) bool { return common.VerdictList[i] == a })
+	idxB := sliceIndex(len(common.VerdictList),
+		func(i int) bool { return common.VerdictList[i] == b })
+	return common.VerdictList[min(idxA, idxB)]
 }
 
 func sliceIndex(limit int, predicate func(i int) bool) int {
