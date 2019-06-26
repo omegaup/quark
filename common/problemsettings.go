@@ -3,7 +3,9 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	base "github.com/omegaup/go-base"
+	"github.com/pkg/errors"
 	"math/big"
 	"time"
 )
@@ -152,56 +154,67 @@ var (
 	}
 )
 
-// SolutionSettings represents a single testcase with an expected score range
-// and/or verdict. At least one of those must be present.
-type SolutionSettings struct {
-	Filename   string     `json:"filename"`
-	ScoreRange []*big.Rat `json:"score_range,omitempty"`
-	Verdict    string     `json:"verdict,omitempty"`
+// ScoreRange represents a minimum and a maximum score.
+type ScoreRange struct {
+	Min *big.Rat
+	Max *big.Rat
 }
 
 // MarshalJSON implements the json.Marshaler interface.
-func (s *SolutionSettings) MarshalJSON() ([]byte, error) {
-	var scoreRange []float64
-	for _, score := range s.ScoreRange {
-		scoreRange = append(scoreRange, RationalToFloat(score))
-	}
-	return json.Marshal(&struct {
-		Filename   string    `json:"filename"`
-		ScoreRange []float64 `json:"score_range,omitempty"`
-		Verdict    string    `json:"verdict,omitempty"`
-	}{
-		Filename:   s.Filename,
-		ScoreRange: scoreRange,
-		Verdict:    s.Verdict,
-	})
+func (r *ScoreRange) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(
+		"[%f, %f]",
+		RationalToFloat(r.Min),
+		RationalToFloat(r.Max),
+	)), nil
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
-func (s *SolutionSettings) UnmarshalJSON(data []byte) error {
-	settings := struct {
-		Filename   string    `json:"filename"`
-		ScoreRange []float64 `json:"score_range,omitempty"`
-		Verdict    string    `json:"verdict,omitempty"`
-	}{}
-
-	if err := json.Unmarshal(data, &settings); err != nil {
+func (r *ScoreRange) UnmarshalJSON(data []byte) error {
+	var floatScores []float64
+	if err := json.Unmarshal(data, &floatScores); err != nil {
 		return err
 	}
-
-	s.Filename = settings.Filename
-	for _, score := range settings.ScoreRange {
-		s.ScoreRange = append(s.ScoreRange, FloatToRational(score))
+	if len(floatScores) != 2 {
+		return errors.Errorf("score_range should be an array with two numbers")
 	}
-	s.Verdict = settings.Verdict
+	minScore := FloatToRational(floatScores[0])
+	maxScore := FloatToRational(floatScores[1])
+
+	if minScore.Cmp(maxScore) > 0 {
+		return errors.Errorf("values for score_range should be sorted")
+	}
+
+	if (&big.Rat{}).Cmp(minScore) > 0 || maxScore.Cmp(big.NewRat(1, 1)) > 0 {
+		return errors.Errorf("values for score_range should be in the interval [0, 1]")
+	}
+
+	r.Min = minScore
+	r.Max = maxScore
 
 	return nil
+}
+
+// SolutionSettings represents a single testcase with an expected score range
+// and/or verdict. At least one of those must be present.
+type SolutionSettings struct {
+	Filename   string      `json:"filename"`
+	ScoreRange *ScoreRange `json:"score_range,omitempty"`
+	Verdict    string      `json:"verdict,omitempty"`
+	Language   string      `json:"language,omitempty"`
+}
+
+// InputsValidatorSettings represents a validator for the .in files.
+type InputsValidatorSettings struct {
+	Filename string `json:"filename"`
+	Language string `json:"language,omitempty"`
 }
 
 // TestsSettings represent the tests that are to be run against the problem
 // itself. They are stored in tests/settings.json.
 type TestsSettings struct {
-	Solutions []SolutionSettings `json:"solutions"`
+	Solutions       []SolutionSettings       `json:"solutions"`
+	InputsValidator *InputsValidatorSettings `json:"inputs,omitempty"`
 }
 
 var (
