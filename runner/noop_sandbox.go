@@ -6,12 +6,17 @@ import (
 	"os"
 )
 
+// NoopSandbox is a sandbox that does nothing and always grades runs as AC.
 type NoopSandbox struct{}
 
+var _ Sandbox = &NoopSandbox{}
+
+// Supported returns true if the sandbox is available in the system.
 func (*NoopSandbox) Supported() bool {
 	return true
 }
 
+// Compile performs a compilation in the specified language.
 func (*NoopSandbox) Compile(
 	ctx *common.Context,
 	lang string,
@@ -30,6 +35,8 @@ func (*NoopSandbox) Compile(
 	return &RunMetadata{Verdict: "OK"}, nil
 }
 
+// Run uses a previously compiled program and runs it against a single test
+// case with the supplied limits.
 func (*NoopSandbox) Run(
 	ctx *common.Context,
 	limits *common.LimitsSettings,
@@ -48,6 +55,7 @@ func (*NoopSandbox) Run(
 	return &RunMetadata{Verdict: "OK"}, nil
 }
 
+// NoopSandboxFixupResult amends the result so that it is AC.
 func NoopSandboxFixupResult(result *RunResult) {
 	// The no-op runner judges everything as AC.
 	result.Verdict = "AC"

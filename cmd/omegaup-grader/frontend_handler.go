@@ -239,12 +239,12 @@ func getPendingRuns(ctx *grader.Context, db *sql.DB) ([]int64, error) {
 	defer rows.Close()
 	var runIds []int64
 	for rows.Next() {
-		var runId int64
-		err = rows.Scan(&runId)
+		var runID int64
+		err = rows.Scan(&runID)
 		if err != nil {
 			return nil, err
 		}
-		runIds = append(runIds, runId)
+		runIds = append(runIds, runID)
 	}
 	return runIds, nil
 }
@@ -284,10 +284,10 @@ func newRunContext(
 func newRunContextFromID(
 	ctx *grader.Context,
 	db *sql.DB,
-	runId int64,
+	runID int64,
 ) (*grader.RunContext, error) {
 	runCtx := grader.NewEmptyRunContext(ctx)
-	runCtx.ID = runId
+	runCtx.ID = runID
 	var contestName sql.NullString
 	var problemset sql.NullInt64
 	var penaltyType sql.NullString
@@ -437,13 +437,13 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	// queue cannot be drained unless the transport is connected.
 	go func() {
 		graderContext().Log.Info("Injecting pending runs", "count", len(runIds))
-		for _, runId := range runIds {
-			runCtx, err := newRunContextFromID(graderContext(), db, runId)
+		for _, runID := range runIds {
+			runCtx, err := newRunContextFromID(graderContext(), db, runID)
 			if err != nil {
 				graderContext().Log.Error(
 					"Error getting run context",
 					"err", err,
-					"runId", runId,
+					"runId", runID,
 				)
 				continue
 			}
@@ -453,7 +453,7 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 				grader.QueuePriorityNormal,
 				runCtx,
 			); err != nil {
-				graderContext().Log.Error("Error injecting run", "runId", runId, "err", err)
+				graderContext().Log.Error("Error injecting run", "runId", runID, "err", err)
 			}
 		}
 		graderContext().Log.Info("Injected pending runs", "count", len(runIds))
