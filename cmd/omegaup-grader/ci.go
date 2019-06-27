@@ -2,6 +2,7 @@ package main
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
@@ -58,8 +59,10 @@ const (
 var (
 	ciURLRegexp = regexp.MustCompile(`^/ci/problem/([a-zA-Z0-9-_]+)/([0-9a-f]{40})/$`)
 
-	// ErrNotFound is an error category which causes HTTP 404 not found to be returned.
-	ErrNotFound = stderrors.New("not found")
+	// ErrSkipped is an error category which causes the CI run to be marked as
+	// skipped (since the tests/tests.json file or the settings.json files were
+	// missing).
+	ErrSkipped = stderrors.New("not found")
 )
 
 // CIState represents the state of the CI run or any of the individual tests.
@@ -75,6 +78,13 @@ const (
 	// CIStateRunning signals that the request has been taken off the queue and
 	// is currently running.
 	CIStateRunning
+	// CIStateSkipped signals that the CI run did not even start running since
+	// the requested commit was not set up for CI, either because
+	// tests/tests.json or settings.json were missing.
+	CIStateSkipped
+	// CIStateError signals that the CI run is no longer running because an error
+	// ocurred.
+	CIStateError
 	// CIStatePassed signals that the CI run has finished running and it was
 	// successful.
 	CIStatePassed
@@ -82,12 +92,19 @@ const (
 	CIStateFailed
 )
 
+// String implements the fmt.Stringer interface.
 func (s CIState) String() string {
 	if s == CIStateWaiting {
 		return "waiting"
 	}
 	if s == CIStateRunning {
 		return "running"
+	}
+	if s == CIStateSkipped {
+		return "skipped"
+	}
+	if s == CIStateError {
+		return "error"
 	}
 	if s == CIStatePassed {
 		return "passed"
@@ -97,17 +114,7 @@ func (s CIState) String() string {
 
 // MarshalJSON implements the json.Marshaler interface.
 func (s CIState) MarshalJSON() ([]byte, error) {
-	switch s {
-	case CIStateWaiting:
-		return []byte("\"waiting\""), nil
-	case CIStateRunning:
-		return []byte("\"running\""), nil
-	case CIStatePassed:
-		return []byte("\"passed\""), nil
-	case CIStateFailed:
-	default:
-	}
-	return []byte("\"failed\""), nil
+	return []byte(fmt.Sprintf("%q", s)), nil
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -118,6 +125,14 @@ func (s *CIState) UnmarshalJSON(data []byte) error {
 	}
 	if string(data) == "\"running\"" {
 		*s = CIStateRunning
+		return nil
+	}
+	if string(data) == "\"skipped\"" {
+		*s = CIStateSkipped
+		return nil
+	}
+	if string(data) == "\"error\"" {
+		*s = CIStateError
 		return nil
 	}
 	if string(data) == "\"passed\"" {
@@ -143,6 +158,7 @@ type CIReportTest struct {
 	FinishTime             *time.Time                      `json:"finish_time,omitempty"`
 	Duration               *base.Duration                  `json:"duration,omitempty"`
 	State                  CIState                         `json:"state"`
+	Error                  string                          `json:"error,omitempty"`
 	SolutionSetting        *common.SolutionSettings        `json:"solution,omitempty"`
 	InputsValidatorSetting *common.InputsValidatorSettings `json:"inputs,omitempty"`
 	Result                 *runner.RunResult               `json:"result,omitempty"`
@@ -158,6 +174,7 @@ type CIReport struct {
 	FinishTime *time.Time      `json:"finish_time,omitempty"`
 	Duration   *base.Duration  `json:"duration,omitempty"`
 	State      CIState         `json:"state"`
+	Error      string          `json:"error,omitempty"`
 	Tests      []*CIReportTest `json:"tests,omitempty"`
 
 	reportDir  string
@@ -280,31 +297,41 @@ func createCIRunConfigFromGit(
 ) (*ciRunConfig, error) {
 	repository, err := git.OpenRepository(repositoryPath)
 	if err != nil {
-		return nil, base.ErrorWithCategory(
-			ErrNotFound,
-			errors.Wrapf(err, "failed to open %s", repositoryPath),
+		return nil, errors.Wrapf(
+			err,
+			"failed to open repository %s:%s",
+			repository.Path(),
+			commitHash,
 		)
 	}
 	defer repository.Free()
-
-	oid, err := git.NewOid(commitHash)
+	commitID, err := git.NewOid(commitHash)
 	if err != nil {
-		return nil, base.ErrorWithCategory(
-			ErrNotFound,
-			errors.Wrapf(err, "failed to parse commit %s:%s", repositoryPath, commitHash),
+		return nil, errors.Wrapf(
+			err,
+			"failed to parse commit id %s:%s",
+			repository.Path(),
+			commitHash,
 		)
 	}
-	commit, err := repository.LookupCommit(oid)
+	commit, err := repository.LookupCommit(commitID)
 	if err != nil {
-		return nil, base.ErrorWithCategory(
-			ErrNotFound,
-			errors.Wrapf(err, "failed to lookup commit %s:%s", repositoryPath, commitHash),
+		return nil, errors.Wrapf(
+			err,
+			"failed to lookup commit %s:%s",
+			repository.Path(),
+			commitHash,
 		)
 	}
 	defer commit.Free()
 	tree, err := commit.Tree()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get tree for commit %s:%s", repositoryPath, commitHash)
+		return nil, errors.Wrapf(
+			err,
+			"failed to get tree for commit %s:%s",
+			repository.Path(),
+			commit.Id(),
+		)
 	}
 
 	config := &ciRunConfig{
@@ -315,13 +342,13 @@ func createCIRunConfigFromGit(
 
 	if err := unmarshalJSON(
 		repository,
-		commitHash,
+		commit.Id().String(),
 		tree,
 		"tests/tests.json",
 		&config.testsSettings,
 	); err != nil {
 		return nil, base.ErrorWithCategory(
-			ErrNotFound,
+			ErrSkipped,
 			err,
 		)
 	}
@@ -329,13 +356,13 @@ func createCIRunConfigFromGit(
 	var problemSettings common.ProblemSettings
 	if err := unmarshalJSON(
 		repository,
-		commitHash,
+		commit.Id().String(),
 		tree,
 		"settings.json",
 		&problemSettings,
 	); err != nil {
 		return nil, base.ErrorWithCategory(
-			ErrNotFound,
+			ErrSkipped,
 			err,
 		)
 	}
@@ -351,30 +378,30 @@ func createCIRunConfigFromGit(
 
 			if literalCaseSettings.Input, err = getBlobContents(
 				repository,
-				commitHash,
+				commit.Id().String(),
 				tree,
 				fmt.Sprintf("cases/%s.in", caseSettings.Name),
 			); err != nil {
 				return nil, errors.Wrapf(
 					err,
 					"failed to get case information for %s:%s %s",
-					repositoryPath,
-					commitHash,
+					repository.Path(),
+					commit.Id(),
 					caseSettings.Name,
 				)
 			}
 
 			if literalCaseSettings.ExpectedOutput, err = getBlobContents(
 				repository,
-				commitHash,
+				commit.Id().String(),
 				tree,
 				fmt.Sprintf("cases/%s.out", caseSettings.Name),
 			); err != nil {
 				return nil, errors.Wrapf(
 					err,
 					"failed to get case information for %s:%s %s",
-					repositoryPath,
-					commitHash,
+					repository.Path(),
+					commit.Id(),
 					caseSettings.Name,
 				)
 			}
@@ -393,8 +420,8 @@ func createCIRunConfigFromGit(
 			return nil, errors.Wrapf(
 				err,
 				"failed to get validator language for %s:%s",
-				repositoryPath,
-				commitHash,
+				repository.Path(),
+				commit.Id(),
 			)
 		}
 		customValidatorSettings := &common.LiteralCustomValidatorSettings{
@@ -404,7 +431,7 @@ func createCIRunConfigFromGit(
 
 		if customValidatorSettings.Source, err = getBlobContents(
 			repository,
-			commitHash,
+			commit.Id().String(),
 			tree,
 			fmt.Sprintf("validator.%s", *problemSettings.Validator.Lang),
 		); err != nil {
@@ -423,7 +450,7 @@ func createCIRunConfigFromGit(
 		}
 		if config.input.Interactive.IDLSource, err = getBlobContents(
 			repository,
-			commitHash,
+			commit.Id().String(),
 			tree,
 			fmt.Sprintf(
 				"interactive/%s.idl",
@@ -434,7 +461,7 @@ func createCIRunConfigFromGit(
 		}
 		if config.input.Interactive.MainSource, err = getBlobContents(
 			repository,
-			commitHash,
+			commit.Id().String(),
 			tree,
 			fmt.Sprintf(
 				"interactive/Main.%s",
@@ -454,8 +481,8 @@ func createCIRunConfigFromGit(
 				return nil, errors.Errorf(
 					"failed to get solution language for %s in %s:%s",
 					solutionSetting.Filename,
-					repositoryPath,
-					commitHash,
+					repository.Path(),
+					commit.Id(),
 				)
 			}
 			language = common.FileExtensionLanguage(ext[1:])
@@ -472,7 +499,7 @@ func createCIRunConfigFromGit(
 		}
 		if reportTest.ephemeralRunRequest.Source, err = getBlobContents(
 			repository,
-			commitHash,
+			commit.Id().String(),
 			tree,
 			fmt.Sprintf("tests/%s", solutionSetting.Filename),
 		); err != nil {
@@ -489,8 +516,8 @@ func createCIRunConfigFromGit(
 				return nil, errors.Errorf(
 					"failed to get input validator language for %s in %s:%s",
 					config.testsSettings.InputsValidator.Filename,
-					repositoryPath,
-					commitHash,
+					repository.Path(),
+					commit.Id(),
 				)
 			}
 			language = common.FileExtensionLanguage(ext[1:])
@@ -515,7 +542,7 @@ func createCIRunConfigFromGit(
 		}
 		if reportTest.ephemeralRunRequest.Input.Validator.CustomValidator.Source, err = getBlobContents(
 			repository,
-			commitHash,
+			commit.Id().String(),
 			tree,
 			fmt.Sprintf("tests/%s", config.testsSettings.InputsValidator.Filename),
 		); err != nil {
@@ -530,6 +557,9 @@ func createCIRunConfigFromGit(
 type ciHandler struct {
 	ephemeralRunManager *grader.EphemeralRunManager
 	ctx                 *grader.Context
+	stopChan            chan struct{}
+	reportChan          chan *CIReport
+	doneChan            chan struct{}
 }
 
 func (h *ciHandler) addRun(
@@ -687,29 +717,45 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repositoryPath := grader.GetRepositoryPath(
+	// Do the barest minimum checks before fully committing to making this CI
+	// run.
+	repository, err := git.OpenRepository(grader.GetRepositoryPath(
 		h.ctx.Config.Grader.RuntimePath,
 		report.Problem,
-	)
-
-	runs, err := h.ctx.QueueManager.Get(grader.DefaultQueueName)
+	))
 	if err != nil {
-		h.ctx.Log.Error("Failed to get default queue", "err", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		h.ctx.Log.Error(
+			"failed to open repository",
+			"filename", report.reportPath,
+			"err", err,
+		)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-
-	ciRunConfig, err := createCIRunConfigFromGit(h.ctx, repositoryPath, report.CommitHash)
+	defer repository.Free()
+	commitID, err := git.NewOid(report.CommitHash)
 	if err != nil {
-		h.ctx.Log.Error("Failed to validate commit", "err", err)
-		if base.HasErrorCategory(err, ErrNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-		}
+		h.ctx.Log.Error(
+			"failed to parse commit",
+			"filename", report.reportPath,
+			"commit", report.CommitHash,
+			"err", err,
+		)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	report.Tests = ciRunConfig.reportTests
+	commit, err := repository.LookupCommit(commitID)
+	if err != nil {
+		h.ctx.Log.Error(
+			"failed to lookup commit",
+			"filename", report.reportPath,
+			"commit", report.CommitHash,
+			"err", err,
+		)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	defer commit.Free()
 
 	h.ctx.Metrics.CounterAdd("grader_ci_jobs_total", 1)
 
@@ -734,19 +780,27 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.ctx.Log.Error("Failed to write report", "err", err)
 	}
 
-	go func() {
-		report.State = CIStateRunning
-		finalState := CIStatePassed
-		for _, test := range report.Tests {
-			if err := h.addRun(test, runs, report); err != nil {
-				h.ctx.Log.Error("Failed to perform ephemeral run", "err", err)
-			}
-			if test.State != CIStatePassed {
-				finalState = test.State
-			}
-		}
-		report.State = finalState
+	h.reportChan <- report
+}
 
+func (h *ciHandler) processCIRequest(report *CIReport, runs *grader.Queue) {
+	h.ctx.Log.Info("running request", "report", report)
+	ciRunConfig, err := createCIRunConfigFromGit(
+		h.ctx,
+		grader.GetRepositoryPath(
+			h.ctx.Config.Grader.RuntimePath,
+			report.Problem,
+		),
+		report.CommitHash,
+	)
+	if err != nil {
+		h.ctx.Log.Error("Failed to validate commit", "err", err)
+		if base.HasErrorCategory(err, ErrSkipped) {
+			report.State = CIStateSkipped
+		} else {
+			report.State = CIStateError
+		}
+		report.Error = err.Error()
 		{
 			finishTime := time.Now()
 			report.FinishTime = &finishTime
@@ -756,17 +810,83 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err := report.Write(); err != nil {
 			h.ctx.Log.Error("Failed to write the report file", "filename", report.reportPath, "err", err)
 		}
-	}()
+		return
+	}
+	report.Tests = ciRunConfig.reportTests
+	if err := report.Write(); err != nil {
+		h.ctx.Log.Error("Failed to write the report file", "filename", report.reportPath, "err", err)
+	}
+
+	report.State = CIStateRunning
+	finalState := CIStatePassed
+	for _, test := range report.Tests {
+		if err := h.addRun(test, runs, report); err != nil {
+			h.ctx.Log.Error("Failed to perform ephemeral run", "err", err)
+			test.State = CIStateError
+			test.Error = err.Error()
+			finalState = test.State
+		} else if finalState == CIStatePassed {
+			finalState = test.State
+		}
+	}
+	report.State = finalState
+
+	{
+		finishTime := time.Now()
+		report.FinishTime = &finishTime
+		duration := base.Duration(report.FinishTime.Sub(report.StartTime))
+		report.Duration = &duration
+	}
+	h.ctx.Log.Info("running request", "report", report)
+	if err := report.Write(); err != nil {
+		h.ctx.Log.Error("Failed to write the report file", "filename", report.reportPath, "err", err)
+	}
+	h.ctx.Log.Info("finished running request", "report", report)
+}
+
+func (h *ciHandler) run() {
+	runs, err := h.ctx.QueueManager.Get(grader.DefaultQueueName)
+	if err != nil {
+		panic(err)
+	}
+
+	h.ctx.Log.Info("CI run manager ready")
+	for {
+		select {
+		case <-h.stopChan:
+			close(h.doneChan)
+			return
+
+		case report := <-h.reportChan:
+			h.processCIRequest(report, runs)
+		}
+	}
+}
+
+func (h *ciHandler) Shutdown(ctx context.Context) error {
+	close(h.stopChan)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-h.doneChan:
+	}
+	return nil
 }
 
 func registerCIHandlers(
 	ctx *grader.Context,
 	mux *http.ServeMux,
 	ephemeralRunManager *grader.EphemeralRunManager,
-) {
+) shutdowner {
 	ciHandler := &ciHandler{
 		ephemeralRunManager: ephemeralRunManager,
 		ctx:                 ctx,
+		stopChan:            make(chan struct{}),
+		reportChan:          make(chan *CIReport, 128),
+		doneChan:            make(chan struct{}),
 	}
 	mux.Handle("/ci/", ciHandler)
+	go ciHandler.run()
+	return ciHandler
 }

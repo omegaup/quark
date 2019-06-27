@@ -42,6 +42,10 @@ var (
 	ProgramVersion string
 )
 
+type shutdowner interface {
+	Shutdown(ctx context.Context) error
+}
+
 type processRunStatus struct {
 	status int
 	retry  bool
@@ -221,14 +225,17 @@ func main() {
 	}()
 
 	setupMetrics(ctx)
-	var servers []*http.Server
+	var shutdowners []shutdowner
 	var wg sync.WaitGroup
 	{
 		mux := http.NewServeMux()
 		registerEphemeralHandlers(ctx, mux, ephemeralRunManager)
-		registerCIHandlers(ctx, mux, ephemeralRunManager)
-		servers = append(
-			servers,
+		shutdowners = append(
+			shutdowners,
+			registerCIHandlers(ctx, mux, ephemeralRunManager),
+		)
+		shutdowners = append(
+			shutdowners,
 			common.RunServer(
 				&ctx.Config.Grader.Ephemeral.TLS,
 				mux,
@@ -241,8 +248,8 @@ func main() {
 	{
 		mux := http.NewServeMux()
 		registerRunnerHandlers(ctx, mux, db, *insecure)
-		servers = append(
-			servers,
+		shutdowners = append(
+			shutdowners,
 			common.RunServer(
 				&ctx.Config.TLS,
 				mux,
@@ -260,8 +267,8 @@ func main() {
 	{
 		mux := http.DefaultServeMux
 		registerFrontendHandlers(mux, db)
-		servers = append(
-			servers,
+		shutdowners = append(
+			shutdowners,
 			common.RunServer(
 				&ctx.Config.TLS,
 				mux,
@@ -283,8 +290,8 @@ func main() {
 	daemon.SdNotify(false, "STOPPING=1")
 	ctx.Log.Info("Shutting down server...")
 	cancelCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	for _, server := range servers {
-		server.Shutdown(cancelCtx)
+	for _, s := range shutdowners {
+		s.Shutdown(cancelCtx)
 	}
 
 	cancel()
