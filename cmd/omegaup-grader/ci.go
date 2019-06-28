@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"github.com/inconshreveable/log15"
 	git "github.com/lhchavez/git2go"
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
@@ -19,6 +20,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -54,6 +56,8 @@ const (
 			return 0;
 		}
 	`
+
+	runningStampFilename = ".running"
 )
 
 var (
@@ -554,9 +558,42 @@ func createCIRunConfigFromGit(
 	return config, nil
 }
 
+func getDirectorySize(root string) (base.Byte, error) {
+	size := int64(0)
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		size += info.Size()
+		return nil
+	}); err != nil {
+		return base.Byte(0), err
+	}
+	return base.Byte(size), nil
+}
+
+type ciSizedEntry struct {
+	path string
+	size base.Byte
+	log  log15.Logger
+}
+
+var _ base.SizedEntry = &ciSizedEntry{}
+
+func (e *ciSizedEntry) Release() {
+	if err := os.RemoveAll(e.path); err != nil {
+		e.log.Error("Evicting CI run failed", "path", e.path, "err", err)
+	}
+}
+
+func (e *ciSizedEntry) Size() base.Byte {
+	return e.size
+}
+
 type ciHandler struct {
 	ephemeralRunManager *grader.EphemeralRunManager
 	ctx                 *grader.Context
+	lruCache            *base.LRUCache
 	stopChan            chan struct{}
 	reportChan          chan *CIReport
 	doneChan            chan struct{}
@@ -698,7 +735,8 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"ci",
 		report.Problem,
 		report.CommitHash[:2],
-		fmt.Sprintf("%s.json.gz", report.CommitHash[2:]),
+		report.CommitHash[2:],
+		"report.json.gz",
 	)
 	report.reportDir = path.Dir(report.reportPath)
 	if fd, err := os.Open(report.reportPath); err == nil {
@@ -764,6 +802,18 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	stamp, err := os.OpenFile(
+		path.Join(report.reportDir, runningStampFilename),
+		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		0644,
+	)
+	if err != nil {
+		h.ctx.Log.Error("Failed to create the running stamp", "filename", report.reportPath, "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	stamp.Close()
 
 	if err := report.Write(); err != nil {
 		h.ctx.Log.Error("Failed to create the report file", "filename", report.reportPath, "err", err)
@@ -841,7 +891,50 @@ func (h *ciHandler) processCIRequest(report *CIReport, runs *grader.Queue) {
 	if err := report.Write(); err != nil {
 		h.ctx.Log.Error("Failed to write the report file", "filename", report.reportPath, "err", err)
 	}
+
 	h.ctx.Log.Info("finished running request", "report", report)
+
+	if err := os.Remove(path.Join(report.reportDir, runningStampFilename)); err != nil {
+		h.ctx.Log.Error("Failed to remove the running stamp", "filename", report.reportPath, "err", err)
+	}
+
+	h.addRunToCache(
+		report.reportDir,
+		fmt.Sprintf("%s/%s", report.Problem, report.CommitHash),
+	)
+}
+
+func (h *ciHandler) addRunToCache(currentPath string, key string) {
+	ref, err := h.lruCache.Get(
+		key,
+		func(hash string) (base.SizedEntry, error) {
+			size, err := getDirectorySize(currentPath)
+			if err != nil {
+				return nil, err
+			}
+			return &ciSizedEntry{
+				path: currentPath,
+				size: size,
+			}, nil
+		},
+	)
+	if err != nil {
+		h.ctx.Log.Error(
+			"Error adding path to LRU cache. Removing instead",
+			"path", currentPath,
+			"err", err,
+		)
+		if err := os.RemoveAll(currentPath); err != nil {
+			h.ctx.Log.Error(
+				"Removing errored run failed",
+				"path", currentPath,
+				"err", err,
+			)
+		}
+		return
+	}
+	// Release immediately so that the entry can be evicted.
+	h.lruCache.Put(ref)
 }
 
 func (h *ciHandler) run() {
@@ -849,6 +942,38 @@ func (h *ciHandler) run() {
 	if err != nil {
 		panic(err)
 	}
+
+	ciRoot := path.Join(h.ctx.Config.Grader.RuntimePath, "ci")
+	h.ctx.Log.Info("Reloading CI runs...")
+	if err := filepath.Walk(ciRoot, func(currentPath string, info os.FileInfo, err error) error {
+		rel, err := filepath.Rel(ciRoot, currentPath)
+		if err != nil {
+			return err
+		}
+		components := strings.Split(rel, string(filepath.Separator))
+		if len(components) < 3 || !info.IsDir() {
+			return nil
+		}
+
+		if _, err := os.Stat(path.Join(currentPath, runningStampFilename)); err == nil {
+			// The existence of the .running stamp file means that a previous run of
+			// the grader did not finish a CI run, so we will not be able to
+			// continue it. Remove the whole directory.
+			if err := os.RemoveAll(currentPath); err != nil {
+				h.ctx.Log.Error("Removing unfinished run failed", "path", currentPath, "err", err)
+			}
+			return filepath.SkipDir
+		}
+
+		h.addRunToCache(
+			currentPath,
+			fmt.Sprintf("%s/%s%s", components[0], components[1], components[2]),
+		)
+		return filepath.SkipDir
+	}); err != nil {
+		h.ctx.Log.Error("Reloading CI runs failed", "err", err)
+	}
+	h.ctx.Log.Info("Finished preloading CI runs", "cache_size", h.lruCache.Size())
 
 	h.ctx.Log.Info("CI run manager ready")
 	for {
@@ -882,6 +1007,7 @@ func registerCIHandlers(
 	ciHandler := &ciHandler{
 		ephemeralRunManager: ephemeralRunManager,
 		ctx:                 ctx,
+		lruCache:            base.NewLRUCache(ctx.Config.Grader.CI.CISizeLimit),
 		stopChan:            make(chan struct{}),
 		reportChan:          make(chan *CIReport, 128),
 		doneChan:            make(chan struct{}),

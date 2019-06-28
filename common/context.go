@@ -57,6 +57,11 @@ type GraderEphemeralConfig struct {
 	WriteDeadline        base.Duration
 }
 
+// GraderCIConfig represents the configuration for the Grader CI.
+type GraderCIConfig struct {
+	CISizeLimit base.Byte
+}
+
 // GraderConfig represents the configuration for the Grader.
 type GraderConfig struct {
 	ChannelLength   int
@@ -66,6 +71,7 @@ type GraderConfig struct {
 	BroadcasterURL  string
 	V1              V1Config
 	Ephemeral       GraderEphemeralConfig
+	CI              GraderCIConfig
 	WriteGradeFiles bool // TODO(lhchavez): Remove once migration is done.
 }
 
@@ -179,6 +185,9 @@ var defaultConfig = Config{
 				KeyFile:  "/etc/omegaup/grader/web-key.pem",
 			},
 			WriteDeadline: base.Duration(time.Duration(5) * time.Second),
+		},
+		CI: GraderCIConfig{
+			CISizeLimit: base.Byte(256) * base.Mebibyte,
 		},
 		WriteGradeFiles: true,
 	},
