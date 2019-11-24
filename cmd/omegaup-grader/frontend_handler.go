@@ -169,13 +169,13 @@ func broadcastRun(
 
 	err := db.QueryRow(
 		`SELECT
-			u.username, r.penalty, s.submit_delay, UNIX_TIMESTAMP(r.time)
+			i.username, r.penalty, s.submit_delay, UNIX_TIMESTAMP(r.time)
 		FROM
 			Runs r
 		INNER JOIN
 			Submissions s ON s.submission_id = r.submission_id
 		INNER JOIN
-			Users u ON u.main_identity_id = s.identity_id
+			Identities i ON i.identity_id = s.identity_id
 		WHERE
 			r.run_id = ?;`, run.ID).Scan(
 		&msg.Run.User,
