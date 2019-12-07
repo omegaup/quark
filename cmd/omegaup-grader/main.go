@@ -9,7 +9,7 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"github.com/coreos/go-systemd/daemon"
+	"github.com/coreos/go-systemd/v22/daemon"
 	_ "github.com/go-sql-driver/mysql"
 	git "github.com/lhchavez/git2go"
 	_ "github.com/mattn/go-sqlite3"

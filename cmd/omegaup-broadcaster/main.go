@@ -7,7 +7,7 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"github.com/coreos/go-systemd/daemon"
+	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/gorilla/websocket"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
