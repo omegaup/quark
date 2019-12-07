@@ -4,7 +4,6 @@ FROM omegaup/quark-prebuild
 ADD . /go/src/github.com/omegaup/quark
 
 # Build all binaries.
-RUN go generate github.com/omegaup/quark/cmd/...
 ENV GOOS linux
 RUN go test -c github.com/omegaup/quark/common -o bin/common_test
 RUN go test -c github.com/omegaup/quark/runner -o bin/runner_test
