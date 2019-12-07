@@ -9,7 +9,6 @@ import (
 	"fmt"
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/broadcaster"
-	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
@@ -78,8 +77,8 @@ func updateDatabase(
 			run.Result.Time*1000,
 			run.Result.Time*1000,
 			run.Result.Memory.Bytes(),
-			common.RationalToFloat(run.Result.Score),
-			common.RationalToFloat(run.Result.ContestScore),
+			base.RationalToFloat(run.Result.Score),
+			base.RationalToFloat(run.Result.ContestScore),
 			run.Result.JudgedBy,
 			run.ID,
 		)
@@ -98,8 +97,8 @@ func updateDatabase(
 			run.Result.Verdict,
 			run.Result.Time*1000,
 			run.Result.Memory.Bytes(),
-			common.RationalToFloat(run.Result.Score),
-			common.RationalToFloat(run.Result.ContestScore),
+			base.RationalToFloat(run.Result.Score),
+			base.RationalToFloat(run.Result.ContestScore),
 			run.Result.JudgedBy,
 			run.ID,
 		)
@@ -156,8 +155,8 @@ func broadcastRun(
 			GUID:         run.GUID,
 			Runtime:      run.Result.Time,
 			Memory:       run.Result.Memory,
-			Score:        common.RationalToFloat(run.Result.Score),
-			ContestScore: common.RationalToFloat(run.Result.ContestScore),
+			Score:        base.RationalToFloat(run.Result.Score),
+			ContestScore: base.RationalToFloat(run.Result.ContestScore),
 			Status:       "ready",
 			Verdict:      run.Result.Verdict,
 			Language:     run.Run.Language,
@@ -332,7 +331,7 @@ func newRunContextFromID(
 		runCtx.PenaltyType = penaltyType.String
 	}
 	if contestPoints.Valid {
-		runCtx.Run.MaxScore = common.FloatToRational(contestPoints.Float64)
+		runCtx.Run.MaxScore = base.FloatToRational(contestPoints.Float64)
 	} else {
 		runCtx.Run.MaxScore = big.NewRat(1, 1)
 	}

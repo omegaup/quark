@@ -67,6 +67,8 @@ github.com/modern-go/reflect2 v1.0.1/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3Rllmb
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/omegaup/go-base v0.0.0-20190624033755-26f895597739 h1:EIcs0V5rPdPbxPG9mv2uGyHDpkWO2Xw9ST8XZy3t+Rk=
 github.com/omegaup/go-base v0.0.0-20190624033755-26f895597739/go.mod h1:Ld9zYiCL9kA2+KrFVYP7baFzwQYAApOt3A3YZbmbPvE=
+github.com/omegaup/go-base v0.0.0-20191207155839-a2f061e96808 h1:5MSiF/KV5ZdOrPraqJHCSBomQjLvAPD+Uvk0zJoCmZc=
+github.com/omegaup/go-base v0.0.0-20191207155839-a2f061e96808/go.mod h1:KRWOUExqxHkr/h1GiHEtAKGp4rx6mOGWsBSlN636INY=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

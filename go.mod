@@ -11,10 +11,8 @@ require (
 	github.com/gorilla/websocket v1.4.1
 	github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
 	github.com/lhchavez/git2go v0.0.0-20190221190548-e9c961d8b627
-	github.com/mattn/go-colorable v0.1.4 // indirect
-	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/mattn/go-sqlite3 v2.0.1+incompatible
-	github.com/omegaup/go-base v0.0.0-20190624033755-26f895597739
+	github.com/omegaup/go-base v0.0.0-20191207155839-a2f061e96808
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.2.1
 	github.com/prometheus/client_model v0.0.0-20191202183732-d1d2010b5bee // indirect
@@ -23,6 +21,5 @@ require (
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413 // indirect
 	golang.org/x/net v0.0.0-20191207000613-e7e4b65ae663
-	golang.org/x/sys v0.0.0-20191206220618-eeba5f6aabab // indirect
 	google.golang.org/appengine v1.6.5 // indirect
 )

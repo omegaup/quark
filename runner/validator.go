@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"io"
 	"math"
@@ -26,7 +27,7 @@ func CalculateScore(
 		if !contestantTokenizer.Scan() {
 			return &big.Rat{}, nil, io.ErrUnexpectedEOF
 		}
-		value, err := common.ParseRational(contestantTokenizer.Token().Text)
+		value, err := base.ParseRational(contestantTokenizer.Token().Text)
 		if err != nil {
 			return &big.Rat{}, nil, err
 		}

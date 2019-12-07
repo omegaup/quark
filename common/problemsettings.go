@@ -68,7 +68,7 @@ func (c *CaseSettings) MarshalJSON() ([]byte, error) {
 		Weight float64
 	}{
 		Name:   c.Name,
-		Weight: RationalToFloat(c.Weight),
+		Weight: base.RationalToFloat(c.Weight),
 	})
 }
 
@@ -88,7 +88,7 @@ func (c *CaseSettings) UnmarshalJSON(data []byte) error {
 	}
 
 	c.Name = settings.Name
-	c.Weight = FloatToRational(settings.Weight)
+	c.Weight = base.FloatToRational(settings.Weight)
 
 	return nil
 }
@@ -164,8 +164,8 @@ type ScoreRange struct {
 func (r *ScoreRange) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(
 		"[%f, %f]",
-		RationalToFloat(r.Min),
-		RationalToFloat(r.Max),
+		base.RationalToFloat(r.Min),
+		base.RationalToFloat(r.Max),
 	)), nil
 }
 
@@ -178,8 +178,8 @@ func (r *ScoreRange) UnmarshalJSON(data []byte) error {
 	if len(floatScores) != 2 {
 		return errors.Errorf("score_range should be an array with two numbers")
 	}
-	minScore := FloatToRational(floatScores[0])
-	maxScore := FloatToRational(floatScores[1])
+	minScore := base.FloatToRational(floatScores[0])
+	maxScore := base.FloatToRational(floatScores[1])
 
 	if minScore.Cmp(maxScore) > 0 {
 		return errors.Errorf("values for score_range should be sorted")

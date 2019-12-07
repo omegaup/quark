@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	base "github.com/omegaup/go-base"
 	"math/big"
 	"math/rand"
 	"sync/atomic"
@@ -43,7 +44,7 @@ func (r *Run) MarshalJSON() ([]byte, error) {
 		Source:    r.Source,
 		Language:  r.Language,
 		InputHash: r.InputHash,
-		MaxScore:  RationalToFloat(r.MaxScore),
+		MaxScore:  base.RationalToFloat(r.MaxScore),
 		Debug:     r.Debug,
 	})
 }
@@ -71,7 +72,7 @@ func (r *Run) UnmarshalJSON(data []byte) error {
 	r.Source = run.Source
 	r.Language = run.Language
 	r.InputHash = run.InputHash
-	r.MaxScore = FloatToRational(run.MaxScore)
+	r.MaxScore = base.FloatToRational(run.MaxScore)
 	r.Debug = run.Debug
 
 	return nil

@@ -45,9 +45,9 @@ func (c *CaseResult) MarshalJSON() ([]byte, error) {
 	}{
 		Verdict:        c.Verdict,
 		Name:           c.Name,
-		Score:          common.RationalToFloat(c.Score),
-		ContestScore:   common.RationalToFloat(c.ContestScore),
-		MaxScore:       common.RationalToFloat(c.MaxScore),
+		Score:          base.RationalToFloat(c.Score),
+		ContestScore:   base.RationalToFloat(c.ContestScore),
+		MaxScore:       base.RationalToFloat(c.MaxScore),
 		Meta:           c.Meta,
 		IndividualMeta: c.IndividualMeta,
 	})
@@ -75,9 +75,9 @@ func (c *CaseResult) UnmarshalJSON(data []byte) error {
 
 	c.Verdict = result.Verdict
 	c.Name = result.Name
-	c.Score = common.FloatToRational(result.Score)
-	c.ContestScore = common.FloatToRational(result.ContestScore)
-	c.MaxScore = common.FloatToRational(result.MaxScore)
+	c.Score = base.FloatToRational(result.Score)
+	c.ContestScore = base.FloatToRational(result.ContestScore)
+	c.MaxScore = base.FloatToRational(result.MaxScore)
 	c.Meta = result.Meta
 	c.IndividualMeta = result.IndividualMeta
 
@@ -103,9 +103,9 @@ func (g *GroupResult) MarshalJSON() ([]byte, error) {
 		Cases        []CaseResult `json:"cases"`
 	}{
 		Group:        g.Group,
-		Score:        common.RationalToFloat(g.Score),
-		ContestScore: common.RationalToFloat(g.ContestScore),
-		MaxScore:     common.RationalToFloat(g.MaxScore),
+		Score:        base.RationalToFloat(g.Score),
+		ContestScore: base.RationalToFloat(g.ContestScore),
+		MaxScore:     base.RationalToFloat(g.MaxScore),
 		Cases:        g.Cases,
 	})
 }
@@ -129,9 +129,9 @@ func (g *GroupResult) UnmarshalJSON(data []byte) error {
 	}
 
 	g.Group = result.Group
-	g.Score = common.FloatToRational(result.Score)
-	g.ContestScore = common.FloatToRational(result.ContestScore)
-	g.MaxScore = common.FloatToRational(result.MaxScore)
+	g.Score = base.FloatToRational(result.Score)
+	g.ContestScore = base.FloatToRational(result.ContestScore)
+	g.MaxScore = base.FloatToRational(result.MaxScore)
 	g.Cases = result.Cases
 
 	return nil
@@ -180,9 +180,9 @@ func (r *RunResult) MarshalJSON() ([]byte, error) {
 		Verdict:      r.Verdict,
 		CompileError: r.CompileError,
 		CompileMeta:  r.CompileMeta,
-		Score:        common.RationalToFloat(r.Score),
-		ContestScore: common.RationalToFloat(r.ContestScore),
-		MaxScore:     common.RationalToFloat(r.MaxScore),
+		Score:        base.RationalToFloat(r.Score),
+		ContestScore: base.RationalToFloat(r.ContestScore),
+		MaxScore:     base.RationalToFloat(r.MaxScore),
 		Time:         r.Time,
 		WallTime:     r.WallTime,
 		Memory:       r.Memory,
@@ -218,9 +218,9 @@ func (r *RunResult) UnmarshalJSON(data []byte) error {
 	r.Verdict = result.Verdict
 	r.CompileError = result.CompileError
 	r.CompileMeta = result.CompileMeta
-	r.Score = common.FloatToRational(result.Score)
-	r.ContestScore = common.FloatToRational(result.ContestScore)
-	r.MaxScore = common.FloatToRational(result.MaxScore)
+	r.Score = base.FloatToRational(result.Score)
+	r.ContestScore = base.FloatToRational(result.ContestScore)
+	r.MaxScore = base.FloatToRational(result.MaxScore)
 	r.Time = result.Time
 	r.WallTime = result.WallTime
 	r.Memory = result.Memory

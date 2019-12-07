@@ -60,7 +60,7 @@ func (c *LiteralCaseSettings) MarshalJSON() ([]byte, error) {
 	}{
 		Input:          c.Input,
 		ExpectedOutput: c.ExpectedOutput,
-		Weight:         RationalToFloat(c.Weight),
+		Weight:         base.RationalToFloat(c.Weight),
 	})
 }
 
@@ -85,7 +85,7 @@ func (c *LiteralCaseSettings) UnmarshalJSON(data []byte) error {
 	if settings.Weight == nil {
 		c.Weight = big.NewRat(1, 1)
 	} else {
-		c.Weight = FloatToRational(*settings.Weight)
+		c.Weight = base.FloatToRational(*settings.Weight)
 	}
 
 	return nil
@@ -300,7 +300,7 @@ func NewLiteralInputFactory(
 		weight := new(big.Rat).Add(&big.Rat{}, c.Weight)
 		cs := CaseSettings{
 			Name:   name,
-			Weight: RationalDiv(weight, totalWeight),
+			Weight: base.RationalDiv(weight, totalWeight),
 		}
 		if _, ok := groups[tokens[0]]; !ok {
 			groups[tokens[0]] = make([]CaseSettings, 0)
