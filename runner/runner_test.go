@@ -208,7 +208,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 
 	runtests := []runnerTestCase{
 		{
-			"py",
+			"py2",
 			"print sum(map(int, raw_input().strip().split()))",
 			big.NewRat(1, 1),
 			"AC",
@@ -221,10 +221,23 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
-			"py",
-			"ans = sum(map(int, raw_input().strip().split()))\n" +
+			"py3",
+			"print(sum(map(int, input().strip().split())))",
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"py3",
+			"ans = sum(map(int, input().strip().split()))\n" +
 				"assert ans <= 3\n" +
-				"print ans",
+				"print(ans)",
 			big.NewRat(1, 1),
 			"RTE",
 			big.NewRat(1, 4),
@@ -236,8 +249,8 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
-			"py",
-			"print 3",
+			"py3",
+			"print(3)",
 			big.NewRat(1, 1),
 			"PA",
 			big.NewRat(1, 4),
@@ -249,8 +262,8 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
-			"py",
-			"print 2",
+			"py3",
+			"print(2)",
 			big.NewRat(1, 1),
 			"WA",
 			big.NewRat(0, 1),
@@ -262,7 +275,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
-			"py",
+			"py3",
 			"if",
 			big.NewRat(1, 1),
 			"CE",
@@ -278,7 +291,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			map[string]expectedResult{},
 		},
 		{
-			"c",
+			"c11-gcc",
 			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
 			big.NewRat(1, 1),
 			"PA",
@@ -291,7 +304,33 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 			},
 		},
 		{
-			"cpp",
+			"c11-clang",
+			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
+			big.NewRat(1, 1),
+			"PA",
+			big.NewRat(1, 4),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"cpp17-gcc",
+			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
+			big.NewRat(1, 1),
+			"PA",
+			big.NewRat(1, 4),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"cpp17-clang",
 			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
 			big.NewRat(1, 1),
 			"PA",
@@ -604,7 +643,7 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 
 	runtests := []runnerTestCase{
 		{
-			"c",
+			"c11-gcc",
 			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
 			big.NewRat(1, 1),
 			"PA",
@@ -617,7 +656,7 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 			},
 		},
 		{
-			"cpp",
+			"cpp17-gcc",
 			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
 			big.NewRat(1, 1),
 			"PA",
@@ -888,7 +927,7 @@ func TestLibinteractive(t *testing.T) {
 					`,
 				},
 				ModuleName: "AplusB",
-				ParentLang: "cpp",
+				ParentLang: "cpp17-gcc",
 			},
 		},
 		ctx.Config.Runner.RuntimePath,
@@ -907,7 +946,7 @@ func TestLibinteractive(t *testing.T) {
 
 	runtests := []runnerTestCase{
 		{
-			"cpp",
+			"cpp17-gcc",
 			`
 				#include <iostream>
 				using namespace std;
@@ -932,7 +971,7 @@ func TestLibinteractive(t *testing.T) {
 			map[string]expectedResult{},
 		},
 		{
-			"cpp11",
+			"cpp17-clang",
 			`
 				#include "AplusB.h"
 				int sum(int A, int B) {
@@ -952,7 +991,127 @@ func TestLibinteractive(t *testing.T) {
 			},
 		},
 		{
+			"c",
+			`
+				#include "AplusB.h"
+				int sum(int A, int B) {
+					return A + B;
+				}
+				int identity(int x) {
+					return x;
+				}
+			`,
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"c11-gcc",
+			`
+				#include "AplusB.h"
+				int sum(int A, int B) {
+					return A + B;
+				}
+				int identity(int x) {
+					return x;
+				}
+			`,
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"c11-clang",
+			`
+				#include "AplusB.h"
+				int sum(int A, int B) {
+					return A + B;
+				}
+				int identity(int x) {
+					return x;
+				}
+			`,
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
 			"cpp",
+			`
+				#include "AplusB.h"
+				int sum(int A, int B) {
+					return A + B;
+				}
+				int identity(int x) {
+					return x;
+				}
+			`,
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"cpp11",
+			`
+				#include "AplusB.h"
+				int sum(int A, int B) {
+					return A + B;
+				}
+				int identity(int x) {
+					return x;
+				}
+			`,
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"cpp17-gcc",
+			`
+				#include "AplusB.h"
+				int sum(int A, int B) {
+					return A + B;
+				}
+				int identity(int x) {
+					return x;
+				}
+			`,
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"cpp17-clang",
 			`
 				#include "AplusB.h"
 				int sum(int A, int B) {
@@ -996,6 +1155,30 @@ func TestLibinteractive(t *testing.T) {
 		},
 		{
 			"py",
+			"def sum(A, B):\n  return A + B\ndef identity(x):\n  return x",
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"py2",
+			"def sum(A, B):\n  return A + B\ndef identity(x):\n  return x",
+			big.NewRat(1, 1),
+			"AC",
+			big.NewRat(1, 1),
+			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			map[string]expectedResult{
+				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+			},
+		},
+		{
+			"py3",
 			"def sum(A, B):\n  return A + B\ndef identity(x):\n  return x",
 			big.NewRat(1, 1),
 			"AC",

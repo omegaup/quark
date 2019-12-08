@@ -157,7 +157,7 @@ type LiteralRun struct {
 
 func validateLanguage(lang string) error {
 	switch lang {
-	case "c", "cpp", "cpp11", "kj", "kp", "java", "py", "pas", "rb", "cat":
+	case "c", "c11-gcc", "c11-clang", "cpp", "cpp11", "cpp17-gcc", "cpp17-clang", "kj", "kp", "java", "py", "py2", "py3", "pas", "rb", "cat":
 		return nil
 	default:
 		return fmt.Errorf("invalid language %q", lang)
@@ -186,8 +186,13 @@ func validateInterface(interfaceName string) error {
 
 // LanguageFileExtension returns the file extension for a particular language.
 func LanguageFileExtension(language string) string {
-	if language == "cpp11" {
+	switch language {
+	case "cpp11", "cpp11-gcc", "cpp11-clang", "cpp17-gcc", "cpp17-clang":
 		return "cpp"
+	case "c", "c11-gcc", "c11-clang":
+		return "c"
+	case "py", "py2", "py3":
+		return "py"
 	}
 	return language
 }

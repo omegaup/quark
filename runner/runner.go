@@ -271,6 +271,13 @@ func extraParentFlags(language string) []string {
 	return []string{}
 }
 
+func targetName(language string, target string) string {
+	if language == "py" || language == "py2" || language == "py3" || language == "java" {
+		return fmt.Sprintf("%s_entry", target)
+	}
+	return target
+}
+
 func normalizedSourceFiles(
 	runRoot string,
 	lang string,
@@ -451,13 +458,11 @@ func Grade(
 	if interactive != nil {
 		ctx.Log.Info("libinteractive", "version", interactive.LibinteractiveVersion)
 		lang := interactive.ParentLang
-		target := interactive.Main
+		target := targetName(run.Language, interactive.Main)
 
 		if lang == "cpp" {
 			// Let's not make problemsetters be forced to use old languages.
 			lang = "cpp11"
-		} else if run.Language == "py" || run.Language == "java" {
-			target = fmt.Sprintf("%s_entry", target)
 		}
 
 		binaries = []*binary{
@@ -491,10 +496,7 @@ func Grade(
 				runResult.CompileError = &compileError
 				return runResult, nil
 			}
-			target := name
-			if run.Language == "py" || run.Language == "java" {
-				target = fmt.Sprintf("%s_entry", target)
-			}
+			target := targetName(run.Language, name)
 			binaries = append(
 				binaries,
 				&binary{
