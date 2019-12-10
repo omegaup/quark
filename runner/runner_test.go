@@ -198,9 +198,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
 	}
-	inputManager.Add(AplusB.Hash(), AplusB)
-
-	inputRef, err := inputManager.Get(AplusB.Hash())
+	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}
@@ -633,9 +631,8 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
 	}
-	inputManager.Add(AplusB.Hash(), AplusB)
 
-	inputRef, err := inputManager.Get(AplusB.Hash())
+	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}
@@ -787,9 +784,8 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
 	}
-	inputManager.Add(AplusB.Hash(), AplusB)
 
-	inputRef, err := inputManager.Get(AplusB.Hash())
+	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}
@@ -936,9 +932,8 @@ func TestLibinteractive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
 	}
-	inputManager.Add(AplusB.Hash(), AplusB)
 
-	inputRef, err := inputManager.Get(AplusB.Hash())
+	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
 	if err != nil {
 		t.Fatalf("Failed to open problem: %q", err)
 	}

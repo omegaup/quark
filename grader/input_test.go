@@ -139,14 +139,14 @@ func TestPreloadInputs(t *testing.T) {
 		{AplusBHash, true},
 	}
 	for _, het := range hashentries {
-		inputRef, err := ctx.InputManager.Get(het.hash)
+		inputRef, err := ctx.InputManager.Add(het.hash, &common.CacheOnlyInputFactoryForTesting{})
 		if het.valid {
 			if err != nil {
-				t.Errorf("InputManager.Get(%q) == %q, want nil", het.hash, err)
+				t.Errorf("InputManager.Add(%q, &common.CacheOnlyInputFactoryForTesting{}) == %q, want nil", het.hash, err)
 			}
 		} else {
 			if err == nil {
-				t.Errorf("InputManager.Get(%q) == %q, want !nil", het.hash, err)
+				t.Errorf("InputManager.Add(%q, &common.CacheOnlyInputFactoryForTesting{}) == %q, want !nil", het.hash, err)
 			}
 		}
 		if inputRef != nil {

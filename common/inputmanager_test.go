@@ -118,8 +118,9 @@ func TestInputManager(t *testing.T) {
 	}
 
 	// Add an input (hash = 0)
-	if _, err := inputManager.Get("0"); err == nil {
-		t.Errorf("InputManager.Get(\"0\") == %q, want !nil", err)
+	if inputRef, err := inputManager.Add("0", &CacheOnlyInputFactoryForTesting{}); err == nil {
+		inputRef.Release()
+		t.Errorf("InputManager.Add(\"0\", &CacheOnlyInputFactoryForTesting{}) == %q, want !nil", err)
 	}
 	inputRef, err := inputManager.Add("0", &testInputFactory{size: 1024})
 	if err != nil {
@@ -132,19 +133,21 @@ func TestInputManager(t *testing.T) {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 1024)
 	}
 	inputRef.Release()
+
 	if inputManager.Size() != 1024 {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 1024)
 	}
 
-	inputRef, err = inputManager.Get("0")
+	inputRef, err = inputManager.Add("0", &CacheOnlyInputFactoryForTesting{})
 	if err != nil {
-		t.Errorf("InputManager.Get(\"0\") == %q, want nil", err)
+		t.Errorf("InputManager.Add(\"0\", &CacheOnlyInputFactoryForTesting{}) == %q, want nil", err)
 	}
 	inputRef.Release()
 
 	// Add a new input (hash = 1)
-	if _, err := inputManager.Get("1"); err == nil {
-		t.Errorf("InputManager.Get(\"1\") == %q, want !nil", err)
+	if inputRef, err := inputManager.Add("1", &CacheOnlyInputFactoryForTesting{}); err == nil {
+		inputRef.Release()
+		t.Errorf("InputManager.Add(\"1\", &CacheOnlyInputFactoryForTesting{}) == %q, want !nil", err)
 	}
 	inputRef, err = inputManager.Add("1", &testInputFactory{size: 1024})
 	if err != nil {
@@ -156,8 +159,9 @@ func TestInputManager(t *testing.T) {
 	if inputManager.Size() != 1024 {
 		t.Errorf("InputManager.Size() == %d, want %d", inputManager.Size(), 1024)
 	}
-	if _, err := inputManager.Get("0"); err == nil {
-		t.Errorf("InputManager.Get(\"0\") == %q, want !nil", err)
+	if inputRef, err := inputManager.Add("0", &CacheOnlyInputFactoryForTesting{}); err == nil {
+		inputRef.Release()
+		t.Errorf("InputManager.Add(\"0\", &CacheOnlyInputFactoryForTesting{}) == %q, want !nil", err)
 	}
 }
 
@@ -202,12 +206,13 @@ func TestPreloadInputs(t *testing.T) {
 	}
 
 	// 000 was invalid, so it must not exist.
-	if _, err := inputManager.Get("000"); err == nil {
-		t.Errorf("InputManager.Get(\"000\") == %q, want !nil", err)
+	if inputRef, err := inputManager.Add("000", &CacheOnlyInputFactoryForTesting{}); err == nil {
+		inputRef.Release()
+		t.Errorf("InputManager.Add(\"000\") == %q, want !nil", err)
 	}
 	// 001 was valid, so it must exist.
-	if _, err := inputManager.Get("001"); err != nil {
-		t.Errorf("InputManager.Get(\"001\") == %q, want nil", err)
+	if _, err := inputManager.Add("001", &CacheOnlyInputFactoryForTesting{}); err != nil {
+		t.Errorf("InputManager.Add(\"001\") == %q, want nil", err)
 	}
 }
 

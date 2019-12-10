@@ -232,7 +232,7 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			return
 		}
 		hash := res[1]
-		inputRef, err := ctx.InputManager.Get(hash)
+		inputRef, err := ctx.InputManager.Add(hash, &common.CacheOnlyInputFactoryForTesting{})
 		if err != nil {
 			ctx.Log.Error("Input not found", "hash", hash)
 			w.WriteHeader(http.StatusNotFound)

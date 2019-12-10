@@ -11,10 +11,25 @@ func addRun(
 	t *testing.T,
 	ctx *Context,
 	queue *Queue,
-	hash string,
 	priority QueuePriority,
 ) *RunContext {
-	inputRef, err := ctx.InputManager.Get(hash)
+	AplusB, err := common.NewLiteralInputFactory(
+		&common.LiteralInput{
+			Cases: map[string]*common.LiteralCaseSettings{
+				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
+			},
+			Validator: &common.LiteralValidatorSettings{
+				Name: "token-numeric",
+			},
+		},
+		ctx.Config.Grader.RuntimePath,
+		common.LiteralPersistGrader,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create Input: %q", err)
+	}
+	inputRef, err := ctx.InputManager.Add(AplusB.Hash(), AplusB)
 	if err != nil {
 		t.Fatalf("Failed to get input back: %q", err)
 	}
@@ -67,24 +82,7 @@ func TestQueue(t *testing.T) {
 		t.Fatalf("default queue not found")
 	}
 
-	AplusB, err := common.NewLiteralInputFactory(
-		&common.LiteralInput{
-			Cases: map[string]*common.LiteralCaseSettings{
-				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
-				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
-			},
-			Validator: &common.LiteralValidatorSettings{
-				Name: "token-numeric",
-			},
-		},
-		ctx.Config.Grader.RuntimePath,
-		common.LiteralPersistGrader,
-	)
-	if err != nil {
-		t.Fatalf("Failed to create Input: %q", err)
-	}
-	ctx.InputManager.Add(AplusB.Hash(), AplusB)
-	addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityNormal)
+	addRun(t, ctx, queue, QueuePriorityNormal)
 
 	closeNotifier := make(chan bool, 1)
 
@@ -154,30 +152,12 @@ func TestQueuePriorities(t *testing.T) {
 		t.Fatalf("default queue not found")
 	}
 
-	AplusB, err := common.NewLiteralInputFactory(
-		&common.LiteralInput{
-			Cases: map[string]*common.LiteralCaseSettings{
-				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
-				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
-			},
-			Validator: &common.LiteralValidatorSettings{
-				Name: "token-numeric",
-			},
-		},
-		ctx.Config.Grader.RuntimePath,
-		common.LiteralPersistGrader,
-	)
-	if err != nil {
-		t.Fatalf("Failed to create Input: %q", err)
-	}
-	ctx.InputManager.Add(AplusB.Hash(), AplusB)
-
 	closeNotifier := make(chan bool, 1)
 
-	ephemeralPriority := addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityEphemeral)
-	lowPriority := addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityLow)
-	normalPriority := addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityNormal)
-	highPriority := addRun(t, ctx, queue, AplusB.Hash(), QueuePriorityHigh)
+	ephemeralPriority := addRun(t, ctx, queue, QueuePriorityEphemeral)
+	lowPriority := addRun(t, ctx, queue, QueuePriorityLow)
+	normalPriority := addRun(t, ctx, queue, QueuePriorityNormal)
+	highPriority := addRun(t, ctx, queue, QueuePriorityHigh)
 
 	var runCtx *RunContext
 	runCtx, _, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier)

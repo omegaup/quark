@@ -7,7 +7,6 @@ import (
 	stderrors "errors"
 	"fmt"
 	base "github.com/omegaup/go-base"
-	"github.com/pkg/errors"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -19,7 +18,11 @@ import (
 
 var (
 	// ErrUnimplemented is an error that is returned when a method is not implemented.
-	ErrUnimplemented = stderrors.New("Unimplemented")
+	ErrUnimplemented = stderrors.New("unimplemented")
+
+	// ErrCacheOnlyInput is an error that is returned when a mutating method is
+	// attempted on a CacheOnlyInput.
+	ErrCacheOnlyInput = stderrors.New("cache-only input")
 )
 
 // Input represents a problem's input set.
@@ -203,32 +206,62 @@ func (factory *IdentityInputFactory) NewInput(hash string, mgr *InputManager) In
 	return factory.input
 }
 
+// CacheOnlyInputFactoryForTesting is an InputFactory that does not know how to
+// create an input. This means that if it's not found already on the cache, the
+// operation will fail.
+type CacheOnlyInputFactoryForTesting struct {
+}
+
+// NewInput returns the cacheOnlyInput.
+func (factory *CacheOnlyInputFactoryForTesting) NewInput(hash string, mgr *InputManager) Input {
+	return &cacheOnlyInput{}
+}
+
+// cacheOnlyInput is an Input that cannot be created, only obtained from the cache.
+type cacheOnlyInput struct {
+}
+
+func (input *cacheOnlyInput) Size() base.Byte {
+	return 0
+}
+
+func (input *cacheOnlyInput) Release() {
+}
+
+func (input *cacheOnlyInput) Path() string {
+	return "/dev/null"
+}
+
+func (input *cacheOnlyInput) Hash() string {
+	return "0000000000000000000000000000000000000000"
+}
+
+func (input *cacheOnlyInput) Committed() bool {
+	return false
+}
+
+func (input *cacheOnlyInput) Verify() error {
+	return ErrCacheOnlyInput
+}
+
+func (input *cacheOnlyInput) Persist() error {
+	return ErrCacheOnlyInput
+}
+
+func (input *cacheOnlyInput) Delete() error {
+	return ErrCacheOnlyInput
+}
+
+func (input *cacheOnlyInput) Settings() *ProblemSettings {
+	return &ProblemSettings{}
+}
+
 // NewInputManager creates a new InputManager with the provided Context.
 func NewInputManager(ctx *Context) *InputManager {
 	return &InputManager{
 		ctx:      ctx,
 		lruCache: base.NewLRUCache(base.Byte(ctx.Config.InputManager.CacheSize)),
 	}
-}
-
-// Get returns a reference to an Input (in the form of an InputRef) for the
-// provided hash. InputRef.Release() must be called once the input is no longer
-// needed so that it can be garbage-collected.
-func (mgr *InputManager) Get(hash string) (*InputRef, error) {
-	entryRef, err := mgr.lruCache.Get(
-		hash,
-		func(hash string) (base.SizedEntry, error) {
-			return nil, errors.Errorf("hash %s not found", hash)
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &InputRef{
-		Input: entryRef.Value.(Input),
-		mgr:   mgr,
-		ref:   entryRef,
-	}, nil
 }
 
 // Add associates an opaque identifier (the hash) with an Input in the
@@ -238,6 +271,9 @@ func (mgr *InputManager) Get(hash string) (*InputRef, error) {
 // created. The Input will be validated if it has not been committed to the
 // InputManager, but will still not be accounted into the size limit since
 // there is at least one live reference to it.
+//
+// InputRef.Release() must be called once the input is no longer needed so that
+// it can be garbage-collected.
 func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, error) {
 	entryRef, err := mgr.lruCache.Get(
 		hash,

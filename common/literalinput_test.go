@@ -33,8 +33,9 @@ func TestLiteralInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
 	}
-	inputManager.Add(AplusB.Hash(), AplusB)
-	if _, err := inputManager.Get(AplusB.Hash()); err != nil {
+	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
+	if err != nil {
 		t.Fatalf("Failed to open input: %q", err)
 	}
+	defer inputRef.Release()
 }
