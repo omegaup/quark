@@ -22,30 +22,33 @@ func init() {
 
 // A Run represents an omegaUp run.
 type Run struct {
-	AttemptID uint64   `json:"attempt_id"`
-	Source    string   `json:"source"`
-	Language  string   `json:"language"`
-	InputHash string   `json:"input_hash"`
-	MaxScore  *big.Rat `json:"max_score"`
-	Debug     bool     `json:"debug"`
+	AttemptID   uint64   `json:"attempt_id"`
+	Source      string   `json:"source"`
+	Language    string   `json:"language"`
+	ProblemName string   `json:"problem"`
+	InputHash   string   `json:"input_hash"`
+	MaxScore    *big.Rat `json:"max_score"`
+	Debug       bool     `json:"debug"`
 }
 
 // MarshalJSON implements the json.Marshaler interface.
 func (r *Run) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		AttemptID uint64  `json:"attempt_id"`
-		Source    string  `json:"source"`
-		Language  string  `json:"language"`
-		InputHash string  `json:"input_hash"`
-		MaxScore  float64 `json:"max_score"`
-		Debug     bool    `json:"debug"`
+		AttemptID   uint64  `json:"attempt_id"`
+		Source      string  `json:"source"`
+		Language    string  `json:"language"`
+		ProblemName string  `json:"problem"`
+		InputHash   string  `json:"input_hash"`
+		MaxScore    float64 `json:"max_score"`
+		Debug       bool    `json:"debug"`
 	}{
-		AttemptID: r.AttemptID,
-		Source:    r.Source,
-		Language:  r.Language,
-		InputHash: r.InputHash,
-		MaxScore:  base.RationalToFloat(r.MaxScore),
-		Debug:     r.Debug,
+		AttemptID:   r.AttemptID,
+		Source:      r.Source,
+		Language:    r.Language,
+		ProblemName: r.ProblemName,
+		InputHash:   r.InputHash,
+		MaxScore:    base.RationalToFloat(r.MaxScore),
+		Debug:       r.Debug,
 	})
 }
 
@@ -56,12 +59,13 @@ func (r *Run) UnmarshalJSON(data []byte) error {
 	}
 
 	run := struct {
-		AttemptID uint64  `json:"attempt_id"`
-		Source    string  `json:"source"`
-		Language  string  `json:"language"`
-		InputHash string  `json:"input_hash"`
-		MaxScore  float64 `json:"max_score"`
-		Debug     bool    `json:"debug"`
+		AttemptID   uint64  `json:"attempt_id"`
+		Source      string  `json:"source"`
+		Language    string  `json:"language"`
+		ProblemName string  `json:"problem"`
+		InputHash   string  `json:"input_hash"`
+		MaxScore    float64 `json:"max_score"`
+		Debug       bool    `json:"debug"`
 	}{}
 
 	if err := json.Unmarshal(data, &run); err != nil {
@@ -71,6 +75,7 @@ func (r *Run) UnmarshalJSON(data []byte) error {
 	r.AttemptID = run.AttemptID
 	r.Source = run.Source
 	r.Language = run.Language
+	r.ProblemName = run.ProblemName
 	r.InputHash = run.InputHash
 	r.MaxScore = base.FloatToRational(run.MaxScore)
 	r.Debug = run.Debug
@@ -93,9 +98,10 @@ func (r *Run) UpdateAttemptID() uint64 {
 
 func (r *Run) String() string {
 	return fmt.Sprintf(
-		"Run{AttemptID:%d Language:%s InputHash:%s}",
+		"Run{AttemptID:%d Language:%s ProblemName:%s InputHash:%s}",
 		r.AttemptID,
 		r.Language,
+		r.ProblemName,
 		r.InputHash,
 	)
 }

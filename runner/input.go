@@ -27,6 +27,7 @@ type InputFactory struct {
 	client  *http.Client
 	config  *common.Config
 	baseURL *url.URL
+	problem string
 }
 
 // NewInputFactory returns a new InputFactory.
@@ -34,11 +35,13 @@ func NewInputFactory(
 	client *http.Client,
 	config *common.Config,
 	baseURL *url.URL,
+	problem string,
 ) common.InputFactory {
 	return &InputFactory{
 		client:  client,
 		config:  config,
 		baseURL: baseURL,
+		problem: problem,
 	}
 }
 
@@ -47,7 +50,13 @@ func (factory *InputFactory) NewInput(
 	hash string,
 	mgr *common.InputManager,
 ) common.Input {
-	requestURL, err := factory.baseURL.Parse(fmt.Sprintf("input/%s/", hash))
+	var requestURL *url.URL
+	var err error
+	if factory.problem != "" {
+		requestURL, err = factory.baseURL.Parse(fmt.Sprintf("input/%s/%s/", factory.problem, hash))
+	} else {
+		requestURL, err = factory.baseURL.Parse(fmt.Sprintf("input/%s/", hash))
+	}
 	if err != nil {
 		panic(err)
 	}

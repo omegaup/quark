@@ -223,7 +223,7 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 		}
 	}), time.Duration(5*time.Minute), "Request timed out"))
 
-	inputRe := regexp.MustCompile("/input/([a-f0-9]{40})/?")
+	inputRe := regexp.MustCompile("/input/(?:([a-zA-Z0-9_-]*)/)?([a-f0-9]{40})/?")
 	mux.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		res := inputRe.FindStringSubmatch(r.URL.Path)
@@ -231,8 +231,20 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		hash := res[1]
-		inputRef, err := ctx.InputManager.Add(hash, &common.CacheOnlyInputFactoryForTesting{})
+		problemName := res[1]
+		hash := res[2]
+		var inputRef *common.InputRef
+		if problemName == "" {
+			inputRef, err = ctx.InputManager.Add(hash, &common.CacheOnlyInputFactoryForTesting{})
+		} else {
+			inputRef, err = ctx.InputManager.Add(
+				hash,
+				grader.NewInputFactory(
+					problemName,
+					&ctx.Config,
+				),
+			)
+		}
 		if err != nil {
 			ctx.Log.Error("Input not found", "hash", hash)
 			w.WriteHeader(http.StatusNotFound)

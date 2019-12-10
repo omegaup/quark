@@ -515,7 +515,7 @@ func gradeRun(
 	}
 	inputRef, err := inputManager.Add(
 		run.InputHash,
-		runner.NewInputFactory(client, &ctx.Config, baseURL),
+		runner.NewInputFactory(client, &ctx.Config, baseURL, run.ProblemName),
 	)
 	if err != nil {
 		return nil, err

@@ -115,7 +115,7 @@ func broadcastRun(
 	run *grader.RunInfo,
 ) error {
 	message := broadcaster.Message{
-		Problem: run.ProblemName,
+		Problem: run.Run.ProblemName,
 		Public:  false,
 	}
 	if run.ID == 0 {
@@ -151,7 +151,7 @@ func broadcastRun(
 		Run: serializedRun{
 			Contest:      run.Contest,
 			Problemset:   run.Problemset,
-			Problem:      run.ProblemName,
+			Problem:      run.Run.ProblemName,
 			GUID:         run.GUID,
 			Runtime:      run.Result.Time,
 			Memory:       run.Result.Memory,
@@ -263,7 +263,7 @@ func newRunContext(
 	runCtx.GradeDir = gradeDir(ctx, runCtx.ID)
 	gitProblemInfo, err := grader.GetProblemInformation(grader.GetRepositoryPath(
 		ctx.Config.Grader.V1.RuntimePath,
-		runCtx.ProblemName,
+		runCtx.Run.ProblemName,
 	))
 	if err != nil {
 		return nil, err
@@ -313,7 +313,7 @@ func newRunContextFromID(
 		&problemset,
 		&penaltyType,
 		&runCtx.Run.Language,
-		&runCtx.ProblemName,
+		&runCtx.Run.ProblemName,
 		&contestPoints,
 		&runCtx.Run.InputHash,
 	)
@@ -377,7 +377,7 @@ func injectRuns(
 		input, err := ctx.InputManager.Add(
 			runCtx.Run.InputHash,
 			grader.NewInputFactory(
-				runCtx.ProblemName,
+				runCtx.Run.ProblemName,
 				&ctx.Config,
 			),
 		)

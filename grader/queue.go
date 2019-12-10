@@ -273,7 +273,6 @@ type RunInfo struct {
 	GUID        string
 	Contest     *string
 	Problemset  *int64
-	ProblemName string
 	Run         *common.Run
 	Result      runner.RunResult
 	GradeDir    string
@@ -495,10 +494,9 @@ func (run *RunContext) Requeue(lastAttempt bool) bool {
 
 func (run *RunContext) String() string {
 	return fmt.Sprintf(
-		"RunContext{ID:%d GUID:%s ProblemName:%s, %s}",
+		"RunContext{ID:%d GUID:%s, %s}",
 		run.ID,
 		run.GUID,
-		run.ProblemName,
 		run.Run,
 	)
 }

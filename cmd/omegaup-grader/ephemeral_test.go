@@ -93,7 +93,7 @@ func RunnerRequestRun(t *testing.T, ctx *grader.Context, ts *httptest.Server) {
 		inputManager := common.NewInputManager(&ctx.Context)
 		inputRef, err := inputManager.Add(
 			run.InputHash,
-			runner.NewInputFactory(ts.Client(), &ctx.Config, baseURL),
+			runner.NewInputFactory(ts.Client(), &ctx.Config, baseURL, ""),
 		)
 		if err != nil {
 			t.Fatalf("Failed to add input to input manager: %s", err)

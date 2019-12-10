@@ -311,7 +311,7 @@ func TestInputFactory(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	factory := NewInputFactory(http.DefaultClient, &ctx.Config, baseURL)
+	factory := NewInputFactory(http.DefaultClient, &ctx.Config, baseURL, "")
 	for _, het := range hashentries {
 		inputRef, err := inputManager.Add(het.hash, factory)
 		if het.valid {
