@@ -10,6 +10,7 @@ import (
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
+	"github.com/pkg/errors"
 	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
@@ -366,21 +367,25 @@ func processRun(
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return errors.Errorf("non-2xx error code returned: %d", resp.StatusCode)
+	}
+
 	ctx := parentCtx.DebugContext()
 	syncID, err := strconv.ParseUint(resp.Header.Get("Sync-ID"), 10, 64)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse the Sync-ID header")
 	}
 	ctx.EventCollector.Add(ctx.EventFactory.NewReceiverClockSyncEvent(syncID))
 
 	decoder := json.NewDecoder(resp.Body)
 	var run common.Run
 	if err := decoder.Decode(&run); err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse the run request body")
 	}
 	uploadURL, err := baseURL.Parse(fmt.Sprintf("run/%d/results/", run.AttemptID))
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create the result upload URL")
 	}
 
 	finished := make(chan error, 1)
