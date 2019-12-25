@@ -2,10 +2,7 @@ package runner
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
-	base "github.com/omegaup/go-base"
-	"github.com/omegaup/quark/common"
 	"io"
 	"io/ioutil"
 	"os"
@@ -15,6 +12,10 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	base "github.com/omegaup/go-base"
+	"github.com/omegaup/quark/common"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -191,7 +192,7 @@ func (*OmegajailSandbox) Compile(
 			return &RunMetadata{
 				Verdict:    "JE",
 				ExitStatus: -1,
-			}, errors.New("file " + inputFile + " is not within the chroot")
+			}, errors.Errorf("file %q is not within the chroot", inputFile)
 		}
 		rel, err := filepath.Rel(chdir, inputFile)
 		if err != nil {
@@ -412,6 +413,9 @@ func parseMetaFile(
 	scanner := bufio.NewScanner(metaFile)
 	for scanner.Scan() {
 		tokens := strings.SplitN(scanner.Text(), ":", 2)
+		if len(tokens) < 2 {
+			return meta, errors.Errorf("malformed meta file line: %q", scanner.Text())
+		}
 		switch tokens[0] {
 		case "status":
 			meta.ExitStatus, _ = strconv.Atoi(tokens[1])
