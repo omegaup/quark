@@ -673,9 +673,17 @@ func Grade(
 			return runResult, err
 		}
 		validatorLang := *settings.Validator.Lang
-		validatorFileName := fmt.Sprintf("validator.%s", validatorLang)
-		validatorSourceFile := path.Join(validatorBinPath, validatorFileName)
-		err := os.Link(path.Join(input.Path(), validatorFileName), validatorSourceFile)
+		// The file will always have the actual language as the extension.
+		validatorInputFile := path.Join(
+			input.Path(),
+			fmt.Sprintf("validator.%s", validatorLang),
+		)
+		// But for omegajail's purposes, the extension needs to be normalized (e.g. .py3 -> .py)
+		validatorSourceFile := path.Join(
+			validatorBinPath,
+			fmt.Sprintf("validator.%s", common.LanguageFileExtension(validatorLang)),
+		)
+		err := os.Link(validatorInputFile, validatorSourceFile)
 		if err != nil {
 			return runResult, err
 		}
