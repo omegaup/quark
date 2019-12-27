@@ -36,7 +36,7 @@ var (
 	request = flag.String("request", "",
 		"With -oneshot=run, the path to the JSON request.")
 	input = flag.String("input", "",
-		"With -oneshot=run, the path to the input directory.")
+		"With -oneshot=run, the path to the input directory, which should be a checkout of a problem.")
 	debug = flag.Bool("debug", false, "Enables debug in oneshot mode.")
 
 	version    = flag.Bool("version", false, "Print the version and exit")
@@ -105,6 +105,9 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		if os.Getenv("PRESERVE") != "" {
+			ctx.Config.Runner.PreserveFiles = true
+		}
 		if !ctx.Config.Runner.PreserveFiles {
 			defer os.RemoveAll(tmpdir)
 		}
@@ -157,9 +160,11 @@ func main() {
 				run.Debug = true
 			}
 
+			run.InputHash = oneshotInputHash
+
 			inputRef, err := inputManager.Add(
 				run.InputHash,
-				runner.NewCachedInputFactory(*input),
+				newOneshotInputFactory(*input),
 			)
 			if err != nil {
 				ctx.Log.Error("Error loading input", "hash", run.InputHash, "err", err)
