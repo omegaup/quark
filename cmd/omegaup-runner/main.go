@@ -7,11 +7,6 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"github.com/coreos/go-systemd/v22/daemon"
-	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/runner"
-	"github.com/pkg/errors"
-	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -26,6 +21,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/coreos/go-systemd/v22/daemon"
+	base "github.com/omegaup/go-base"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/runner"
+	"github.com/pkg/errors"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -35,6 +37,8 @@ var (
 	verbose = flag.Bool("verbose", false, "Enable verbose logging in oneshot mode.")
 	request = flag.String("request", "",
 		"With -oneshot=run, the path to the JSON request.")
+	source = flag.String("source", "",
+		"With -oneshot=run, the path to the source file.")
 	input = flag.String("input", "",
 		"With -oneshot=run, the path to the input directory, which should be a checkout of a problem.")
 	debug = flag.Bool("debug", false, "Enables debug in oneshot mode.")
@@ -136,30 +140,45 @@ func main() {
 				}
 			}
 		} else if *oneshot == "run" {
-			if *request == "" {
-				ctx.Log.Error("Missing -request parameter")
-				return
-			}
 			if *input == "" {
 				ctx.Log.Error("Missing -input parameter")
 				return
 			}
-			f, err := os.Open(*request)
-			if err != nil {
-				ctx.Log.Error("Error opening request", "err", err)
-				return
-			}
-			defer f.Close()
-
 			var run common.Run
-			if err := json.NewDecoder(f).Decode(&run); err != nil {
-				ctx.Log.Error("Error reading request", "err", err)
+			if *request != "" {
+				f, err := os.Open(*request)
+				if err != nil {
+					ctx.Log.Error("Error opening request", "err", err)
+					return
+				}
+				defer f.Close()
+
+				if err := json.NewDecoder(f).Decode(&run); err != nil {
+					ctx.Log.Error("Error reading request", "err", err)
+					return
+				}
+			} else if *source != "" {
+				b, err := ioutil.ReadFile(*source)
+				if err != nil {
+					ctx.Log.Error("Error opening source", "err", err)
+					return
+				}
+				run.Source = string(b)
+				extension := path.Ext(*source)
+				if extension == "" {
+					ctx.Log.Error("Source path does not contain the language as extension", "source", *source)
+					return
+				}
+				run.Language = extension[1:]
+				run.MaxScore = base.FloatToRational(100.0)
+			} else {
+				ctx.Log.Error("Missing -request or -source parameters")
 				return
 			}
+
 			if *debug {
 				run.Debug = true
 			}
-
 			run.InputHash = oneshotInputHash
 
 			inputRef, err := inputManager.Add(
