@@ -411,6 +411,33 @@ func validatorLimits(
 	return &limitsCopy
 }
 
+// copyFile copies one file. First it tries to use os.Link() to make the
+// process faster, but if that fails, it falls back to a physical copy of it.
+// This can be needed if the runner is invoked in oneshot mode and the input is
+// in a different mount than the runtime path, which is something not supported
+// by hard links.
+func copyFile(src string, dst string) error {
+	err := os.Link(src, dst)
+	if err == nil {
+		return nil
+	}
+
+	srcFd, err := os.Open(src)
+	if err != nil {
+		return nil
+	}
+	defer srcFd.Close()
+
+	dstFd, err := os.Create(dst)
+	if err != nil {
+		return nil
+	}
+	defer dstFd.Close()
+
+	_, err = io.Copy(dstFd, srcFd)
+	return err
+}
+
 // Grade compiles and runs a contestant-provided program, supplies it with the
 // Input-specified inputs, and computes its final score and verdict.
 func Grade(
@@ -527,7 +554,7 @@ func Grade(
 				return runResult, err
 			}
 		}
-		if err := os.Link(
+		if err := copyFile(
 			path.Join(
 				input.Path(),
 				fmt.Sprintf(
@@ -683,7 +710,7 @@ func Grade(
 			validatorBinPath,
 			fmt.Sprintf("validator.%s", common.LanguageFileExtension(validatorLang)),
 		)
-		err := os.Link(validatorInputFile, validatorSourceFile)
+		err := copyFile(validatorInputFile, validatorSourceFile)
 		if err != nil {
 			return runResult, err
 		}

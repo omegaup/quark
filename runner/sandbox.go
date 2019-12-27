@@ -291,7 +291,7 @@ func (*OmegajailSandbox) Run(
 		if _, err := os.Stat(fl.targetFile); err == nil {
 			os.Remove(fl.targetFile)
 		}
-		if err := os.Link(fl.sourceFile, fl.targetFile); err != nil {
+		if err := copyFile(fl.sourceFile, fl.targetFile); err != nil {
 			return &RunMetadata{
 				Verdict:    "JE",
 				ExitStatus: -1,
