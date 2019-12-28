@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -41,6 +42,8 @@ var (
 		"With -oneshot=run, the path to the source file.")
 	input = flag.String("input", "",
 		"With -oneshot=run, the path to the input directory, which should be a checkout of a problem.")
+	resultsOutputDirectory = flag.String("results", "",
+		"With -oneshot=run, the path to the directory to copy the results to.")
 	debug = flag.Bool("debug", false, "Enables debug in oneshot mode.")
 
 	version    = flag.Bool("version", false, "Print the version and exit")
@@ -191,6 +194,16 @@ func main() {
 			}
 			defer inputRef.Release()
 
+			runRoot := path.Join(
+				ctx.Config.Runner.RuntimePath,
+				"grade",
+				strconv.FormatUint(run.AttemptID, 10),
+			)
+			if *resultsOutputDirectory != "" && !ctx.Config.Runner.PreserveFiles {
+				ctx.Config.Runner.PreserveFiles = true
+				defer os.RemoveAll(runRoot)
+			}
+
 			results, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
 			if err != nil {
 				ctx.Log.Error("Error grading run", "err", err)
@@ -201,6 +214,60 @@ func main() {
 			encoder.SetIndent("", "  ")
 			if err := encoder.Encode(results); err != nil {
 				ctx.Log.Error("Failed to encode JSON", "err", err)
+			}
+
+			if *resultsOutputDirectory != "" {
+				if err := filepath.Walk(
+					runRoot,
+					func(srcPath string, info os.FileInfo, err error) error {
+						if err != nil {
+							ctx.Log.Error("Failed to walk", "dir", runRoot, "path", srcPath, "err", err)
+							return err
+						}
+						if info.IsDir() {
+							return nil
+						}
+
+						relDstPath, err := filepath.Rel(runRoot, srcPath)
+						if err != nil {
+							ctx.Log.Error("Failed to relativize path", "dir", runRoot, "path", srcPath, "err", err)
+							return err
+						}
+						dstPath := path.Join(*resultsOutputDirectory, relDstPath)
+						if err := os.MkdirAll(path.Dir(dstPath), 0755); err != nil {
+							ctx.Log.Error(
+								"Failed to create intermediate directory",
+								"dir", runRoot,
+								"path", srcPath,
+								"destination", dstPath,
+								"err", err,
+							)
+							return err
+						}
+
+						srcFile, err := os.Open(srcPath)
+						if err != nil {
+							ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+							return err
+						}
+						defer srcFile.Close()
+
+						dstFile, err := os.Create(dstPath)
+						if err != nil {
+							ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
+							return err
+						}
+						defer dstFile.Close()
+
+						if _, err := io.Copy(dstFile, srcFile); err != nil {
+							ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)
+							return err
+						}
+						return nil
+					},
+				); err != nil {
+					ctx.Log.Error("Failed to encode JSON", "err", err)
+				}
 			}
 		} else {
 			ctx.Log.Error("Unknown oneshot mode", "mode", *oneshot)
