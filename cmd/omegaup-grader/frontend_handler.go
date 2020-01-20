@@ -567,6 +567,16 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 			runCtx.GUID[:2],
 			runCtx.GUID[2:],
 		)
+		if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
+			ctx.Log.Error(
+				"/run/new/",
+				"runID", runID,
+				"response", "internal server error",
+				"err", err,
+			)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 		if err != nil {
 			if os.IsExist(err) {
