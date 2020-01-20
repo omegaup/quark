@@ -251,12 +251,19 @@ func NewContext(config *Config, role string) (*Context, error) {
 	}
 
 	// Logging
-	var err error
-	if context.Log, err = base.RotatingLog(
-		context.Config.Logging.File,
-		context.Config.Logging.Level,
-	); err != nil {
-		return nil, err
+	if config.Logging.File != "" {
+		var err error
+		if context.Log, err = base.RotatingLog(
+			context.Config.Logging.File,
+			context.Config.Logging.Level,
+		); err != nil {
+			return nil, err
+		}
+	} else if config.Logging.Level == "debug" {
+		context.Log = base.StderrLog()
+	} else {
+		context.Log = log15.New()
+		context.Log.SetHandler(base.ErrorCallerStackHandler(log15.LvlInfo, log15.StderrHandler))
 	}
 
 	// Tracing
