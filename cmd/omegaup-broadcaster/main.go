@@ -31,7 +31,7 @@ var (
 	configPath = flag.String(
 		"config",
 		"/etc/omegaup/broadcaster/config.json",
-		"Grader configuration file",
+		"Broadcaster configuration file",
 	)
 	globalContext atomic.Value
 	upgrader      = websocket.Upgrader{
@@ -352,7 +352,7 @@ func main() {
 	servers = append(
 		servers,
 		common.RunServer(
-			&ctx.Config.TLS,
+			&ctx.Config.Broadcaster.TLS,
 			nil,
 			&wg,
 			fmt.Sprintf(":%d", ctx.Config.Broadcaster.Port),
