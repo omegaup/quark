@@ -87,6 +87,153 @@ func loadContext() error {
 	return nil
 }
 
+func runOneshotBenchmark(ctx *common.Context, sandbox runner.Sandbox) {
+	results, err := runner.RunHostBenchmark(
+		ctx,
+		inputManager,
+		sandbox,
+		&ioLock,
+	)
+	if err != nil {
+		ctx.Log.Error("Failed to run benchmark", "err", err)
+		return
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(results); err != nil {
+		ctx.Log.Error("Failed to encode JSON", "err", err)
+	}
+}
+
+func runOneshotRun(ctx *common.Context, sandbox runner.Sandbox) {
+	if *input == "" {
+		ctx.Log.Error("Missing -input parameter")
+		return
+	}
+	var run common.Run
+	if *request != "" {
+		f, err := os.Open(*request)
+		if err != nil {
+			ctx.Log.Error("Error opening request", "err", err)
+			return
+		}
+		defer f.Close()
+
+		if err := json.NewDecoder(f).Decode(&run); err != nil {
+			ctx.Log.Error("Error reading request", "err", err)
+			return
+		}
+	} else if *source != "" {
+		b, err := ioutil.ReadFile(*source)
+		if err != nil {
+			ctx.Log.Error("Error opening source", "err", err)
+			return
+		}
+		run.Source = string(b)
+		extension := path.Ext(*source)
+		if extension == "" {
+			ctx.Log.Error("Source path does not contain the language as extension", "source", *source)
+			return
+		}
+		run.Language = extension[1:]
+		run.MaxScore = base.FloatToRational(100.0)
+	} else {
+		ctx.Log.Error("Missing -request or -source parameters")
+		return
+	}
+
+	if *debug {
+		run.Debug = true
+	}
+	run.InputHash = oneshotInputHash
+
+	inputRef, err := inputManager.Add(
+		run.InputHash,
+		newOneshotInputFactory(*input),
+	)
+	if err != nil {
+		ctx.Log.Error("Error loading input", "hash", run.InputHash, "err", err)
+		return
+	}
+	defer inputRef.Release()
+
+	runRoot := path.Join(
+		ctx.Config.Runner.RuntimePath,
+		"grade",
+		strconv.FormatUint(run.AttemptID, 10),
+	)
+	if *resultsOutputDirectory != "" && !ctx.Config.Runner.PreserveFiles {
+		ctx.Config.Runner.PreserveFiles = true
+		defer os.RemoveAll(runRoot)
+	}
+
+	results, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
+	if err != nil {
+		ctx.Log.Error("Error grading run", "err", err)
+		return
+	}
+
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(results); err != nil {
+		ctx.Log.Error("Failed to encode JSON", "err", err)
+	}
+
+	if *resultsOutputDirectory != "" {
+		if err := filepath.Walk(
+			runRoot,
+			func(srcPath string, info os.FileInfo, err error) error {
+				if err != nil {
+					ctx.Log.Error("Failed to walk", "dir", runRoot, "path", srcPath, "err", err)
+					return err
+				}
+				if info.IsDir() {
+					return nil
+				}
+
+				relDstPath, err := filepath.Rel(runRoot, srcPath)
+				if err != nil {
+					ctx.Log.Error("Failed to relativize path", "dir", runRoot, "path", srcPath, "err", err)
+					return err
+				}
+				dstPath := path.Join(*resultsOutputDirectory, relDstPath)
+				if err := os.MkdirAll(path.Dir(dstPath), 0755); err != nil {
+					ctx.Log.Error(
+						"Failed to create intermediate directory",
+						"dir", runRoot,
+						"path", srcPath,
+						"destination", dstPath,
+						"err", err,
+					)
+					return err
+				}
+
+				srcFile, err := os.Open(srcPath)
+				if err != nil {
+					ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+					return err
+				}
+				defer srcFile.Close()
+
+				dstFile, err := os.Create(dstPath)
+				if err != nil {
+					ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
+					return err
+				}
+				defer dstFile.Close()
+
+				if _, err := io.Copy(dstFile, srcFile); err != nil {
+					ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)
+					return err
+				}
+				return nil
+			},
+		); err != nil {
+			ctx.Log.Error("Failed to encode JSON", "err", err)
+		}
+	}
+}
+
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	flag.Parse()
@@ -127,148 +274,9 @@ func main() {
 
 	if isOneShotMode() {
 		if *oneshot == "benchmark" {
-			results, err := runner.RunHostBenchmark(
-				ctx,
-				inputManager,
-				sandbox,
-				&ioLock,
-			)
-			if err != nil {
-				ctx.Log.Error("Failed to run benchmark", "err", err)
-			} else {
-				encoder := json.NewEncoder(os.Stdout)
-				encoder.SetIndent("", "  ")
-				if err := encoder.Encode(results); err != nil {
-					ctx.Log.Error("Failed to encode JSON", "err", err)
-				}
-			}
+			runOneshotBenchmark(ctx, sandbox)
 		} else if *oneshot == "run" {
-			if *input == "" {
-				ctx.Log.Error("Missing -input parameter")
-				return
-			}
-			var run common.Run
-			if *request != "" {
-				f, err := os.Open(*request)
-				if err != nil {
-					ctx.Log.Error("Error opening request", "err", err)
-					return
-				}
-				defer f.Close()
-
-				if err := json.NewDecoder(f).Decode(&run); err != nil {
-					ctx.Log.Error("Error reading request", "err", err)
-					return
-				}
-			} else if *source != "" {
-				b, err := ioutil.ReadFile(*source)
-				if err != nil {
-					ctx.Log.Error("Error opening source", "err", err)
-					return
-				}
-				run.Source = string(b)
-				extension := path.Ext(*source)
-				if extension == "" {
-					ctx.Log.Error("Source path does not contain the language as extension", "source", *source)
-					return
-				}
-				run.Language = extension[1:]
-				run.MaxScore = base.FloatToRational(100.0)
-			} else {
-				ctx.Log.Error("Missing -request or -source parameters")
-				return
-			}
-
-			if *debug {
-				run.Debug = true
-			}
-			run.InputHash = oneshotInputHash
-
-			inputRef, err := inputManager.Add(
-				run.InputHash,
-				newOneshotInputFactory(*input),
-			)
-			if err != nil {
-				ctx.Log.Error("Error loading input", "hash", run.InputHash, "err", err)
-				return
-			}
-			defer inputRef.Release()
-
-			runRoot := path.Join(
-				ctx.Config.Runner.RuntimePath,
-				"grade",
-				strconv.FormatUint(run.AttemptID, 10),
-			)
-			if *resultsOutputDirectory != "" && !ctx.Config.Runner.PreserveFiles {
-				ctx.Config.Runner.PreserveFiles = true
-				defer os.RemoveAll(runRoot)
-			}
-
-			results, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
-			if err != nil {
-				ctx.Log.Error("Error grading run", "err", err)
-				return
-			}
-
-			encoder := json.NewEncoder(os.Stdout)
-			encoder.SetIndent("", "  ")
-			if err := encoder.Encode(results); err != nil {
-				ctx.Log.Error("Failed to encode JSON", "err", err)
-			}
-
-			if *resultsOutputDirectory != "" {
-				if err := filepath.Walk(
-					runRoot,
-					func(srcPath string, info os.FileInfo, err error) error {
-						if err != nil {
-							ctx.Log.Error("Failed to walk", "dir", runRoot, "path", srcPath, "err", err)
-							return err
-						}
-						if info.IsDir() {
-							return nil
-						}
-
-						relDstPath, err := filepath.Rel(runRoot, srcPath)
-						if err != nil {
-							ctx.Log.Error("Failed to relativize path", "dir", runRoot, "path", srcPath, "err", err)
-							return err
-						}
-						dstPath := path.Join(*resultsOutputDirectory, relDstPath)
-						if err := os.MkdirAll(path.Dir(dstPath), 0755); err != nil {
-							ctx.Log.Error(
-								"Failed to create intermediate directory",
-								"dir", runRoot,
-								"path", srcPath,
-								"destination", dstPath,
-								"err", err,
-							)
-							return err
-						}
-
-						srcFile, err := os.Open(srcPath)
-						if err != nil {
-							ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
-							return err
-						}
-						defer srcFile.Close()
-
-						dstFile, err := os.Create(dstPath)
-						if err != nil {
-							ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
-							return err
-						}
-						defer dstFile.Close()
-
-						if _, err := io.Copy(dstFile, srcFile); err != nil {
-							ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)
-							return err
-						}
-						return nil
-					},
-				); err != nil {
-					ctx.Log.Error("Failed to encode JSON", "err", err)
-				}
-			}
+			runOneshotRun(ctx, sandbox)
 		} else {
 			ctx.Log.Error("Unknown oneshot mode", "mode", *oneshot)
 		}
