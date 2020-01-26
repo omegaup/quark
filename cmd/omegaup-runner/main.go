@@ -334,23 +334,27 @@ func main() {
 	)
 	daemon.SdNotify(false, "READY=1")
 
-	go func() {
-		for {
-			results, err := runner.RunHostBenchmark(
-				ctx,
-				inputManager,
-				sandbox,
-				&ioLock,
-			)
-			if err != nil {
-				ctx.Log.Error("Failed to run benchmark", "err", err)
-			} else {
-				ctx.Log.Info("Benchmark successful", "results", results)
+	if !*noop {
+		// Only run the benchmark loop if the sandbox is actually running.
+		// Otherwise the results are moot.
+		go func() {
+			for {
+				results, err := runner.RunHostBenchmark(
+					ctx,
+					inputManager,
+					sandbox,
+					&ioLock,
+				)
+				if err != nil {
+					ctx.Log.Error("Failed to run benchmark", "err", err)
+				} else {
+					ctx.Log.Info("Benchmark successful", "results", results)
+				}
+				gaugesUpdate(results)
+				time.Sleep(time.Duration(1) * time.Minute)
 			}
-			gaugesUpdate(results)
-			time.Sleep(time.Duration(1) * time.Minute)
-		}
-	}()
+		}()
+	}
 
 	var sleepTime float32 = 1
 
