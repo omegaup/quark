@@ -3,12 +3,13 @@ package grader
 import (
 	"bytes"
 	"fmt"
-	git "github.com/lhchavez/git2go"
 	"io/ioutil"
 	"os"
 	"path"
 	"testing"
 	"time"
+
+	git "github.com/lhchavez/git2go/v29"
 )
 
 const (

@@ -7,15 +7,16 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
-	git "github.com/lhchavez/git2go"
-	"github.com/omegaup/quark/common"
-	"github.com/pkg/errors"
 	"io"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
 	"strings"
+
+	git "github.com/lhchavez/git2go/v29"
+	"github.com/omegaup/quark/common"
+	"github.com/pkg/errors"
 )
 
 // A ProblemInformation represents information from the problem.

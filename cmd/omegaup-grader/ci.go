@@ -6,13 +6,6 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
-	"github.com/inconshreveable/log15"
-	git "github.com/lhchavez/git2go"
-	base "github.com/omegaup/go-base"
-	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/grader"
-	"github.com/omegaup/quark/runner"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"math/big"
 	"net/http"
@@ -22,6 +15,14 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/inconshreveable/log15"
+	git "github.com/lhchavez/git2go/v29"
+	base "github.com/omegaup/go-base"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/grader"
+	"github.com/omegaup/quark/runner"
+	"github.com/pkg/errors"
 )
 
 const (
