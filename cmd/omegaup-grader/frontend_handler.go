@@ -7,11 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	base "github.com/omegaup/go-base"
-	"github.com/omegaup/quark/broadcaster"
-	"github.com/omegaup/quark/grader"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -23,6 +18,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	base "github.com/omegaup/go-base"
+	"github.com/omegaup/quark/broadcaster"
+	"github.com/omegaup/quark/grader"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -64,6 +65,10 @@ func updateDatabase(
 	db *sql.DB,
 	run *grader.RunInfo,
 ) {
+	contestScore := base.RationalToFloat(run.Result.ContestScore)
+	if run.PartialScore == 1 && contestScore != 1 {
+		contestScore = 0
+	}
 	if run.PenaltyType == "runtime" {
 		_, err := db.Exec(
 			`UPDATE
@@ -78,7 +83,7 @@ func updateDatabase(
 			run.Result.Time*1000,
 			run.Result.Memory.Bytes(),
 			base.RationalToFloat(run.Result.Score),
-			base.RationalToFloat(run.Result.ContestScore),
+			contestScore,
 			run.Result.JudgedBy,
 			run.ID,
 		)
@@ -98,7 +103,7 @@ func updateDatabase(
 			run.Result.Time*1000,
 			run.Result.Memory.Bytes(),
 			base.RationalToFloat(run.Result.Score),
-			base.RationalToFloat(run.Result.ContestScore),
+			contestScore,
 			run.Result.JudgedBy,
 			run.ID,
 		)
@@ -291,10 +296,11 @@ func newRunContextFromID(
 	var problemset sql.NullInt64
 	var penaltyType sql.NullString
 	var contestPoints sql.NullFloat64
+	var partialScore sql.NullInt64
 	err := db.QueryRow(
 		`SELECT
-			s.guid, c.alias, s.problemset_id, c.penalty_type, s.language,
-			p.alias, pp.points, r.version
+			s.guid, c.alias, s.problemset_id, c.penalty_type, c.partial_score,
+			s.language, p.alias, pp.points, r.version
 		FROM
 			Runs r
 		INNER JOIN
@@ -312,6 +318,7 @@ func newRunContextFromID(
 		&contestName,
 		&problemset,
 		&penaltyType,
+		&partialScore,
 		&runCtx.Run.Language,
 		&runCtx.Run.ProblemName,
 		&contestPoints,
@@ -329,6 +336,9 @@ func newRunContextFromID(
 	}
 	if penaltyType.Valid {
 		runCtx.PenaltyType = penaltyType.String
+	}
+	if partialScore.Valid {
+		runCtx.PartialScore = partialScore.Int64
 	}
 	if contestPoints.Valid {
 		runCtx.Run.MaxScore = base.FloatToRational(contestPoints.Float64)
