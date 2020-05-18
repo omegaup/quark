@@ -66,7 +66,7 @@ func updateDatabase(
 	run *grader.RunInfo,
 ) {
 	contestScore := base.RationalToFloat(run.Result.ContestScore)
-	if run.PartialScore == 1 && contestScore != 1 {
+	if run.PartialScore == true && contestScore != 1 {
 		contestScore = 0
 	}
 	if run.PenaltyType == "runtime" {
@@ -296,7 +296,7 @@ func newRunContextFromID(
 	var problemset sql.NullInt64
 	var penaltyType sql.NullString
 	var contestPoints sql.NullFloat64
-	var partialScore sql.NullInt64
+	var partialScore sql.NullBool
 	err := db.QueryRow(
 		`SELECT
 			s.guid, c.alias, s.problemset_id, c.penalty_type, c.partial_score,
@@ -338,7 +338,7 @@ func newRunContextFromID(
 		runCtx.PenaltyType = penaltyType.String
 	}
 	if partialScore.Valid {
-		runCtx.PartialScore = partialScore.Int64
+		runCtx.PartialScore = partialScore.Bool
 	}
 	if contestPoints.Valid {
 		runCtx.Run.MaxScore = base.FloatToRational(contestPoints.Float64)
