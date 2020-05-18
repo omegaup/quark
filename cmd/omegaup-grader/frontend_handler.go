@@ -66,7 +66,7 @@ func updateDatabase(
 	run *grader.RunInfo,
 ) {
 	contestScore := base.RationalToFloat(run.Result.ContestScore)
-	if run.PartialScore == true && contestScore != 1 {
+	if run.PartialScore && contestScore != 1 {
 		contestScore = 0
 	}
 	if run.PenaltyType == "runtime" {
