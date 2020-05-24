@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.13
+        id: go
+
+      - name: Install git2go
+        run: |
+          export GOPATH="$(go env GOPATH)"
+          go mod edit -replace "github.com/lhchavez/git2go/v29=${GOPATH}/src/github.com/lhchavez/git2go"
+          git clone --recurse-submodules https://github.com/lhchavez/git2go "${GOPATH}/src/github.com/lhchavez/git2go"
+          go get -d github.com/lhchavez/git2go/v29
+          (cd "${GOPATH}/src/github.com/lhchavez/git2go/" && ./script/build-libgit2-static.sh)
+
+      - name: Get dependencies
+        run: go get -tags=static -t -v ./...
+
+      - name: Build
+        run: |
+          mkdir -p backend/usr/bin/
+          go build -o backend/usr/bin/omegaup-grader \
+            -ldflags "-X main.ProgramVersion=${{ github.ref }}" \
+            -tags=static \
+            github.com/omegaup/quark/cmd/omegaup-grader
+          go build -o backend/usr/bin/omegaup-broadcaster \
+            -ldflags "-X main.ProgramVersion=${{ github.ref }}" \
+            -tags=static \
+            github.com/omegaup/quark/cmd/omegaup-broadcaster
+
+          mkdir -p runner/usr/bin/
+          go build -o runner/bin/omegaup-runner \
+            -ldflags "-X main.ProgramVersion=${{ github.ref }}" \
+            -tags=static \
+            github.com/omegaup/quark/cmd/omegaup-runner
+
+      - name: Package
+        run: |
+          tar -cJf omegaup-backend.tar.xz --owner=root:0 --group=root:0 -C backend/
+          tar -cJf omegaup-runner.tar.xz --owner=root:0 --group=root:0 -C runner/
+
+      - name: Create Release
+        id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload omegaup-backend.tar.xz Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.upload_url }}
+          asset_path: ./omegaup-backend.tar.xz
+          asset_name: omegaup-backend.tar.xz
+          asset_content_type: application/octet-stream
+
+      - name: Upload omegaup-runner.tar.xz Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.upload_url }}
+          asset_path: ./omegaup-runner.tar.xz
+          asset_name: omegaup-runner.tar.xz
+          asset_content_type: application/octet-stream
