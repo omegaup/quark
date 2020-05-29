@@ -5,10 +5,6 @@ import (
 	"container/list"
 	"encoding/json"
 	"fmt"
-	"github.com/inconshreveable/log15"
-	base "github.com/omegaup/go-base"
-	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/runner"
 	"io/ioutil"
 	"math/big"
 	"math/rand"
@@ -18,6 +14,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/inconshreveable/log15"
+	base "github.com/omegaup/go-base"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/runner"
 )
 
 // QueuePriority represents the relative priority of a queue with respect with
@@ -269,15 +270,16 @@ func (mgr *EphemeralRunManager) add(entry *ephemeralRunEntry) error {
 // RunInfo holds the necessary data of a Run, even after the RunContext is
 // gone.
 type RunInfo struct {
-	ID          int64
-	GUID        string
-	Contest     *string
-	Problemset  *int64
-	Run         *common.Run
-	Result      runner.RunResult
-	GradeDir    string
-	Priority    QueuePriority
-	PenaltyType string
+	ID           int64
+	GUID         string
+	Contest      *string
+	Problemset   *int64
+	Run          *common.Run
+	Result       runner.RunResult
+	GradeDir     string
+	Priority     QueuePriority
+	PenaltyType  string
+	PartialScore bool
 
 	CreationTime time.Time
 	QueueTime    time.Time
