@@ -24,18 +24,22 @@ func newGraderContext(t *testing.T) *grader.Context {
 	}
 	ctx, err := grader.NewContext(bytes.NewBufferString(
 		fmt.Sprintf(
-			"{"+
-				"\"Logging\": {\"File\": \"stderr\"}, "+
-				"\"Tracing\": {\"Enabled\": false}, "+
-				"\"InputManager\": {\"CacheSize\": 1048576}, "+
-				"\"Grader\": {"+
-				"  \"RuntimePath\": %q, "+
-				"  \"Ephemeral\": {\"EphemeralSizeLimit\": 1048576}"+
-				"}, "+
-				"\"Runner\": {"+
-				"  \"RuntimePath\": %q"+
-				"}"+
-				"}",
+			`{
+				"DB": {
+					"Driver": "sqlite3",
+					"DataSourceName": ":memory:"
+				},
+				"Logging": {"File": "stderr"},
+				"Tracing": {"Enabled": false},
+				"InputManager": {"CacheSize": 1048576},
+				"Grader": {
+				  "RuntimePath": %q,
+				  "Ephemeral": {"EphemeralSizeLimit": 1048576}
+				},
+				"Runner": {
+				  "RuntimePath": %q
+				}
+			}`,
 			path.Join(dirname, "grader"),
 			path.Join(dirname, "runner"),
 		),

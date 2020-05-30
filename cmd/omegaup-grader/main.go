@@ -267,7 +267,7 @@ func main() {
 
 	{
 		mux := http.DefaultServeMux
-		registerFrontendHandlers(mux, db)
+		registerFrontendHandlers(graderContext(), mux, db)
 		shutdowners = append(
 			shutdowners,
 			common.RunServer(
