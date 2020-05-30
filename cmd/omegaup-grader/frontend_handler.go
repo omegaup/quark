@@ -7,11 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	base "github.com/omegaup/go-base"
-	"github.com/omegaup/quark/broadcaster"
-	"github.com/omegaup/quark/grader"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/net/http2"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -23,6 +18,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	base "github.com/omegaup/go-base"
+	"github.com/omegaup/quark/broadcaster"
+	"github.com/omegaup/quark/grader"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -63,7 +64,7 @@ func updateDatabase(
 	ctx *grader.Context,
 	db *sql.DB,
 	run *grader.RunInfo,
-) {
+) error {
 	if run.PenaltyType == "runtime" {
 		_, err := db.Exec(
 			`UPDATE
@@ -83,7 +84,7 @@ func updateDatabase(
 			run.ID,
 		)
 		if err != nil {
-			ctx.Log.Error("Error updating the database", "err", err, "run", run)
+			return err
 		}
 	} else {
 		_, err := db.Exec(
@@ -103,9 +104,10 @@ func updateDatabase(
 			run.ID,
 		)
 		if err != nil {
-			ctx.Log.Error("Error updating the database", "err", err, "run", run)
+			return err
 		}
 	}
+	return nil
 }
 
 func broadcastRun(
@@ -165,10 +167,10 @@ func broadcastRun(
 			Penalty:      -1,
 		},
 	}
-
+	var runTime time.Time
 	err := db.QueryRow(
 		`SELECT
-			i.username, r.penalty, s.submit_delay, UNIX_TIMESTAMP(r.time)
+			i.username, r.penalty, s.submit_delay, r.time
 		FROM
 			Runs r
 		INNER JOIN
@@ -180,11 +182,12 @@ func broadcastRun(
 		&msg.Run.User,
 		&msg.Run.Penalty,
 		&msg.Run.SubmitDelay,
-		&msg.Run.Time,
+		&runTime,
 	)
 	if err != nil {
 		return err
 	}
+	msg.Run.Time = float64(runTime.Unix())
 	message.User = msg.Run.User
 	if run.Problemset != nil {
 		message.Problemset = *run.Problemset
@@ -204,17 +207,19 @@ func broadcastRun(
 }
 
 func runPostProcessor(
+	ctx *grader.Context,
 	db *sql.DB,
 	finishedRuns <-chan *grader.RunInfo,
 	client *http.Client,
 ) {
-	ctx := graderContext()
 	for run := range finishedRuns {
 		if run.Result.Verdict == "JE" {
 			ctx.Metrics.CounterAdd("grader_runs_je", 1)
 		}
 		if ctx.Config.Grader.V1.UpdateDatabase {
-			updateDatabase(ctx, db, run)
+			if err := updateDatabase(ctx, db, run); err != nil {
+				ctx.Log.Error("Error updating the database", "err", err, "run", run)
+			}
 		}
 		if ctx.Config.Grader.V1.SendBroadcast {
 			if err := broadcastRun(ctx, db, client, run); err != nil {
@@ -422,12 +427,12 @@ func broadcast(
 	return nil
 }
 
-func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
-	runs, err := graderContext().QueueManager.Get(grader.DefaultQueueName)
+func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB) {
+	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
-	runIds, err := getPendingRuns(graderContext(), db)
+	runIds, err := getPendingRuns(ctx, db)
 	if err != nil {
 		panic(err)
 	}
@@ -435,11 +440,11 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	// deadlocks where there are more runs than what the queue can hold, and the
 	// queue cannot be drained unless the transport is connected.
 	go func() {
-		graderContext().Log.Info("Injecting pending runs", "count", len(runIds))
+		ctx.Log.Info("Injecting pending runs", "count", len(runIds))
 		for _, runID := range runIds {
-			runCtx, err := newRunContextFromID(graderContext(), db, runID)
+			runCtx, err := newRunContextFromID(ctx, db, runID)
 			if err != nil {
-				graderContext().Log.Error(
+				ctx.Log.Error(
 					"Error getting run context",
 					"err", err,
 					"runId", runID,
@@ -447,15 +452,15 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 				continue
 			}
 			if err := injectRuns(
-				graderContext(),
+				ctx,
 				runs,
 				grader.QueuePriorityNormal,
 				runCtx,
 			); err != nil {
-				graderContext().Log.Error("Error injecting run", "runId", runID, "err", err)
+				ctx.Log.Error("Error injecting run", "runId", runID, "err", err)
 			}
 		}
-		graderContext().Log.Info("Injected pending runs", "count", len(runIds))
+		ctx.Log.Info("Injected pending runs", "count", len(runIds))
 	}()
 
 	transport := &http.Transport{
@@ -467,15 +472,15 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 	if !*insecure {
-		cert, err := ioutil.ReadFile(graderContext().Config.TLS.CertFile)
+		cert, err := ioutil.ReadFile(ctx.Config.TLS.CertFile)
 		if err != nil {
 			panic(err)
 		}
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(cert)
 		keyPair, err := tls.LoadX509KeyPair(
-			graderContext().Config.TLS.CertFile,
-			graderContext().Config.TLS.KeyFile,
+			ctx.Config.TLS.CertFile,
+			ctx.Config.TLS.KeyFile,
 		)
 		transport.TLSClientConfig = &tls.Config{
 			Certificates: []tls.Certificate{keyPair},
@@ -493,13 +498,12 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	client := &http.Client{Transport: transport}
 
 	finishedRunsChan := make(chan *grader.RunInfo, 1)
-	graderContext().InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
-	go runPostProcessor(db, finishedRunsChan, client)
+	ctx.InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
+	go runPostProcessor(ctx, db, finishedRunsChan, client)
 
 	mux.Handle("/metrics", promhttp.Handler())
 
 	mux.HandleFunc("/grader/status/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		runData := ctx.InflightMonitor.GetRunData()
 		status := graderStatusResponse{
@@ -527,8 +531,6 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/run/new/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
-
 		if r.Method != "POST" {
 			ctx.Log.Error("Invalid request", "url", r.URL.Path, "method", r.Method)
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -602,7 +604,6 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/run/grade/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 
@@ -621,7 +622,7 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 		for _, runID := range request.RunIDs {
 			runCtx, err := newRunContextFromID(ctx, db, runID)
 			if err != nil {
-				graderContext().Log.Error(
+				ctx.Log.Error(
 					"Error getting run context",
 					"err", err,
 					"run id", runID,
@@ -640,8 +641,6 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/submission/source/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
-
 		if r.Method != "GET" {
 			ctx.Log.Error("Invalid request", "url", r.URL.Path, "method", r.Method)
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -698,7 +697,6 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/run/resource/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 
@@ -754,7 +752,6 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/broadcast/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 
@@ -773,7 +770,6 @@ func registerFrontendHandlers(mux *http.ServeMux, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/reload-config/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := graderContext()
 		ctx.Log.Info("/reload-config/")
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
