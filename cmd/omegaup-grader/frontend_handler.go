@@ -148,6 +148,12 @@ func broadcastRun(
 		Message string        `json:"message"`
 		Run     serializedRun `json:"run"`
 	}
+	score := base.RationalToFloat(run.Result.Score)
+	contestScore := base.RationalToFloat(run.Result.ContestScore)
+	if !run.PartialScore && score != 1 {
+		score = 0
+		contestScore = 0
+	}
 	msg := runFinishedMessage{
 		Message: "/run/update/",
 		Run: serializedRun{
@@ -157,8 +163,8 @@ func broadcastRun(
 			GUID:         run.GUID,
 			Runtime:      run.Result.Time,
 			Memory:       run.Result.Memory,
-			Score:        base.RationalToFloat(run.Result.Score),
-			ContestScore: base.RationalToFloat(run.Result.ContestScore),
+			Score:        score,
+			ContestScore: contestScore,
 			Status:       "ready",
 			Verdict:      run.Result.Verdict,
 			Language:     run.Run.Language,
@@ -296,10 +302,11 @@ func newRunContextFromID(
 	var problemset sql.NullInt64
 	var penaltyType sql.NullString
 	var contestPoints sql.NullFloat64
+	var partialScore sql.NullBool
 	err := db.QueryRow(
 		`SELECT
-			s.guid, c.alias, s.problemset_id, c.penalty_type, s.language,
-			p.alias, pp.points, r.version
+			s.guid, c.alias, s.problemset_id, c.penalty_type, c.partial_score,
+			s.language, p.alias, pp.points, r.version
 		FROM
 			Runs r
 		INNER JOIN
@@ -317,6 +324,7 @@ func newRunContextFromID(
 		&contestName,
 		&problemset,
 		&penaltyType,
+		&partialScore,
 		&runCtx.Run.Language,
 		&runCtx.Run.ProblemName,
 		&contestPoints,
@@ -334,6 +342,9 @@ func newRunContextFromID(
 	}
 	if penaltyType.Valid {
 		runCtx.PenaltyType = penaltyType.String
+	}
+	if partialScore.Valid {
+		runCtx.PartialScore = partialScore.Bool
 	}
 	if contestPoints.Valid {
 		runCtx.Run.MaxScore = base.FloatToRational(contestPoints.Float64)
