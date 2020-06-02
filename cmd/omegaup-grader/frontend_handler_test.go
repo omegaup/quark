@@ -253,7 +253,7 @@ func TestBroadcastRun(t *testing.T) {
 		{partialScore: false, verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.},
 	}
 	for idx, s := range scenarios {
-		t.Run(fmt.Sprintf("%s/%d %s", s.verdict, idx, s.verdict), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d: verdict=%s partialScore=%v", idx, s.verdict, s.partialScore), func(t *testing.T) {
 			db := newInMemoryDB(t, s.partialScore)
 
 			var message broadcaster.Message
