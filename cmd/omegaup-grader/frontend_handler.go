@@ -445,7 +445,7 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 	}
 	runIds, err := getPendingRuns(ctx, db)
 	if err != nil {
-		ctx.Log.Error("Failed to read pending runs", "count", len(runIds))
+		ctx.Log.Error("Failed to read pending runs", "err", err)
 	}
 	// Don't block while the runs are being injected. This prevents potential
 	// deadlocks where there are more runs than what the queue can hold, and the
