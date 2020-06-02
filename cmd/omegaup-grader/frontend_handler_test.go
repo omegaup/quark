@@ -47,7 +47,7 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 			run_id INTEGER PRIMARY KEY AUTOINCREMENT,
 			submission_id int NOT NULL,
 			version varchar NOT NULL,
-			` + "`commit`" + ` varchar NOT NULL,
+			`+"`commit`"+` varchar NOT NULL,
 			status varchar NOT NULL DEFAULT 'new',
 			verdict varchar NOT NULL,
 			runtime int NOT NULL DEFAULT '0',
@@ -78,7 +78,7 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 			visibility int NOT NULL DEFAULT '1',
 			title varchar NOT NULL,
 			alias varchar NOT NULL UNIQUE,
-			` + "`commit`" + ` varchar NOT NULL DEFAULT 'published',
+			`+"`commit`"+` varchar NOT NULL DEFAULT 'published',
 			current_version varchar NOT NULL,
 			languages varchar NOT NULL DEFAULT 'c11-gcc,c11-clang,cpp11-11-clang,cpp17-gcc,cpp17-clang,java,py2,py3,rb,cs,pas,hs,lua',
 			input_limit int NOT NULL DEFAULT '10240',
@@ -88,7 +88,7 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 			difficulty double DEFAULT NULL,
 			creation_date timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			source varchar DEFAULT NULL,
-			` + "`order`" + ` varchar NOT NULL DEFAULT 'normal',
+			`+"`order`"+` varchar NOT NULL DEFAULT 'normal',
 			deprecated tinyint(1) NOT NULL DEFAULT '0',
 			email_clarifications tinyint(1) NOT NULL DEFAULT '0',
 			quality double DEFAULT NULL,
@@ -142,10 +142,10 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 		CREATE TABLE Problemset_Problems (
 			problemset_id NOT NULL,
 			problem_id int NOT NULL,
-			` + "`commit`" + ` varchar NOT NULL DEFAULT 'published',
+			`+"`commit`"+` varchar NOT NULL DEFAULT 'published',
 			version varchar NOT NULL,
 			points double NOT NULL DEFAULT '1',
-			` + "`order`" + ` int NOT NULL DEFAULT '1'
+			`+"`order`"+` int NOT NULL DEFAULT '1'
 		);
 
 		INSERT INTO Problemsets (
@@ -161,12 +161,12 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 			"1970-01-01 00:00:00"
 		);
 		INSERT INTO Problemset_Problems (
-			problemset_id, problem_id, ` + "`commit`" + `, version
+			problemset_id, problem_id, `+"`commit`"+`, version
 		) VALUES (
 			1, 1, "1", "1"
 		);
 		INSERT INTO Problems (
-			problem_id, acl_id, title, alias, ` + "`commit`" + `, current_version
+			problem_id, acl_id, title, alias, `+"`commit`"+`, current_version
 		) VALUES (
 			1, 1, "Problem", "problem", "1", "1"
 		);
@@ -177,7 +177,7 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 			1, 1, 1, 1, "1", "py3", "1970-01-01 00:00:00"
 		);
 		INSERT INTO Runs (
-			run_id, submission_id, version, ` + "`commit`" + `, verdict, time
+			run_id, submission_id, version, `+"`commit`"+`, verdict, time
 		) VALUES (
 			1, 1, "1", "1", "JE", "1970-01-01 00:00:00"
 		);
