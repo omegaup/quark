@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,7 @@ import (
 	"github.com/omegaup/quark/runner"
 )
 
-func newInMemoryDB(t *testing.T) *sql.DB {
+func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 	t.Helper()
 	db, err := sql.Open(
 		"sqlite3",
@@ -46,7 +47,7 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 			run_id INTEGER PRIMARY KEY AUTOINCREMENT,
 			submission_id int NOT NULL,
 			version varchar NOT NULL,
-			` + "`commit`" + ` varchar NOT NULL,
+			`+"`commit`"+` varchar NOT NULL,
 			status varchar NOT NULL DEFAULT 'new',
 			verdict varchar NOT NULL,
 			runtime int NOT NULL DEFAULT '0',
@@ -77,7 +78,7 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 			visibility int NOT NULL DEFAULT '1',
 			title varchar NOT NULL,
 			alias varchar NOT NULL UNIQUE,
-			` + "`commit`" + ` varchar NOT NULL DEFAULT 'published',
+			`+"`commit`"+` varchar NOT NULL DEFAULT 'published',
 			current_version varchar NOT NULL,
 			languages varchar NOT NULL DEFAULT 'c11-gcc,c11-clang,cpp11-11-clang,cpp17-gcc,cpp17-clang,java,py2,py3,rb,cs,pas,hs,lua',
 			input_limit int NOT NULL DEFAULT '10240',
@@ -87,7 +88,7 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 			difficulty double DEFAULT NULL,
 			creation_date timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			source varchar DEFAULT NULL,
-			` + "`order`" + ` varchar NOT NULL DEFAULT 'normal',
+			`+"`order`"+` varchar NOT NULL DEFAULT 'normal',
 			deprecated tinyint(1) NOT NULL DEFAULT '0',
 			email_clarifications tinyint(1) NOT NULL DEFAULT '0',
 			quality double DEFAULT NULL,
@@ -141,10 +142,10 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 		CREATE TABLE Problemset_Problems (
 			problemset_id NOT NULL,
 			problem_id int NOT NULL,
-			` + "`commit`" + ` varchar NOT NULL DEFAULT 'published',
+			`+"`commit`"+` varchar NOT NULL DEFAULT 'published',
 			version varchar NOT NULL,
 			points double NOT NULL DEFAULT '1',
-			` + "`order`" + ` int NOT NULL DEFAULT '1'
+			`+"`order`"+` int NOT NULL DEFAULT '1'
 		);
 
 		INSERT INTO Problemsets (
@@ -154,18 +155,18 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 		);
 		INSERT INTO Contests (
 			contest_id, problemset_id, acl_id, alias, title, description, rerun_id,
-			penalty_type, penalty_calc_policy, start_time
+			partial_score, penalty_type, penalty_calc_policy, start_time
 		) VALUES (
-			1, 1, 1, "contest", "Contest", "Contest", 0, "none", "sum",
+			1, 1, 1, "contest", "Contest", "Contest", 0, ?, "none", "sum",
 			"1970-01-01 00:00:00"
 		);
 		INSERT INTO Problemset_Problems (
-			problemset_id, problem_id, ` + "`commit`" + `, version
+			problemset_id, problem_id, `+"`commit`"+`, version
 		) VALUES (
 			1, 1, "1", "1"
 		);
 		INSERT INTO Problems (
-			problem_id, acl_id, title, alias, ` + "`commit`" + `, current_version
+			problem_id, acl_id, title, alias, `+"`commit`"+`, current_version
 		) VALUES (
 			1, 1, "Problem", "problem", "1", "1"
 		);
@@ -176,7 +177,7 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 			1, 1, 1, 1, "1", "py3", "1970-01-01 00:00:00"
 		);
 		INSERT INTO Runs (
-			run_id, submission_id, version, ` + "`commit`" + `, verdict, time
+			run_id, submission_id, version, `+"`commit`"+`, verdict, time
 		) VALUES (
 			1, 1, "1", "1", "JE", "1970-01-01 00:00:00"
 		);
@@ -185,7 +186,7 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 		) VALUES (
 			1, "identity"
 		);
-	`); err != nil {
+	`, partialScore); err != nil {
 		t.Fatalf("Failed to initialize database: %v", err)
 	}
 	return db
@@ -193,7 +194,7 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 
 func TestUpdateDatabase(t *testing.T) {
 	ctx := newGraderContext(t)
-	db := newInMemoryDB(t)
+	db := newInMemoryDB(t, true)
 
 	var count int
 	if err := db.QueryRow(
@@ -241,61 +242,76 @@ func TestUpdateDatabase(t *testing.T) {
 
 func TestBroadcastRun(t *testing.T) {
 	ctx := newGraderContext(t)
-	db := newInMemoryDB(t)
-
-	var message broadcaster.Message
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		decoder := json.NewDecoder(r.Body)
-		defer r.Body.Close()
-		if err := decoder.Decode(&message); err != nil {
-			t.Fatalf("Failed to read request from client: %v", err)
-		}
-
-		w.Write([]byte(`{"status": "ok"}`))
-	}))
-	ctx.Config.Grader.BroadcasterURL = ts.URL
-	defer ts.Close()
-
-	run := grader.RunInfo{
-		ID:          1,
-		GUID:        "1",
-		Run:         &common.Run{},
-		PenaltyType: "none",
-		Result: runner.RunResult{
-			Verdict:      "AC",
-			Score:        big.NewRat(1, 1),
-			ContestScore: big.NewRat(1, 1),
-			MaxScore:     big.NewRat(1, 1),
-			Time:         1.,
-			WallTime:     1.,
-			Memory:       base.Mebibyte,
-			JudgedBy:     "Test",
-		},
+	scenarios := []struct {
+		partialScore  bool
+		verdict       string
+		score         *big.Rat
+		expectedScore float64
+	}{
+		{partialScore: true, verdict: "AC", score: big.NewRat(1, 1), expectedScore: 1.},
+		{partialScore: true, verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.5},
+		{partialScore: false, verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.},
 	}
-	if err := broadcastRun(ctx, db, ts.Client(), &run); err != nil {
-		t.Fatalf("Error broadcasting run: %v", err)
-	}
+	for idx, s := range scenarios {
+		t.Run(fmt.Sprintf("%d: verdict=%s partialScore=%v", idx, s.verdict, s.partialScore), func(t *testing.T) {
+			db := newInMemoryDB(t, s.partialScore)
 
-	var encodedMessage map[string]interface{}
-	if err := json.Unmarshal([]byte(message.Message), &encodedMessage); err != nil {
-		t.Fatalf("Error decoding inner message: %v", err)
-	}
+			var message broadcaster.Message
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				decoder := json.NewDecoder(r.Body)
+				defer r.Body.Close()
+				if err := decoder.Decode(&message); err != nil {
+					t.Fatalf("Failed to read request from client: %v", err)
+				}
 
-	runInfo, ok := encodedMessage["run"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("Message does not contain a run entry: %v", encodedMessage)
-	}
+				w.Write([]byte(`{"status": "ok"}`))
+			}))
+			ctx.Config.Grader.BroadcasterURL = ts.URL
+			defer ts.Close()
 
-	for key, value := range map[string]interface{}{
-		"guid":          "1",
-		"status":        "ready",
-		"verdict":       "AC",
-		"username":      "identity",
-		"score":         1.,
-		"contest_score": 1.,
-	} {
-		if runInfo[key] != value {
-			t.Errorf("message.%s=%v, want %v", key, runInfo[key], value)
-		}
+			run := grader.RunInfo{
+				ID:           1,
+				GUID:         "1",
+				Run:          &common.Run{},
+				PenaltyType:  "none",
+				PartialScore: s.partialScore,
+				Result: runner.RunResult{
+					Verdict:      s.verdict,
+					Score:        s.score,
+					ContestScore: s.score,
+					MaxScore:     s.score,
+					Time:         1.,
+					WallTime:     1.,
+					Memory:       base.Mebibyte,
+					JudgedBy:     "Test",
+				},
+			}
+			if err := broadcastRun(ctx, db, ts.Client(), &run); err != nil {
+				t.Fatalf("Error broadcasting run: %v", err)
+			}
+
+			var encodedMessage map[string]interface{}
+			if err := json.Unmarshal([]byte(message.Message), &encodedMessage); err != nil {
+				t.Fatalf("Error decoding inner message: %v", err)
+			}
+
+			runInfo, ok := encodedMessage["run"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("Message does not contain a run entry: %v", encodedMessage)
+			}
+
+			for key, value := range map[string]interface{}{
+				"guid":          "1",
+				"status":        "ready",
+				"verdict":       s.verdict,
+				"username":      "identity",
+				"score":         s.expectedScore,
+				"contest_score": s.expectedScore,
+			} {
+				if runInfo[key] != value {
+					t.Errorf("message.%s=%v, want %v", key, runInfo[key], value)
+				}
+			}
+		})
 	}
 }
