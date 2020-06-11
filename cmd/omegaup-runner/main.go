@@ -243,21 +243,27 @@ func main() {
 		return
 	}
 
-	if *noop {
-		sandbox = &runner.NoopSandbox{}
-	} else {
-		sandbox = &runner.OmegajailSandbox{}
-	}
-
 	if err := loadContext(); err != nil {
 		panic(err)
 	}
 
 	ctx := globalContext.Load().(*common.Context)
+	if *noop {
+		sandbox = &runner.NoopSandbox{}
+	} else {
+		omegajailRoot, err := filepath.Abs(ctx.Config.Runner.OmegajailRoot)
+		if err != nil {
+			ctx.Log.Error("Failed to get omegajail root", "err", err)
+			os.Exit(1)
+		}
+		sandbox = runner.NewOmegajailSandbox(omegajailRoot)
+	}
+
 	if isOneShotMode() {
 		tmpdir, err := ioutil.TempDir("", "quark-runner-oneshot")
 		if err != nil {
-			panic(err)
+			ctx.Log.Error("Failed to create temporary directory", "err", err)
+			os.Exit(1)
 		}
 		if os.Getenv("PRESERVE") != "" {
 			ctx.Config.Runner.PreserveFiles = true

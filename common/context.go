@@ -84,6 +84,7 @@ type RunnerConfig struct {
 	RuntimePath        string
 	CompileTimeLimit   base.Duration
 	CompileOutputLimit base.Byte
+	OmegajailRoot      string
 	PreserveFiles      bool
 }
 
@@ -191,6 +192,7 @@ var defaultConfig = Config{
 		GraderURL:          "https://omegaup.com:11302",
 		CompileTimeLimit:   base.Duration(time.Duration(30) * time.Second),
 		CompileOutputLimit: base.Byte(10) * base.Mebibyte,
+		OmegajailRoot:      "/var/lib/omegajail",
 		PreserveFiles:      false,
 	},
 	TLS: TLSConfig{

@@ -7,8 +7,16 @@ import (
 	"testing"
 )
 
+func getSandbox() *OmegajailSandbox {
+	omegajailRoot := os.Getenv("OMEGAJAIL_ROOT")
+	if omegajailRoot == "" {
+		omegajailRoot = "/var/lib/omegajail"
+	}
+	return NewOmegajailSandbox(omegajailRoot)
+}
+
 func TestOmegajail(t *testing.T) {
-	omegajail := OmegajailSandbox{}
+	omegajail := getSandbox()
 	if !omegajail.Supported() {
 		t.Skip("omegajail sandbox not supported")
 	}

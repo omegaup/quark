@@ -153,10 +153,10 @@ func TestGrade(t *testing.T) {
 }
 
 func TestGradeOmegajail(t *testing.T) {
-	omegajail := &OmegajailSandbox{}
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
+	omegajail := getSandbox()
 	if !omegajail.Supported() {
 		t.Skip("omegajail sandbox not supported")
 	}
@@ -589,10 +589,10 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 }
 
 func TestGradeLowMemOmegajail(t *testing.T) {
-	omegajail := &OmegajailSandbox{}
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
+	omegajail := getSandbox()
 	if !omegajail.Supported() {
 		t.Skip("omegajail omegajail not supported")
 	}
@@ -725,10 +725,10 @@ func TestKarelGrade(t *testing.T) {
 }
 
 func TestKarelGradeOmegajail(t *testing.T) {
-	omegajail := &OmegajailSandbox{}
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
+	omegajail := getSandbox()
 	if !omegajail.Supported() {
 		t.Skip("omegajail sandbox not supported")
 	}
@@ -861,10 +861,10 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 }
 
 func TestLibinteractive(t *testing.T) {
-	omegajail := &OmegajailSandbox{}
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
+	omegajail := getSandbox()
 	if !omegajail.Supported() {
 		t.Skip("omegajail sandbox not supported")
 	}

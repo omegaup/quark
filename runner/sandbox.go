@@ -18,22 +18,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-const (
-	omegajailPath string = "/var/lib/omegajail"
-)
-
-var (
-	haskellCompiler = "/usr/lib/ghc/bin/ghc"
-)
-
-func init() {
-	// ghc was moved from lib/ghc to bin/ghc recently. Try to detect that.
-	_, err := os.Stat(path.Join(omegajailPath, "root-hs/lib/ghc"))
-	if !os.IsNotExist(err) {
-		haskellCompiler = "/usr/lib/ghc/lib/ghc"
-	}
-}
-
 // Preloads an input so that the contestant's program has to wait less time.
 type inputPreloader struct {
 	file     *os.File
@@ -146,17 +130,26 @@ type Sandbox interface {
 
 // OmegajailSandbox is an implementation of a Sandbox that uses the omegajail
 // sandbox.
-type OmegajailSandbox struct{}
+type OmegajailSandbox struct {
+	omegajailRoot string
+}
+
+// NewOmegajailSandbox creates a new OmegajailSandbox.
+func NewOmegajailSandbox(omegajailRoot string) *OmegajailSandbox {
+	return &OmegajailSandbox{
+		omegajailRoot: omegajailRoot,
+	}
+}
 
 // Supported returns whether the omegajail binary is installed in the system.
-func (*OmegajailSandbox) Supported() bool {
-	_, err := os.Stat(path.Join(omegajailPath, "bin/omegajail"))
+func (o *OmegajailSandbox) Supported() bool {
+	_, err := os.Stat(path.Join(o.omegajailRoot, "bin/omegajail"))
 	return err == nil
 }
 
 // Compile compiles the contestant-supplied program using the specified
 // configuration using the omegajail sandbox.
-func (*OmegajailSandbox) Compile(
+func (o *OmegajailSandbox) Compile(
 	ctx *common.Context,
 	lang string,
 	inputFiles []string,
@@ -183,7 +176,7 @@ func (*OmegajailSandbox) Compile(
 		"-M", metaFile,
 		"-t", strconv.FormatInt(int64(ctx.Config.Runner.CompileTimeLimit.Milliseconds()), 10),
 		"-O", strconv.FormatInt(ctx.Config.Runner.CompileOutputLimit.Bytes(), 10),
-		"--root", omegajailPath,
+		"--root", o.omegajailRoot,
 		"--compile", lang,
 		"--compile-target", target,
 	}
@@ -211,7 +204,7 @@ func (*OmegajailSandbox) Compile(
 		params = append(params, extraFlags...)
 	}
 
-	invokeOmegajail(ctx, params, errorFile)
+	invokeOmegajail(ctx, o.omegajailRoot, params, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -247,7 +240,7 @@ func (*OmegajailSandbox) Compile(
 
 // Run invokes the contestant-supplied program against a specified input and
 // run configuration using the omegajail sandbox.
-func (*OmegajailSandbox) Run(
+func (o *OmegajailSandbox) Run(
 	ctx *common.Context,
 	limits *common.LimitsSettings,
 	lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
@@ -262,7 +255,7 @@ func (*OmegajailSandbox) Run(
 
 	// Avoid using the real /dev/null. Pass in an empty file instead.
 	if inputFile == "/dev/null" {
-		inputFile = path.Join(omegajailPath, "root/dev/null")
+		inputFile = path.Join(o.omegajailRoot, "root/dev/null")
 	}
 
 	type fileLink struct {
@@ -313,7 +306,7 @@ func (*OmegajailSandbox) Run(
 		"-t", strconv.FormatInt(int64(timeLimit.Milliseconds()), 10),
 		"-w", strconv.FormatInt(int64(limits.ExtraWallTime.Milliseconds()), 10),
 		"-O", strconv.FormatInt(limits.OutputLimit.Bytes(), 10),
-		"--root", omegajailPath,
+		"--root", o.omegajailRoot,
 		"--run", lang,
 		"--run-target", target,
 	}
@@ -336,7 +329,7 @@ func (*OmegajailSandbox) Run(
 		preloader.release()
 	}
 
-	invokeOmegajail(ctx, params, errorFile)
+	invokeOmegajail(ctx, o.omegajailRoot, params, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -348,8 +341,8 @@ func (*OmegajailSandbox) Run(
 	return parseMetaFile(ctx, limits, lang, metaFd, &errorFile, lang == "c")
 }
 
-func invokeOmegajail(ctx *common.Context, omegajailParams []string, errorFile string) {
-	omegajailFullParams := []string{path.Join(omegajailPath, "bin/omegajail")}
+func invokeOmegajail(ctx *common.Context, omegajailRoot string, omegajailParams []string, errorFile string) {
+	omegajailFullParams := []string{path.Join(omegajailRoot, "bin/omegajail")}
 	omegajailFullParams = append(omegajailFullParams, omegajailParams...)
 	ctx.Log.Debug("invoking", "params", omegajailFullParams)
 	cmd := exec.Command(omegajailFullParams[0], omegajailParams...)
