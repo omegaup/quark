@@ -187,7 +187,7 @@ func runOneshotRun(ctx *common.Context, sandbox runner.Sandbox) {
 					ctx.Log.Error("Failed to walk", "dir", runRoot, "path", srcPath, "err", err)
 					return err
 				}
-				if info.IsDir() {
+				if !info.Mode().IsRegular() {
 					return nil
 				}
 
