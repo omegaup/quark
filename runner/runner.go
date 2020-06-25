@@ -393,7 +393,13 @@ func generateMountpoint(
 	name string,
 ) map[string]string {
 	return map[string]string{
-		path.Join(runRoot, name, "pipes"): fmt.Sprintf("/home/%s_pipes", name),
+		path.Join(
+			runRoot,
+			fmt.Sprintf("%s_pipes", name),
+		): path.Join(
+			"/home",
+			fmt.Sprintf("%s_pipes", name),
+		),
 	}
 }
 
@@ -596,7 +602,9 @@ func Grade(
 					}
 					pipesMountPath := path.Join(
 						runRoot,
-						fmt.Sprintf("%s/bin/%s_pipes", name, ifaceName),
+						name,
+						"bin",
+						fmt.Sprintf("%s_pipes", ifaceName),
 					)
 					if err := os.MkdirAll(pipesMountPath, 0755); err != nil {
 						return runResult, err
@@ -606,9 +614,10 @@ func Grade(
 			}
 			sourcePath := path.Join(
 				runRoot,
+				name,
+				"bin",
 				fmt.Sprintf(
-					"%s/bin/%s.%s",
-					name,
+					"%s.%s",
 					interactive.ModuleName,
 					common.LanguageFileExtension(run.Language),
 				),
@@ -619,12 +628,17 @@ func Grade(
 			}
 			pipesMountPath := path.Join(
 				runRoot,
-				fmt.Sprintf("%s/bin/%s_pipes", name, name),
+				name,
+				"bin",
+				fmt.Sprintf("%s_pipes", name),
 			)
 			if err := os.MkdirAll(pipesMountPath, 0755); err != nil {
 				return runResult, err
 			}
-			pipesPath := path.Join(runRoot, name, "pipes")
+			pipesPath := path.Join(
+				runRoot,
+				fmt.Sprintf("%s_pipes", name),
+			)
 			if err := os.MkdirAll(pipesPath, 0755); err != nil {
 				return runResult, err
 			}
