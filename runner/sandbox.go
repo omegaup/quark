@@ -169,8 +169,8 @@ func (o *OmegajailSandbox) Compile(
 	}
 
 	params := []string{
-		"-d", "/home",
-		"-b", chdir + ",/home,1",
+		"--homedir", chdir,
+		"--homedir-writable",
 		"-1", outputFile,
 		"-2", errorFile,
 		"-M", metaFile,
@@ -296,8 +296,7 @@ func (o *OmegajailSandbox) Run(
 	hardLimit := base.MinBytes(base.Byte(640)*base.Mebibyte, limits.MemoryLimit)
 
 	params := []string{
-		"-d", "/home",
-		"-b", chdir + ",/home",
+		"--homedir", chdir,
 		"-0", inputFile,
 		"-1", outputFile,
 		"-2", errorFile,
@@ -313,7 +312,7 @@ func (o *OmegajailSandbox) Run(
 	for path, mountTarget := range extraMountPoints {
 		params = append(
 			params,
-			"-b", fmt.Sprintf("%s,%s", path, mountTarget),
+			"--bind", fmt.Sprintf("%s:%s", path, mountTarget),
 		)
 	}
 	if len(extraParams) > 0 {
