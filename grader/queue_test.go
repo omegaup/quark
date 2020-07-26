@@ -12,7 +12,7 @@ func addRun(
 	ctx *Context,
 	queue *Queue,
 	priority QueuePriority,
-) *RunContext {
+) *RunInfo {
 	AplusB, err := common.NewLiteralInputFactory(
 		&common.LiteralInput{
 			Cases: map[string]*common.LiteralCaseSettings{
@@ -33,15 +33,17 @@ func addRun(
 	if err != nil {
 		t.Fatalf("Failed to get input back: %q", err)
 	}
-	runCtx := NewEmptyRunContext(ctx)
-	runCtx.Priority = priority
-	runCtx.Run.InputHash = inputRef.Input.Hash()
-	runCtx.Run.Source = "print 3"
-	if err := AddRunContext(ctx, runCtx, inputRef); err != nil {
+
+	originalLength := len(queue.runs[priority])
+
+	runInfo := NewRunInfo()
+	runInfo.Priority = priority
+	runInfo.Run.InputHash = inputRef.Input.Hash()
+	runInfo.Run.Source = "print 3"
+	if _, err := queue.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
 		t.Fatalf("AddRunContext failed with %q", err)
 	}
-	originalLength := len(queue.runs[priority])
-	queue.AddRun(runCtx)
+
 	if len(queue.runs[priority]) != originalLength+1 {
 		t.Fatalf(
 			"expected len(queue.runs[%d]) == %d, got %d",
@@ -50,7 +52,7 @@ func addRun(
 			len(queue.runs[priority]),
 		)
 	}
-	return runCtx
+	return runInfo
 }
 
 func TestMonitorSerializability(t *testing.T) {
@@ -118,10 +120,10 @@ func TestQueue(t *testing.T) {
 			len(queue.runs[QueuePriorityHigh]),
 		)
 	}
-	if _, _, ok := ctx.InflightMonitor.Get(runCtx.Run.AttemptID); !ok {
-		t.Fatalf("Run %d not found in the inflight run monitor", runCtx.Run.AttemptID)
+	if _, _, ok := ctx.InflightMonitor.Get(runCtx.RunInfo.Run.AttemptID); !ok {
+		t.Fatalf("Run %d not found in the inflight run monitor", runCtx.RunInfo.Run.AttemptID)
 	}
-	ctx.InflightMonitor.Remove(runCtx.Run.AttemptID)
+	ctx.InflightMonitor.Remove(runCtx.RunInfo.Run.AttemptID)
 	if _, didTimeout := <-timeout; didTimeout {
 		t.Fatalf("expected run completion, but did not happen")
 	}
@@ -161,20 +163,20 @@ func TestQueuePriorities(t *testing.T) {
 
 	var runCtx *RunContext
 	runCtx, _, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
-	if runCtx != highPriority {
-		t.Fatalf("expected runCtx == %v, got %v", highPriority, runCtx)
+	if highPriority != runCtx.RunInfo {
+		t.Fatalf("expected runCtx.RunInfo == %v, got %v", highPriority, runCtx.RunInfo)
 	}
 	runCtx, _, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
-	if runCtx != normalPriority {
-		t.Fatalf("expected runCtx == %v, got %v", normalPriority, runCtx)
+	if normalPriority != runCtx.RunInfo {
+		t.Fatalf("expected runCtx == %v, got %v", normalPriority, runCtx.RunInfo)
 	}
 	runCtx, _, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
-	if runCtx != lowPriority {
-		t.Fatalf("expected runCtx == %v, got %v", lowPriority, runCtx)
+	if lowPriority != runCtx.RunInfo {
+		t.Fatalf("expected runCtx == %v, got %v", lowPriority, runCtx.RunInfo)
 	}
 	runCtx, _, _ = queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
-	if runCtx != ephemeralPriority {
-		t.Fatalf("expected runCtx == %v, got %v", ephemeralPriority, runCtx)
+	if ephemeralPriority != runCtx.RunInfo {
+		t.Fatalf("expected runCtx == %v, got %v", ephemeralPriority, runCtx.RunInfo)
 	}
 
 	queueInfo := ctx.QueueManager.GetQueueInfo()[DefaultQueueName]

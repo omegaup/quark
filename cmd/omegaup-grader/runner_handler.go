@@ -28,7 +28,7 @@ func processRun(
 	runnerName := peerName(r, insecure)
 	// TODO: make this a per-attempt directory so we can only commit directories
 	// that will be not retried.
-	gradeDir := runCtx.GradeDir
+	gradeDir := runCtx.RunInfo.GradeDir
 	// Best-effort deletion of the grade dir.
 	os.RemoveAll(gradeDir)
 	if err := os.MkdirAll(gradeDir, 0755); err != nil {
@@ -68,15 +68,15 @@ func processRun(
 				runCtx.Log.Error("Error obtaining result", "err", err, "runner", runnerName)
 				return &processRunStatus{http.StatusBadRequest, true}
 			}
-			runCtx.Result = result
-			runCtx.Result.JudgedBy = runnerName
+			runCtx.RunInfo.Result = result
+			runCtx.RunInfo.Result.JudgedBy = runnerName
 		} else if part.FileName() == "logs.txt" {
 			var buffer bytes.Buffer
 			if _, err := io.Copy(&buffer, part); err != nil {
 				runCtx.Log.Error("Unable to read logs", "err", err, "runner", runnerName)
 				return &processRunStatus{http.StatusBadRequest, true}
 			}
-			runCtx.AppendRunnerLogs(runnerName, buffer.Bytes())
+			runCtx.AppendLogSection(runnerName, buffer.Bytes())
 		} else if part.FileName() == "tracing.json" {
 			var runnerCollector common.MemoryEventCollector
 			decoder := json.NewDecoder(part)
@@ -128,18 +128,18 @@ func processRun(
 	}
 	runCtx.Log.Info(
 		"Finished processing run",
-		"verdict", runCtx.Result.Verdict,
-		"score", runCtx.Result.Score,
+		"verdict", runCtx.RunInfo.Result.Verdict,
+		"score", runCtx.RunInfo.Result.Score,
 		"runner", runnerName,
-		"ctx", runCtx,
+		"runInfo", runCtx.RunInfo,
 	)
-	if runCtx.Result.Verdict == "JE" {
+	if runCtx.RunInfo.Result.Verdict == "JE" {
 		// Retry the run in case it is some transient problem.
 		runCtx.Log.Info(
 			"Judge Error. Re-attempting run.",
-			"verdict", runCtx.Result.Verdict,
+			"verdict", runCtx.RunInfo.Result.Verdict,
 			"runner", runnerName,
-			"ctx", runCtx,
+			"runInfo", runCtx.RunInfo,
 		)
 		return &processRunStatus{http.StatusOK, true}
 	}
@@ -188,7 +188,7 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			ev := runCtx.EventFactory.NewIssuerClockSyncEvent()
 			w.Header().Set("Sync-ID", strconv.FormatUint(ev.SyncID, 10))
 			encoder := json.NewEncoder(w)
-			encoder.Encode(runCtx.Run)
+			encoder.Encode(runCtx.RunInfo.Run)
 			runCtx.EventCollector.Add(ev)
 		}
 	})

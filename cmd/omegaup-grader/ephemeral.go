@@ -28,11 +28,11 @@ var (
 
 func saveEphemeralRunRequest(
 	ctx *grader.Context,
-	runCtx *grader.RunContext,
+	runInfo *grader.RunInfo,
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 ) error {
 	f, err := os.OpenFile(
-		path.Join(runCtx.GradeDir, "request.json.gz"),
+		path.Join(runInfo.GradeDir, "request.json.gz"),
 		os.O_CREATE|os.O_WRONLY,
 		0644,
 	)
@@ -133,13 +133,13 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		return err
 	}
 
-	runCtx := grader.NewEmptyRunContext(h.ctx)
-	runCtx.Run.InputHash = inputFactory.Hash()
-	runCtx.Run.Language = ephemeralRunRequest.Language
-	runCtx.Run.MaxScore = maxScore
-	runCtx.Run.Source = ephemeralRunRequest.Source
-	runCtx.Priority = grader.QueuePriorityEphemeral
-	ephemeralToken, err := h.ephemeralRunManager.SetEphemeral(runCtx)
+	runInfo := grader.NewRunInfo()
+	runInfo.Run.InputHash = inputFactory.Hash()
+	runInfo.Run.Language = ephemeralRunRequest.Language
+	runInfo.Run.MaxScore = maxScore
+	runInfo.Run.Source = ephemeralRunRequest.Source
+	runInfo.Priority = grader.QueuePriorityEphemeral
+	ephemeralToken, err := h.ephemeralRunManager.SetEphemeral(runInfo)
 	if err != nil {
 		h.ctx.Log.Error("Error making run ephemeral", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -150,13 +150,14 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		if *committed {
 			return
 		}
-		if err := os.RemoveAll(runCtx.GradeDir); err != nil {
+		if err := os.RemoveAll(runInfo.GradeDir); err != nil {
 			h.ctx.Log.Error("Error cleaning up after run", "err", err)
 		}
 	}(&committed)
 
-	if err = grader.AddRunContext(h.ctx, runCtx, input); err != nil {
-		h.ctx.Log.Error("Failed do add run context", "err", err)
+	runWaitHandle, err := runs.AddRun(&h.ctx.Context, runInfo, input)
+	if err != nil {
+		h.ctx.Log.Error("Failed to add run context", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return err
 	}
@@ -176,8 +177,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		flusher.Flush()
 	}
 
-	runs.AddRun(runCtx)
-	h.ctx.Log.Info("enqueued run", "run", runCtx.Run)
+	h.ctx.Log.Info("enqueued run", "run", runInfo.Run)
 
 	// Send another field so that the reader can be notified that the run has
 	// been accepted and will be queued.
@@ -188,20 +188,20 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 
 	// Wait until a runner has picked the run up, or the run has been finished.
 	select {
-	case <-runCtx.Running():
+	case <-runWaitHandle.Running():
 		if flusher, ok := w.(http.Flusher); ok {
 			multipartWriter.WriteField("status", "running")
 			flusher.Flush()
 		}
 		break
-	case <-runCtx.Ready():
+	case <-runWaitHandle.Ready():
 	}
-	<-runCtx.Ready()
+	<-runWaitHandle.Ready()
 
 	// Run was successful, send all the files as part of the payload.
 	filenames := []string{"logs.txt.gz", "files.zip", "details.json"}
 	for _, filename := range filenames {
-		fd, err := os.Open(path.Join(runCtx.GradeDir, filename))
+		fd, err := os.Open(path.Join(runInfo.GradeDir, filename))
 		if err != nil {
 			h.ctx.Log.Error("Error opening file", "filename", filename, "err", err)
 			continue
@@ -218,10 +218,10 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 	}
 
 	// Finally commit the run to the manager.
-	if err = saveEphemeralRunRequest(h.ctx, runCtx, ephemeralRunRequest); err != nil {
+	if err = saveEphemeralRunRequest(h.ctx, runInfo, ephemeralRunRequest); err != nil {
 		return err
 	}
-	h.ephemeralRunManager.Commit(runCtx)
+	h.ephemeralRunManager.Commit(runInfo)
 	committed = true
 	h.ctx.Log.Info("Finished running ephemeral run", "token", ephemeralToken)
 
