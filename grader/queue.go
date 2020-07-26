@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/inconshreveable/log15"
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
@@ -289,13 +288,7 @@ type RunInfo struct {
 // on a Queue on the grader.
 type RunContext struct {
 	RunInfo
-
-	// These fields are there so that the RunContext can be used as a normal
-	// Context.
-	Log            log15.Logger
-	EventCollector common.EventCollector
-	EventFactory   *common.EventFactory
-	Config         *common.Config
+	*common.Context
 
 	// A flag to be able to atomically close the RunContext exactly once.
 	closedFlag int32
@@ -309,7 +302,6 @@ type RunContext struct {
 	tries        int
 	queue        *Queue
 	queueManager *QueueManager
-	context      *common.Context
 	monitor      *InflightMonitor
 
 	// A channel that will be closed once the run is ready.
@@ -326,12 +318,7 @@ func AddRunContext(
 	inputRef *common.InputRef,
 ) error {
 	run.inputRef = inputRef
-	run.context = ctx.Context.DebugContext("id", run.ID)
-
-	run.Config = &run.context.Config
-	run.Log = run.context.Log
-	run.EventCollector = run.context.EventCollector
-	run.EventFactory = run.context.EventFactory
+	run.Context = ctx.Context.DebugContext("id", run.ID)
 
 	return nil
 }
@@ -380,6 +367,7 @@ func (run *RunContext) Close() {
 			Type:     QueueEventTypeManagerRemoved,
 		})
 	}()
+	defer runCtx.Context.Close()
 	var postProcessor *RunPostProcessor
 	if run.monitor != nil {
 		postProcessor = run.monitor.PostProcessor
@@ -422,7 +410,7 @@ func (run *RunContext) Close() {
 		}
 		defer fd.Close()
 		gz := gzip.NewWriter(fd)
-		if _, err := gz.Write(run.context.LogBuffer()); err != nil {
+		if _, err := gz.Write(run.LogBuffer()); err != nil {
 			gz.Close()
 			run.Log.Error("Unable to write log file", "err", err)
 			return
@@ -442,7 +430,7 @@ func (run *RunContext) Close() {
 		}
 		defer fd.Close()
 		gz := gzip.NewWriter(fd)
-		if _, err := gz.Write(run.context.TraceBuffer()); err != nil {
+		if _, err := gz.Write(run.TraceBuffer()); err != nil {
 			gz.Close()
 			run.Log.Error("Unable to upload traces", "err", err)
 			return
@@ -462,7 +450,7 @@ func (run *RunContext) Close() {
 // AppendRunnerLogs appends the provided logs from the provided runner to the
 // current run's logs.
 func (run *RunContext) AppendRunnerLogs(runnerName string, contents []byte) {
-	run.context.AppendLogSection(runnerName, contents)
+	run.AppendLogSection(runnerName, contents)
 }
 
 // Requeue adds a RunContext back to the Queue from where it came from, if it
@@ -696,7 +684,7 @@ func (monitor *InflightMonitor) timeout(
 	run *RunContext,
 	timeout chan<- struct{},
 ) {
-	run.context.Log.Error("run timed out. retrying", "context", run)
+	run.Log.Error("run timed out. retrying", "context", run)
 	if run.Requeue(false) {
 		run.queueManager.AddEvent(&QueueEvent{
 			Delta:    time.Now().Sub(run.CreationTime),
@@ -709,7 +697,7 @@ func (monitor *InflightMonitor) timeout(
 			Priority: run.Priority,
 			Type:     QueueEventTypeAbandoned,
 		})
-		run.context.Log.Error("run timed out too many times. giving up")
+		run.Log.Error("run timed out too many times. giving up")
 	}
 	timeout <- struct{}{}
 }
@@ -886,7 +874,7 @@ type QueueInfo struct {
 }
 
 // NewQueueManager creates a new QueueManager.
-func NewQueueManager(channelLength int) *QueueManager {
+func NewQueueManager(channelLength int, graderRuntimePath string) *QueueManager {
 	manager := &QueueManager{
 		mapping:       make(map[string]*Queue),
 		channelLength: channelLength,

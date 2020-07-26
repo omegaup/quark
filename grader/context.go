@@ -54,8 +54,11 @@ func NewContext(reader io.Reader) (*Context, error) {
 		return nil, err
 	}
 	var context = &Context{
-		Context:               *ctx,
-		QueueManager:          NewQueueManager(ctx.Config.Grader.ChannelLength),
+		Context: *ctx,
+		QueueManager: NewQueueManager(
+			ctx.Config.Grader.ChannelLength,
+			ctx.Config.Grader.RuntimePath,
+		),
 		InflightMonitor:       NewInflightMonitor(),
 		InputManager:          common.NewInputManager(ctx),
 		LibinteractiveVersion: libinteractiveVersion,

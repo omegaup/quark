@@ -298,5 +298,6 @@ func main() {
 	cancel()
 	wg.Wait()
 
+	ctx.Close()
 	ctx.Log.Info("Server gracefully stopped.")
 }
