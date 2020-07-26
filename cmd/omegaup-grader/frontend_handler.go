@@ -267,37 +267,37 @@ func gradeDir(ctx *grader.Context, runID int64) string {
 	)
 }
 
-func newRunContext(
+func newRunInfo(
 	ctx *grader.Context,
-	runCtx *grader.RunContext,
-) (*grader.RunContext, error) {
-	runCtx.GradeDir = gradeDir(ctx, runCtx.ID)
+	runInfo *grader.RunInfo,
+) (*grader.RunInfo, error) {
+	runInfo.GradeDir = gradeDir(ctx, runInfo.ID)
 	gitProblemInfo, err := grader.GetProblemInformation(grader.GetRepositoryPath(
 		ctx.Config.Grader.V1.RuntimePath,
-		runCtx.Run.ProblemName,
+		runInfo.Run.ProblemName,
 	))
 	if err != nil {
 		return nil, err
 	}
 
-	runCtx.Result.MaxScore = runCtx.Run.MaxScore
+	runInfo.Result.MaxScore = runInfo.Run.MaxScore
 
 	if gitProblemInfo.Settings.Slow {
-		runCtx.Priority = grader.QueuePriorityLow
+		runInfo.Priority = grader.QueuePriorityLow
 	} else {
-		runCtx.Priority = grader.QueuePriorityNormal
+		runInfo.Priority = grader.QueuePriorityNormal
 	}
 
-	return runCtx, nil
+	return runInfo, nil
 }
 
-func newRunContextFromID(
+func newRunInfoFromID(
 	ctx *grader.Context,
 	db *sql.DB,
 	runID int64,
-) (*grader.RunContext, error) {
-	runCtx := grader.NewEmptyRunContext(ctx)
-	runCtx.ID = runID
+) (*grader.RunInfo, error) {
+	runInfo := grader.NewRunInfo()
+	runInfo.ID = runID
 	var contestName sql.NullString
 	var problemset sql.NullInt64
 	var penaltyType sql.NullString
@@ -319,54 +319,54 @@ func newRunContextFromID(
 		LEFT JOIN
 			Contests c ON c.problemset_id = pp.problemset_id
 		WHERE
-			r.run_id = ?;`, runCtx.ID).Scan(
-		&runCtx.GUID,
+			r.run_id = ?;`, runInfo.ID).Scan(
+		&runInfo.GUID,
 		&contestName,
 		&problemset,
 		&penaltyType,
 		&partialScore,
-		&runCtx.Run.Language,
-		&runCtx.Run.ProblemName,
+		&runInfo.Run.Language,
+		&runInfo.Run.ProblemName,
 		&contestPoints,
-		&runCtx.Run.InputHash,
+		&runInfo.Run.InputHash,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	if contestName.Valid {
-		runCtx.Contest = &contestName.String
+		runInfo.Contest = &contestName.String
 	}
 	if problemset.Valid {
-		runCtx.Problemset = &problemset.Int64
+		runInfo.Problemset = &problemset.Int64
 	}
 	if penaltyType.Valid {
-		runCtx.PenaltyType = penaltyType.String
+		runInfo.PenaltyType = penaltyType.String
 	}
 	if partialScore.Valid {
-		runCtx.PartialScore = partialScore.Bool
+		runInfo.PartialScore = partialScore.Bool
 	}
 	if contestPoints.Valid {
-		runCtx.Run.MaxScore = base.FloatToRational(contestPoints.Float64)
+		runInfo.Run.MaxScore = base.FloatToRational(contestPoints.Float64)
 	} else {
-		runCtx.Run.MaxScore = big.NewRat(1, 1)
+		runInfo.Run.MaxScore = big.NewRat(1, 1)
 	}
-	return newRunContext(ctx, runCtx)
+	return newRunInfo(ctx, runInfo)
 }
 
-func readSource(ctx *grader.Context, runCtx *grader.RunContext) error {
+func readSource(ctx *grader.Context, runInfo *grader.RunInfo) error {
 	contents, err := ioutil.ReadFile(
 		path.Join(
 			ctx.Config.Grader.V1.RuntimePath,
 			"submissions",
-			runCtx.GUID[:2],
-			runCtx.GUID[2:],
+			runInfo.GUID[:2],
+			runInfo.GUID[2:],
 		),
 	)
 	if err != nil {
 		return err
 	}
-	runCtx.Run.Source = string(contents)
+	runInfo.Run.Source = string(contents)
 	return nil
 }
 
@@ -374,38 +374,37 @@ func injectRuns(
 	ctx *grader.Context,
 	runs *grader.Queue,
 	priority grader.QueuePriority,
-	runCtxs ...*grader.RunContext,
+	runInfos ...*grader.RunInfo,
 ) error {
-	for _, runCtx := range runCtxs {
-		if err := readSource(ctx, runCtx); err != nil {
+	for _, runInfo := range runInfos {
+		if err := readSource(ctx, runInfo); err != nil {
 			ctx.Log.Error(
 				"Error getting run source",
 				"err", err,
-				"runId", runCtx.ID,
+				"runId", runInfo.ID,
 			)
 			return err
 		}
-		if runCtx.Priority == grader.QueuePriorityNormal {
-			runCtx.Priority = priority
+		if runInfo.Priority == grader.QueuePriorityNormal {
+			runInfo.Priority = priority
 		}
-		ctx.Log.Info("RunContext", "runCtx", runCtx)
+		ctx.Log.Info("RunContext", "runInfo", runInfo)
 		ctx.Metrics.CounterAdd("grader_runs_total", 1)
 		input, err := ctx.InputManager.Add(
-			runCtx.Run.InputHash,
+			runInfo.Run.InputHash,
 			grader.NewInputFactory(
-				runCtx.Run.ProblemName,
+				runInfo.Run.ProblemName,
 				&ctx.Config,
 			),
 		)
 		if err != nil {
-			ctx.Log.Error("Error getting input", "err", err, "run", runCtx)
+			ctx.Log.Error("Error getting input", "err", err, "run", runInfo)
 			return err
 		}
-		if err = grader.AddRunContext(ctx, runCtx, input); err != nil {
-			ctx.Log.Error("Error adding run context", "err", err, "runId", runCtx.ID)
+		if _, err = runs.AddRun(&ctx.Context, runInfo, input); err != nil {
+			ctx.Log.Error("Error adding run information", "err", err, "runId", runInfo.ID)
 			return err
 		}
-		runs.AddRun(runCtx)
 	}
 	return nil
 }
@@ -453,10 +452,10 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 	go func() {
 		ctx.Log.Info("Injecting pending runs", "count", len(runIds))
 		for _, runID := range runIds {
-			runCtx, err := newRunContextFromID(ctx, db, runID)
+			runInfo, err := newRunInfoFromID(ctx, db, runID)
 			if err != nil {
 				ctx.Log.Error(
-					"Error getting run context",
+					"Error getting run information",
 					"err", err,
 					"runId", runID,
 				)
@@ -466,7 +465,7 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 				ctx,
 				runs,
 				grader.QueuePriorityNormal,
-				runCtx,
+				runInfo,
 			); err != nil {
 				ctx.Log.Error("Error injecting run", "runId", runID, "err", err)
 			}
@@ -556,14 +555,14 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 			return
 		}
 
-		var runCtx *grader.RunContext
 		runID, err := strconv.ParseUint(tokens[2], 10, 64)
 		if err != nil {
 			ctx.Log.Error("Invalid Run ID", "run id", tokens[2])
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if runCtx, err = newRunContextFromID(ctx, db, int64(runID)); err != nil {
+		runInfo, err := newRunInfoFromID(ctx, db, int64(runID))
+		if err != nil {
 			ctx.Log.Error(
 				"/run/new/",
 				"runID", runID,
@@ -577,8 +576,8 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 		filePath := path.Join(
 			ctx.Config.Grader.V1.RuntimePath,
 			"submissions",
-			runCtx.GUID[:2],
-			runCtx.GUID[2:],
+			runInfo.GUID[:2],
+			runInfo.GUID[2:],
 		)
 		if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
 			ctx.Log.Error(
@@ -593,11 +592,11 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 		if err != nil {
 			if os.IsExist(err) {
-				ctx.Log.Info("/run/new/", "guid", runCtx.GUID, "response", "already exists")
+				ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "already exists")
 				w.WriteHeader(http.StatusConflict)
 				return
 			}
-			ctx.Log.Info("/run/new/", "guid", runCtx.GUID, "response", "internal server error", "err", err)
+			ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "internal server error", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -605,12 +604,12 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 
 		io.Copy(f, r.Body)
 
-		if err = injectRuns(ctx, runs, grader.QueuePriorityNormal, runCtx); err != nil {
-			ctx.Log.Info("/run/new/", "guid", runCtx.GUID, "response", "internal server error", "err", err)
+		if err = injectRuns(ctx, runs, grader.QueuePriorityNormal, runInfo); err != nil {
+			ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "internal server error", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		ctx.Log.Info("/run/new/", "guid", runCtx.GUID, "response", "ok")
+		ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "ok")
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -629,21 +628,21 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 		if request.Rejudge || request.Debug {
 			priority = grader.QueuePriorityLow
 		}
-		var runCtxs []*grader.RunContext
+		var runInfos []*grader.RunInfo
 		for _, runID := range request.RunIDs {
-			runCtx, err := newRunContextFromID(ctx, db, runID)
+			runInfo, err := newRunInfoFromID(ctx, db, runID)
 			if err != nil {
 				ctx.Log.Error(
-					"Error getting run context",
+					"Error getting run info",
 					"err", err,
 					"run id", runID,
 				)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			runCtxs = append(runCtxs, runCtx)
+			runInfos = append(runInfos, runInfo)
 		}
-		if err = injectRuns(ctx, runs, priority, runCtxs...); err != nil {
+		if err = injectRuns(ctx, runs, priority, runInfos...); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}

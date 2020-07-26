@@ -628,13 +628,13 @@ func (h *ciHandler) addRun(
 		return err
 	}
 
-	runCtx := grader.NewEmptyRunContext(h.ctx)
-	runCtx.Run.InputHash = inputFactory.Hash()
-	runCtx.Run.Language = test.ephemeralRunRequest.Language
-	runCtx.Run.MaxScore = maxScore
-	runCtx.Run.Source = test.ephemeralRunRequest.Source
-	runCtx.Priority = grader.QueuePriorityEphemeral
-	test.EphemeralToken, err = h.ephemeralRunManager.SetEphemeral(runCtx)
+	runInfo := grader.NewRunInfo()
+	runInfo.Run.InputHash = inputFactory.Hash()
+	runInfo.Run.Language = test.ephemeralRunRequest.Language
+	runInfo.Run.MaxScore = maxScore
+	runInfo.Run.Source = test.ephemeralRunRequest.Source
+	runInfo.Priority = grader.QueuePriorityEphemeral
+	test.EphemeralToken, err = h.ephemeralRunManager.SetEphemeral(runInfo)
 	if err != nil {
 		h.ctx.Log.Error("Error making run ephemeral", "err", err)
 		return err
@@ -645,30 +645,30 @@ func (h *ciHandler) addRun(
 		if *committed {
 			return
 		}
-		if err := os.RemoveAll(runCtx.GradeDir); err != nil {
+		if err := os.RemoveAll(runInfo.GradeDir); err != nil {
 			h.ctx.Log.Error("Error cleaning up after run", "err", err)
 		}
 	}(&committed)
 
-	if err = grader.AddRunContext(h.ctx, runCtx, input); err != nil {
-		h.ctx.Log.Error("Failed to add run context", "err", err)
+	runWaitHandle, err := runs.AddRun(&h.ctx.Context, runInfo, input)
+	if err != nil {
+		h.ctx.Log.Error("Failed to add run", "err", err)
 		return err
 	}
 
-	runs.AddRun(runCtx)
-	h.ctx.Log.Info("enqueued run", "run", runCtx.Run)
+	h.ctx.Log.Info("enqueued run", "run", runInfo.Run)
 
 	// Wait until a runner has picked the run up, or the run has been finished.
 	select {
-	case <-runCtx.Running():
+	case <-runWaitHandle.Running():
 		test.State = CIStateRunning
 		if err := report.Write(); err != nil {
 			h.ctx.Log.Error("Failed to write the report file", "filename", report.reportPath, "err", err)
 		}
 		break
-	case <-runCtx.Ready():
+	case <-runWaitHandle.Ready():
 	}
-	<-runCtx.Ready()
+	<-runWaitHandle.Ready()
 
 	{
 		finishTime := time.Now()
@@ -676,7 +676,7 @@ func (h *ciHandler) addRun(
 		duration := base.Duration(test.FinishTime.Sub(test.StartTime))
 		test.Duration = &duration
 	}
-	test.Result = &runCtx.RunInfo.Result
+	test.Result = &runInfo.Result
 
 	test.State = CIStatePassed
 	if test.SolutionSetting != nil {
@@ -699,11 +699,11 @@ func (h *ciHandler) addRun(
 	}
 
 	// Finally commit the run to the manager.
-	if err = saveEphemeralRunRequest(h.ctx, runCtx, test.ephemeralRunRequest); err != nil {
+	if err = saveEphemeralRunRequest(h.ctx, runInfo, test.ephemeralRunRequest); err != nil {
 		h.ctx.Log.Error("Failed to commit the original request", "err", err)
 		return err
 	}
-	h.ephemeralRunManager.Commit(runCtx)
+	h.ephemeralRunManager.Commit(runInfo)
 	committed = true
 	h.ctx.Log.Info("Finished running ephemeral run", "token", test.EphemeralToken)
 

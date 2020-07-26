@@ -196,24 +196,24 @@ func (mgr *EphemeralRunManager) tempDir() (name string, err error) {
 
 // SetEphemeral makes a RunContext ephemeral. It does this by setting its
 // runtime path to be in the ephemeral subdirectory.
-func (mgr *EphemeralRunManager) SetEphemeral(runCtx *RunContext) (string, error) {
+func (mgr *EphemeralRunManager) SetEphemeral(runInfo *RunInfo) (string, error) {
 	var err error
-	if runCtx.GradeDir, err = mgr.tempDir(); err != nil {
+	if runInfo.GradeDir, err = mgr.tempDir(); err != nil {
 		return "", err
 	}
-	return path.Base(runCtx.GradeDir), nil
+	return path.Base(runInfo.GradeDir), nil
 }
 
-// Commit adds the files produced by the RunContext into the FIFO cache,
+// Commit adds the files produced by the Run into the FIFO cache,
 // potentially evicting older runs in the process.
-func (mgr *EphemeralRunManager) Commit(runCtx *RunContext) error {
-	size, err := directorySize(runCtx.GradeDir)
+func (mgr *EphemeralRunManager) Commit(runInfo *RunInfo) error {
+	size, err := directorySize(runInfo.GradeDir)
 	if err != nil {
 		return err
 	}
 
 	return mgr.add(&ephemeralRunEntry{
-		path: runCtx.GradeDir,
+		path: runInfo.GradeDir,
 		size: size,
 	})
 }
@@ -284,11 +284,31 @@ type RunInfo struct {
 	QueueTime    time.Time
 }
 
+// RunWaitHandle allows waiting on the run to change state.
+type RunWaitHandle struct {
+	// A channel that will be closed once the run is ready.
+	running chan struct{}
+
+	// A channel that will be closed once the run is ready.
+	ready chan struct{}
+}
+
+// Running returns a channel that will be closed when the Run is picked up
+// by a runner.
+func (h *RunWaitHandle) Running() <-chan struct{} {
+	return h.running
+}
+
+// Ready returns a channel that will be closed when the Run is ready.
+func (h *RunWaitHandle) Ready() <-chan struct{} {
+	return h.ready
+}
+
 // RunContext is a wrapper around a RunInfo. This is used when a Run is sitting
 // on a Queue on the grader.
 type RunContext struct {
-	RunInfo
 	*common.Context
+	RunInfo *RunInfo
 
 	// A flag to be able to atomically close the RunContext exactly once.
 	closedFlag int32
@@ -299,207 +319,171 @@ type RunContext struct {
 	// still active
 	inputRef *common.InputRef
 
-	tries        int
+	attemptsLeft int
 	queue        *Queue
 	queueManager *QueueManager
 	monitor      *InflightMonitor
 
-	// A channel that will be closed once the run is ready.
-	running chan struct{}
-
-	// A channel that will be closed once the run is ready.
-	ready chan struct{}
+	runWaitHandle RunWaitHandle
 }
 
-// AddRunContext registers a RunContext into the grader.
-func AddRunContext(
-	ctx *Context,
-	run *RunContext,
-	inputRef *common.InputRef,
-) error {
-	run.inputRef = inputRef
-	run.Context = ctx.Context.DebugContext("id", run.ID)
-
-	return nil
-}
-
-// NewEmptyRunContext returns an empty RunContext.
-func NewEmptyRunContext(ctx *Context) *RunContext {
-	return &RunContext{
-		RunInfo: RunInfo{
-			Run: &common.Run{
-				AttemptID: common.NewAttemptID(),
-				MaxScore:  big.NewRat(1, 1),
-			},
-			Result:       *runner.NewRunResult("JE", &big.Rat{}),
-			CreationTime: time.Now(),
-			Priority:     QueuePriorityNormal,
+// NewRunInfo returns an empty RunInfo.
+func NewRunInfo() *RunInfo {
+	return &RunInfo{
+		Run: &common.Run{
+			AttemptID: common.NewAttemptID(),
+			MaxScore:  big.NewRat(1, 1),
 		},
-		tries:   ctx.Config.Grader.MaxGradeRetries,
-		running: make(chan struct{}),
-		ready:   make(chan struct{}),
+		Result:       *runner.NewRunResult("JE", &big.Rat{}),
+		CreationTime: time.Now(),
+		Priority:     QueuePriorityNormal,
 	}
 }
 
 // Debug marks a RunContext as being for debug. This causes some additional
 // logging and in C/C++ it enables AddressSanitizer. Use with caution, since
 // ASan needs a relaxed sandboxing profile.
-func (run *RunContext) Debug() error {
+func (runCtx *RunContext) Debug() error {
 	var err error
-	if run.GradeDir, err = ioutil.TempDir("", "grade"); err != nil {
+	if runCtx.RunInfo.GradeDir, err = ioutil.TempDir("", "grade"); err != nil {
 		return err
 	}
-	run.Run.Debug = true
+	runCtx.RunInfo.Run.Debug = true
 	return nil
 }
 
 // Close finalizes the run, stores its results in the filesystem, and releases
 // any resources associated with the RunContext.
-func (run *RunContext) Close() {
-	if atomic.SwapInt32(&run.closedFlag, 1) != 0 {
-		run.Log.Warn("Attempting to close an already closed run")
+func (runCtx *RunContext) Close() {
+	if atomic.SwapInt32(&runCtx.closedFlag, 1) != 0 {
+		runCtx.Log.Warn("Attempting to close an already closed run")
 		return
 	}
 	defer func() {
-		run.queueManager.AddEvent(&QueueEvent{
-			Delta:    time.Now().Sub(run.CreationTime),
-			Priority: run.Priority,
+		runCtx.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+			Priority: runCtx.RunInfo.Priority,
 			Type:     QueueEventTypeManagerRemoved,
 		})
+
+		runCtx.Context.Close()
 	}()
-	defer runCtx.Context.Close()
 	var postProcessor *RunPostProcessor
-	if run.monitor != nil {
-		postProcessor = run.monitor.PostProcessor
-		run.monitor.Remove(run.Run.AttemptID)
+	if runCtx.monitor != nil {
+		postProcessor = runCtx.monitor.PostProcessor
+		runCtx.monitor.Remove(runCtx.RunInfo.Run.AttemptID)
 	}
-	if run.inputRef != nil {
-		run.inputRef.Release()
-		run.inputRef = nil
+	if runCtx.inputRef != nil {
+		runCtx.inputRef.Release()
+		runCtx.inputRef = nil
 	}
-	if err := os.MkdirAll(run.GradeDir, 0755); err != nil {
-		run.Log.Error("Unable to create grade dir", "err", err)
+	if err := os.MkdirAll(runCtx.RunInfo.GradeDir, 0755); err != nil {
+		runCtx.Log.Error("Unable to create grade dir", "err", err)
 		return
 	}
 
 	// Results
 	{
-		fd, err := os.Create(path.Join(run.GradeDir, "details.json"))
+		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "details.json"))
 		if err != nil {
-			run.Log.Error("Unable to create details.json file", "err", err)
+			runCtx.Log.Error("Unable to create details.json file", "err", err)
 			return
 		}
 		defer fd.Close()
-		prettyPrinted, err := json.MarshalIndent(&run.Result, "", "  ")
+		prettyPrinted, err := json.MarshalIndent(&runCtx.RunInfo.Result, "", "  ")
 		if err != nil {
-			run.Log.Error("Unable to marshal results file", "err", err)
+			runCtx.Log.Error("Unable to marshal results file", "err", err)
 			return
 		}
 		if _, err := fd.Write(prettyPrinted); err != nil {
-			run.Log.Error("Unable to write results file", "err", err)
+			runCtx.Log.Error("Unable to write results file", "err", err)
 			return
 		}
 	}
 
 	// Persist logs
 	{
-		fd, err := os.Create(path.Join(run.GradeDir, "logs.txt.gz"))
+		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "logs.txt.gz"))
 		if err != nil {
-			run.Log.Error("Unable to create log file", "err", err)
+			runCtx.Log.Error("Unable to create log file", "err", err)
 			return
 		}
 		defer fd.Close()
 		gz := gzip.NewWriter(fd)
-		if _, err := gz.Write(run.LogBuffer()); err != nil {
+		if _, err := gz.Write(runCtx.LogBuffer()); err != nil {
 			gz.Close()
-			run.Log.Error("Unable to write log file", "err", err)
+			runCtx.Log.Error("Unable to write log file", "err", err)
 			return
 		}
 		if err := gz.Close(); err != nil {
-			run.Log.Error("Unable to finalize log file", "err", err)
+			runCtx.Log.Error("Unable to finalize log file", "err", err)
 			return
 		}
 	}
 
 	// Persist tracing info
 	{
-		fd, err := os.Create(path.Join(run.GradeDir, "tracing.json.gz"))
+		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "tracing.json.gz"))
 		if err != nil {
-			run.Log.Error("Unable to create tracing file", "err", err)
+			runCtx.Log.Error("Unable to create tracing file", "err", err)
 			return
 		}
 		defer fd.Close()
 		gz := gzip.NewWriter(fd)
-		if _, err := gz.Write(run.TraceBuffer()); err != nil {
+		if _, err := gz.Write(runCtx.TraceBuffer()); err != nil {
 			gz.Close()
-			run.Log.Error("Unable to upload traces", "err", err)
+			runCtx.Log.Error("Unable to upload traces", "err", err)
 			return
 		}
 		if err := gz.Close(); err != nil {
-			run.Log.Error("Unable to finalize traces", "err", err)
+			runCtx.Log.Error("Unable to finalize traces", "err", err)
 			return
 		}
 	}
 
-	close(run.ready)
+	close(runCtx.runWaitHandle.ready)
 	if postProcessor != nil {
-		postProcessor.PostProcess(&run.RunInfo)
+		postProcessor.PostProcess(runCtx.RunInfo)
 	}
-}
-
-// AppendRunnerLogs appends the provided logs from the provided runner to the
-// current run's logs.
-func (run *RunContext) AppendRunnerLogs(runnerName string, contents []byte) {
-	run.AppendLogSection(runnerName, contents)
 }
 
 // Requeue adds a RunContext back to the Queue from where it came from, if it
 // has any retries left. It always adds the RunContext to the highest-priority
 // queue.
-func (run *RunContext) Requeue(lastAttempt bool) bool {
-	if run.monitor != nil {
-		run.monitor.Remove(run.Run.AttemptID)
+func (runCtx *RunContext) Requeue(lastAttempt bool) bool {
+	if runCtx.monitor != nil {
+		runCtx.monitor.Remove(runCtx.RunInfo.Run.AttemptID)
 	}
-	run.tries--
-	if run.tries <= 0 {
-		run.Close()
+	runCtx.attemptsLeft--
+	if runCtx.attemptsLeft <= 0 {
+		runCtx.Close()
 		return false
 	}
 	if lastAttempt {
 		// If this is the result of a runner successfully sending a JE verdict, it
 		// _might_ be a transient problem. In any case, only attempt to run it at
 		// most once more.
-		run.tries = 1
+		runCtx.attemptsLeft = 1
 	}
-	run.Run.UpdateAttemptID()
+	runCtx.RunInfo.Run.UpdateAttemptID()
 	// Since it was already ready to be executed, place it in the high-priority
 	// queue.
-	if !run.queue.enqueue(run, QueuePriorityHigh) {
+	if !runCtx.queue.enqueue(runCtx, QueuePriorityHigh) {
 		// That queue is full. We've exhausted all our options, bail out.
-		run.Close()
+		runCtx.Close()
 		return false
 	}
 	return true
 }
 
-func (run *RunContext) String() string {
+func (runCtx *RunContext) String() string {
 	return fmt.Sprintf(
-		"RunContext{ID:%d GUID:%s, %s}",
-		run.ID,
-		run.GUID,
-		run.Run,
+		"RunContext{ID:%d, GUID:%s, AttemptsLeft: %d, %s}",
+		runCtx.RunInfo.ID,
+		runCtx.RunInfo.GUID,
+		runCtx.attemptsLeft,
+		runCtx.RunInfo.Run,
 	)
-}
-
-// Running returns a channel that will be closed when the RunContext is picked up
-// by a runner.
-func (run *RunContext) Running() <-chan struct{} {
-	return run.running
-}
-
-// Ready returns a channel that will be closed when the RunContext is ready.
-func (run *RunContext) Ready() <-chan struct{} {
-	return run.ready
 }
 
 // Queue represents a RunContext queue with three discrete priorities.
@@ -526,9 +510,9 @@ func (queue *Queue) GetRun(
 
 	for i := range queue.runs {
 		select {
-		case run := <-queue.runs[i]:
-			inflight := monitor.Add(run, runner)
-			return run, inflight.timeout, true
+		case runCtx := <-queue.runs[i]:
+			inflight := monitor.Add(runCtx, runner)
+			return runCtx, inflight.timeout, true
 		default:
 		}
 	}
@@ -536,43 +520,61 @@ func (queue *Queue) GetRun(
 }
 
 // AddRun adds a new RunContext to the current Queue.
-func (queue *Queue) AddRun(run *RunContext) {
-	run.queueManager = queue.queueManager
-	run.queueManager.AddEvent(&QueueEvent{
-		Delta:    time.Now().Sub(run.CreationTime),
-		Priority: run.Priority,
+func (queue *Queue) AddRun(
+	ctx *common.Context,
+	runInfo *RunInfo,
+	inputRef *common.InputRef,
+) (*RunWaitHandle, error) {
+	runCtx := &RunContext{
+		RunInfo:  runInfo,
+		Context:  ctx.DebugContext("id", runInfo.ID),
+		inputRef: inputRef,
+
+		attemptsLeft: ctx.Config.Grader.MaxGradeRetries,
+		queueManager: queue.queueManager,
+		runWaitHandle: RunWaitHandle{
+			running: make(chan struct{}),
+			ready:   make(chan struct{}),
+		},
+	}
+
+	runCtx.queueManager.AddEvent(&QueueEvent{
+		Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+		Priority: runCtx.RunInfo.Priority,
 		Type:     QueueEventTypeManagerAdded,
 	})
 
 	// TODO(lhchavez): Add async events for queue operations.
 	// Add new runs to the normal priority by default.
-	queue.enqueueBlocking(run)
+	queue.enqueueBlocking(runCtx)
+
+	return &runCtx.runWaitHandle, nil
 }
 
 // enqueueBlocking adds a run to the queue, waits if needed.
-func (queue *Queue) enqueueBlocking(run *RunContext) {
-	if run == nil {
+func (queue *Queue) enqueueBlocking(runCtx *RunContext) {
+	if runCtx == nil {
 		panic("null RunContext")
 	}
-	run.queue = queue
-	queue.runs[run.Priority] <- run
+	runCtx.queue = queue
+	queue.runs[runCtx.RunInfo.Priority] <- runCtx
 	queue.ready <- struct{}{}
-	run.QueueTime = time.Now()
+	runCtx.RunInfo.QueueTime = time.Now()
 	queue.queueManager.AddEvent(&QueueEvent{
-		Delta:    time.Now().Sub(run.CreationTime),
-		Priority: run.Priority,
+		Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+		Priority: runCtx.RunInfo.Priority,
 		Type:     QueueEventTypeQueueAdded,
 	})
 }
 
 // enqueue adds a run to the queue, returns true if possible.
-func (queue *Queue) enqueue(run *RunContext, priority QueuePriority) bool {
-	if run == nil {
+func (queue *Queue) enqueue(runCtx *RunContext, priority QueuePriority) bool {
+	if runCtx == nil {
 		panic("null RunContext")
 	}
-	run.queue = queue
+	runCtx.queue = queue
 	select {
-	case queue.runs[priority] <- run:
+	case queue.runs[priority] <- runCtx:
 		queue.ready <- struct{}{}
 		return true
 	default:
@@ -584,7 +586,7 @@ func (queue *Queue) enqueue(run *RunContext, priority QueuePriority) bool {
 // InflightRun is a wrapper around a RunContext when it is handed off a queue
 // and a runner has been assigned to it.
 type InflightRun struct {
-	run          *RunContext
+	runCtx       *RunContext
 	runner       string
 	creationTime time.Time
 	connected    chan struct{}
@@ -630,24 +632,24 @@ func NewInflightMonitor() *InflightMonitor {
 // the InflightMonitor, and monitors it for timeouts. A RunContext can be later
 // accesssed through its attempt ID.
 func (monitor *InflightMonitor) Add(
-	run *RunContext,
+	runCtx *RunContext,
 	runner string,
 ) *InflightRun {
-	if atomic.SwapInt32(&run.runningFlag, 1) == 0 {
-		close(run.running)
+	if atomic.SwapInt32(&runCtx.runningFlag, 1) == 0 {
+		close(runCtx.runWaitHandle.running)
 	}
 	monitor.Lock()
 	defer monitor.Unlock()
 	inflight := &InflightRun{
-		run:          run,
+		runCtx:       runCtx,
 		runner:       runner,
 		creationTime: time.Now(),
 		connected:    make(chan struct{}, 1),
 		ready:        make(chan struct{}, 1),
 		timeout:      make(chan struct{}, 1),
 	}
-	run.monitor = monitor
-	monitor.mapping[run.Run.AttemptID] = inflight
+	runCtx.monitor = monitor
+	monitor.mapping[runCtx.RunInfo.Run.AttemptID] = inflight
 	go func() {
 		defer close(inflight.timeout)
 
@@ -660,7 +662,7 @@ func (monitor *InflightMonitor) Add(
 		select {
 		case <-inflight.connected:
 		case <-connectTimer.C:
-			monitor.timeout(run, inflight.timeout)
+			monitor.timeout(runCtx, inflight.timeout)
 			return
 		}
 
@@ -673,7 +675,7 @@ func (monitor *InflightMonitor) Add(
 		select {
 		case <-inflight.ready:
 		case <-readyTimer.C:
-			monitor.timeout(run, inflight.timeout)
+			monitor.timeout(runCtx, inflight.timeout)
 			return
 		}
 	}()
@@ -681,23 +683,23 @@ func (monitor *InflightMonitor) Add(
 }
 
 func (monitor *InflightMonitor) timeout(
-	run *RunContext,
+	runCtx *RunContext,
 	timeout chan<- struct{},
 ) {
-	run.Log.Error("run timed out. retrying", "context", run)
-	if run.Requeue(false) {
-		run.queueManager.AddEvent(&QueueEvent{
-			Delta:    time.Now().Sub(run.CreationTime),
-			Priority: run.Priority,
+	runCtx.Log.Error("run timed out. retrying", "context", runCtx)
+	if runCtx.Requeue(false) {
+		runCtx.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+			Priority: runCtx.RunInfo.Priority,
 			Type:     QueueEventTypeRetried,
 		})
 	} else {
-		run.queueManager.AddEvent(&QueueEvent{
-			Delta:    time.Now().Sub(run.CreationTime),
-			Priority: run.Priority,
+		runCtx.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+			Priority: runCtx.RunInfo.Priority,
 			Type:     QueueEventTypeAbandoned,
 		})
-		run.Log.Error("run timed out too many times. giving up")
+		runCtx.Log.Error("run timed out too many times. giving up")
 	}
 	timeout <- struct{}{}
 }
@@ -707,16 +709,16 @@ func (monitor *InflightMonitor) Get(attemptID uint64) (*RunContext, <-chan struc
 	monitor.Lock()
 	defer monitor.Unlock()
 	inflight, ok := monitor.mapping[attemptID]
-	if ok {
-		// Try to signal that the runner has connected, unless it was already
-		// signalled before.
-		select {
-		case inflight.connected <- struct{}{}:
-		default:
-		}
-		return inflight.run, inflight.timeout, ok
+	if !ok {
+		return nil, nil, ok
 	}
-	return nil, nil, ok
+	// Try to signal that the runner has connected, unless it was already
+	// signalled before.
+	select {
+	case inflight.connected <- struct{}{}:
+	default:
+	}
+	return inflight.runCtx, inflight.timeout, ok
 }
 
 // Remove removes the specified attempt ID from the in-flight runs and signals
@@ -726,12 +728,12 @@ func (monitor *InflightMonitor) Remove(attemptID uint64) {
 	defer monitor.Unlock()
 	inflight, ok := monitor.mapping[attemptID]
 	if ok {
-		inflight.run.queueManager.AddEvent(&QueueEvent{
-			Delta:    time.Now().Sub(inflight.run.QueueTime),
-			Priority: inflight.run.Priority,
+		inflight.runCtx.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(inflight.runCtx.RunInfo.QueueTime),
+			Priority: inflight.runCtx.RunInfo.Priority,
 			Type:     QueueEventTypeQueueRemoved,
 		})
-		inflight.run.monitor = nil
+		inflight.runCtx.monitor = nil
 		select {
 		// Try to signal that the run has been connected.
 		case inflight.connected <- struct{}{}:
@@ -757,10 +759,10 @@ func (monitor *InflightMonitor) GetRunData() []*RunData {
 	for attemptID, inflight := range monitor.mapping {
 		data[idx] = &RunData{
 			AttemptID:    attemptID,
-			ID:           inflight.run.ID,
-			GUID:         inflight.run.GUID,
-			Queue:        inflight.run.queue.Name,
-			AttemptsLeft: inflight.run.tries,
+			ID:           inflight.runCtx.RunInfo.ID,
+			GUID:         inflight.runCtx.RunInfo.GUID,
+			Queue:        inflight.runCtx.queue.Name,
+			AttemptsLeft: inflight.runCtx.attemptsLeft,
 			Runner:       inflight.runner,
 			Time:         inflight.creationTime.Unix(),
 			Elapsed:      now.Sub(inflight.creationTime).Nanoseconds(),
