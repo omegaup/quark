@@ -213,13 +213,13 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			// The run either finished correctly or encountered a fatal error.
 			// Close the context and write the results to disk.
 			runCtx.Close()
-		} else {
-			runCtx.Log.Error("run errored out. retrying", "context", runCtx)
-			// status is OK only when the runner successfully sent a JE verdict.
-			lastAttempt := result.status == http.StatusOK
-			if !runCtx.Requeue(lastAttempt) {
-				runCtx.Log.Error("run errored out too many times. giving up")
-			}
+			return
+		}
+		runCtx.Log.Error("run errored out. retrying", "context", runCtx)
+		// status is OK only when the runner successfully sent a JE verdict.
+		lastAttempt := result.status == http.StatusOK
+		if !runCtx.Requeue(lastAttempt) {
+			ctx.Log.Error("run errored out too many times. giving up")
 		}
 	}), time.Duration(5*time.Minute), "Request timed out"))
 

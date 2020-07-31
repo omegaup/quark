@@ -1028,6 +1028,10 @@ func Grade(
 						chosenMetadata.Verdict = "OLE"
 					} else if parentMetadata.Verdict == "TLE" {
 						chosenMetadata.Verdict = "TLE"
+					} else if parentMetadata.Verdict == "RTE" {
+						// The parent explicitly died. Let's mark the run as not being the
+						// fault of the user.
+						chosenMetadata.Verdict = "VE"
 					} else if parentMetadata.ExitStatus == 239 {
 						// Child died before finishing message
 						chosenMetadata.Verdict = "RTE"
@@ -1045,7 +1049,10 @@ func Grade(
 						// Child unexpectedly closed the pipe.
 						chosenMetadata.Verdict = "RTE"
 					} else {
-						chosenMetadata.Verdict = "JE"
+						// This is probably the user's fault, but let's not guess this and
+						// mark this explicitly as being the validator's fault so that the
+						// problemsetter can fix this.
+						chosenMetadata.Verdict = "VE"
 					}
 				}
 

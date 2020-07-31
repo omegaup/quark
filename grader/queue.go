@@ -359,6 +359,7 @@ func (runCtx *RunContext) Close() {
 		runCtx.Log.Warn("Attempting to close an already closed run")
 		return
 	}
+	runCtx.Log.Info("Marking run as done", "context", runCtx)
 	defer func() {
 		runCtx.queueManager.AddEvent(&QueueEvent{
 			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
@@ -456,6 +457,7 @@ func (runCtx *RunContext) Requeue(lastAttempt bool) bool {
 	}
 	runCtx.attemptsLeft--
 	if runCtx.attemptsLeft <= 0 {
+		runCtx.Log.Error("run errored out too many times. giving up")
 		runCtx.Close()
 		return false
 	}
@@ -470,6 +472,7 @@ func (runCtx *RunContext) Requeue(lastAttempt bool) bool {
 	// queue.
 	if !runCtx.queue.enqueue(runCtx, QueuePriorityHigh) {
 		// That queue is full. We've exhausted all our options, bail out.
+		runCtx.Log.Error("The high-priority queue is full. giving up")
 		runCtx.Close()
 		return false
 	}
