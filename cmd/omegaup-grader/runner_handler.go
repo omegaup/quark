@@ -35,6 +35,7 @@ func processRun(
 		runCtx.Log.Error("Unable to create grade dir", "err", err, "runner", runnerName)
 		return &processRunStatus{http.StatusInternalServerError, false}
 	}
+	runCtx.RunInfo.Result.JudgedBy = runnerName
 
 	multipartReader, err := r.MultipartReader()
 	if err != nil {

@@ -508,7 +508,7 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 	client := &http.Client{Transport: transport}
 
 	finishedRunsChan := make(chan *grader.RunInfo, 1)
-	ctx.InflightMonitor.PostProcessor.AddListener(finishedRunsChan)
+	ctx.QueueManager.PostProcessor.AddListener(finishedRunsChan)
 	go runPostProcessor(ctx, db, finishedRunsChan, client)
 
 	mux.Handle("/metrics", promhttp.Handler())
