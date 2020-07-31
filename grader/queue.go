@@ -367,11 +367,12 @@ func (runCtx *RunContext) Close() {
 			Type:     QueueEventTypeManagerRemoved,
 		})
 
+		close(runCtx.runWaitHandle.ready)
+		runCtx.queueManager.PostProcessor.PostProcess(runCtx.RunInfo)
+
 		runCtx.Context.Close()
 	}()
-	var postProcessor *RunPostProcessor
 	if runCtx.monitor != nil {
-		postProcessor = runCtx.monitor.PostProcessor
 		runCtx.monitor.Remove(runCtx.RunInfo.Run.AttemptID)
 	}
 	if runCtx.inputRef != nil {
@@ -440,11 +441,6 @@ func (runCtx *RunContext) Close() {
 			runCtx.Log.Error("Unable to finalize traces", "err", err)
 			return
 		}
-	}
-
-	close(runCtx.runWaitHandle.ready)
-	if postProcessor != nil {
-		postProcessor.PostProcess(runCtx.RunInfo)
 	}
 }
 
@@ -601,7 +597,6 @@ type InflightRun struct {
 // a runner) and tracks their state in case the runner becomes unresponsive.
 type InflightMonitor struct {
 	sync.Mutex
-	PostProcessor  *RunPostProcessor
 	mapping        map[uint64]*InflightRun
 	connectTimeout time.Duration
 	readyTimeout   time.Duration
@@ -621,14 +616,11 @@ type RunData struct {
 
 // NewInflightMonitor returns a new InflightMonitor.
 func NewInflightMonitor() *InflightMonitor {
-	monitor := &InflightMonitor{
-		PostProcessor:  NewRunPostProcessor(),
+	return &InflightMonitor{
 		mapping:        make(map[uint64]*InflightRun),
 		connectTimeout: time.Duration(10) * time.Minute,
 		readyTimeout:   time.Duration(10) * time.Minute,
 	}
-	go monitor.PostProcessor.run()
-	return monitor
 }
 
 // Add creates an InflightRun wrapper for the specified RunContext, adds it to
@@ -866,6 +858,8 @@ type queueEventListener struct {
 // QueueManager is an expvar-friendly manager for Queues.
 type QueueManager struct {
 	sync.Mutex
+	PostProcessor *RunPostProcessor
+
 	mapping       map[string]*Queue
 	channelLength int
 	events        chan *QueueEvent
@@ -881,6 +875,7 @@ type QueueInfo struct {
 // NewQueueManager creates a new QueueManager.
 func NewQueueManager(channelLength int, graderRuntimePath string) *QueueManager {
 	manager := &QueueManager{
+		PostProcessor: NewRunPostProcessor(),
 		mapping:       make(map[string]*Queue),
 		channelLength: channelLength,
 		events:        make(chan *QueueEvent, 1),
@@ -889,6 +884,7 @@ func NewQueueManager(channelLength int, graderRuntimePath string) *QueueManager 
 	}
 	manager.Add(DefaultQueueName)
 	go manager.run()
+	go manager.PostProcessor.run()
 	return manager
 }
 
@@ -966,6 +962,7 @@ func (manager *QueueManager) AddEvent(event *QueueEvent) {
 // Close terminates the event listener goroutine.
 func (manager *QueueManager) Close() {
 	close(manager.events)
+	manager.PostProcessor.Close()
 }
 
 func (manager *QueueManager) run() {

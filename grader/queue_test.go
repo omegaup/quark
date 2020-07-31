@@ -139,6 +139,40 @@ func TestQueue(t *testing.T) {
 	}
 }
 
+func TestQueueRetry(t *testing.T) {
+	ctx, err := newGraderContext(t)
+	if err != nil {
+		t.Fatalf("GraderContext creation failed with %q", err)
+	}
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
+
+	queue, err := ctx.QueueManager.Get(DefaultQueueName)
+	if err != nil {
+		t.Fatalf("default queue not found")
+	}
+
+	listener := newListener()
+	ctx.QueueManager.PostProcessor.AddListener(listener.c)
+
+	closeNotifier := make(chan bool, 1)
+	addRun(t, ctx, queue, QueuePriorityNormal)
+	runCtx, _, _ := queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
+	if !runCtx.Requeue(true) {
+		t.Fatalf("unable to retry run")
+	}
+	if runCtx.Requeue(true) {
+		t.Fatalf("run requeued even though it was marked as last attempt previously")
+	}
+	ctx.Close()
+
+	<-listener.done
+	if listener.processed != 1 {
+		t.Fatalf("listener.processed == %d, want %d", listener.processed, 1)
+	}
+}
+
 func TestQueuePriorities(t *testing.T) {
 	ctx, err := newGraderContext(t)
 	if err != nil {
