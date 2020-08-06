@@ -235,28 +235,132 @@ func runPostProcessor(
 	}
 }
 
-func getPendingRuns(ctx *grader.Context, db *sql.DB) ([]int64, error) {
-	rows, err := db.Query(
-		`SELECT
-			run_id
-		FROM
+func runQueueLoop(
+	ctx *grader.Context,
+	runs *grader.Queue,
+	db *sql.DB,
+	newRuns <-chan struct{},
+) {
+	ctx.Log.Info("Starting run queue loop")
+	_, err := db.Exec(
+		`
+		UPDATE
 			Runs
+		SET
+			status = 'new'
 		WHERE
-			status != 'ready';`)
+			status != 'ready';
+		`)
 	if err != nil {
-		return nil, err
+		ctx.Log.Error("Failed to reset pending runs", "err", err)
 	}
-	defer rows.Close()
-	var runIds []int64
-	for rows.Next() {
-		var runID int64
-		err = rows.Scan(&runID)
-		if err != nil {
-			return nil, err
+
+	var maxRunID int64
+	err = db.QueryRow(
+		`SELECT
+			MAX(r.run_id)
+		FROM
+			Runs r;
+		`).Scan(
+		&maxRunID,
+	)
+	if err != nil {
+		ctx.Log.Error("Failed to get the max run ID", "err", err)
+	}
+	ctx.Log.Debug("Max run ID found", "maxRunID", maxRunID)
+
+	for range newRuns {
+		ctx.Log.Debug("New run in the queue")
+		totalRunsInRound := 0
+		// Every time a new notification arrives, continuously get all the new runs
+		// from the database until there's nothing new.
+		hasNewRuns := true
+		for hasNewRuns {
+			hasNewRuns = false
+			rows, err := db.Query(
+				`
+			(
+				SELECT
+					run_id
+				FROM
+					Runs
+				WHERE
+					status = 'new'
+				AND
+					run_id > ?
+				ORDER BY
+					run_id
+			)
+			UNION
+			(
+				SELECT
+					run_id
+				FROM
+					Runs
+				WHERE
+					status = 'new'
+				AND
+					run_id <= ?
+				ORDER BY
+					run_id
+			)
+			LIMIT 128;
+			`,
+				maxRunID,
+				maxRunID,
+			)
+			if err != nil {
+				ctx.Log.Error("Failed to get new runs", "err", err)
+				break
+			}
+			for rows.Next() {
+				hasNewRuns = true
+				var runID int64
+				err = rows.Scan(&runID)
+				_, err := db.Exec(
+					`
+				UPDATE
+					Runs
+				SET
+					status = 'waiting'
+				WHERE
+					run_id = ?;
+				`,
+					runID)
+				if err != nil {
+					ctx.Log.Error("Failed to mark a run as waiting", "err", err)
+					continue
+				}
+				runInfo, err := newRunInfoFromID(ctx, db, runID)
+				if err != nil {
+					ctx.Log.Error(
+						"Error getting run information",
+						"err", err,
+						"runId", runID,
+					)
+					continue
+				}
+
+				priority := grader.QueuePriorityNormal
+				if maxRunID >= runID {
+					priority = grader.QueuePriorityLow
+				} else {
+					maxRunID = runID
+				}
+				if err := injectRuns(
+					ctx,
+					runs,
+					priority,
+					runInfo,
+				); err != nil {
+					ctx.Log.Error("Error injecting run", "runId", runID, "err", err)
+				}
+				totalRunsInRound++
+			}
+			rows.Close()
 		}
-		runIds = append(runIds, runID)
+		ctx.Log.Debug("Round finished", "runs processed", totalRunsInRound)
 	}
-	return runIds, nil
 }
 
 // gradeDir gets the new-style Run ID-based path.
@@ -437,41 +541,17 @@ func broadcast(
 	return nil
 }
 
-func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB) {
+func registerFrontendHandlers(
+	ctx *grader.Context,
+	mux *http.ServeMux,
+	newRuns chan struct{},
+	db *sql.DB,
+) {
 	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
-	runIds, err := getPendingRuns(ctx, db)
-	if err != nil {
-		ctx.Log.Error("Failed to read pending runs", "err", err)
-	}
-	// Don't block while the runs are being injected. This prevents potential
-	// deadlocks where there are more runs than what the queue can hold, and the
-	// queue cannot be drained unless the transport is connected.
-	go func() {
-		ctx.Log.Info("Injecting pending runs", "count", len(runIds))
-		for _, runID := range runIds {
-			runInfo, err := newRunInfoFromID(ctx, db, runID)
-			if err != nil {
-				ctx.Log.Error(
-					"Error getting run information",
-					"err", err,
-					"runId", runID,
-				)
-				continue
-			}
-			if err := injectRuns(
-				ctx,
-				runs,
-				grader.QueuePriorityNormal,
-				runInfo,
-			); err != nil {
-				ctx.Log.Error("Error injecting run", "runId", runID, "err", err)
-			}
-		}
-		ctx.Log.Info("Injected pending runs", "count", len(runIds))
-	}()
+	go runQueueLoop(ctx, runs, db, newRuns)
 
 	transport := &http.Transport{
 		Dial: (&net.Dialer{
@@ -602,13 +682,19 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 		}
 		defer f.Close()
 
-		io.Copy(f, r.Body)
-
-		if err = injectRuns(ctx, runs, grader.QueuePriorityNormal, runInfo); err != nil {
-			ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "internal server error", "err", err)
+		if _, err := io.Copy(f, r.Body); err != nil {
+			ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "failed to copy submission", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+
+		// Try to notify the channel that there's something new. If it has already
+		// been notified, do nothing.
+		select {
+		case newRuns <- struct{}{}:
+		default:
+		}
+
 		ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "ok")
 		w.WriteHeader(http.StatusOK)
 	})
@@ -624,28 +710,14 @@ func registerFrontendHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.D
 			return
 		}
 		ctx.Log.Info("/run/grade/", "request", request)
-		priority := grader.QueuePriorityNormal
-		if request.Rejudge || request.Debug {
-			priority = grader.QueuePriorityLow
+
+		// Try to notify the channel that there's something new. If it has already
+		// been notified, do nothing.
+		select {
+		case newRuns <- struct{}{}:
+		default:
 		}
-		var runInfos []*grader.RunInfo
-		for _, runID := range request.RunIDs {
-			runInfo, err := newRunInfoFromID(ctx, db, runID)
-			if err != nil {
-				ctx.Log.Error(
-					"Error getting run info",
-					"err", err,
-					"run id", runID,
-				)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			runInfos = append(runInfos, runInfo)
-		}
-		if err = injectRuns(ctx, runs, priority, runInfos...); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})

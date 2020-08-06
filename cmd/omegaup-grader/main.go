@@ -265,9 +265,14 @@ func main() {
 	graderContext().QueueManager.AddEventListener(queueEventsChan)
 	go queueEventsProcessor(queueEventsChan)
 
+	// A channel that signals that there are pending runs.
+	newRuns := make(chan struct{}, 1)
+	// Seed the channel with one token so that the queue loop can start injecting
+	// runs, even if there are no runs available.
+	newRuns <- struct{}{}
 	{
 		mux := http.DefaultServeMux
-		registerFrontendHandlers(graderContext(), mux, db)
+		registerFrontendHandlers(graderContext(), mux, newRuns, db)
 		shutdowners = append(
 			shutdowners,
 			common.RunServer(
@@ -297,6 +302,7 @@ func main() {
 
 	cancel()
 	wg.Wait()
+	close(newRuns)
 
 	ctx.Close()
 	ctx.Log.Info("Server gracefully stopped.")
