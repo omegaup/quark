@@ -40,7 +40,7 @@ func addRun(
 	runInfo.Priority = priority
 	runInfo.Run.InputHash = inputRef.Input.Hash()
 	runInfo.Run.Source = "print 3"
-	if _, err := queue.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
+	if err := queue.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
 		t.Fatalf("AddRunContext failed with %q", err)
 	}
 

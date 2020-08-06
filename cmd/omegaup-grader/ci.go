@@ -622,11 +622,6 @@ func (h *ciHandler) addRun(
 		h.ctx.Log.Error("Error creating input factory", "err", err)
 		return err
 	}
-	input, err := h.ctx.InputManager.Add(inputFactory.Hash(), inputFactory)
-	if err != nil {
-		h.ctx.Log.Error("Error adding input", "err", err)
-		return err
-	}
 
 	runInfo := grader.NewRunInfo()
 	runInfo.Run.InputHash = inputFactory.Hash()
@@ -650,7 +645,12 @@ func (h *ciHandler) addRun(
 		}
 	}(&committed)
 
-	runWaitHandle, err := runs.AddRun(&h.ctx.Context, runInfo, input)
+	inputRef, err := h.ctx.InputManager.Add(inputFactory.Hash(), inputFactory)
+	if err != nil {
+		h.ctx.Log.Error("Error adding input", "err", err)
+		return err
+	}
+	runWaitHandle, err := runs.AddWaitableRun(&h.ctx.Context, runInfo, inputRef)
 	if err != nil {
 		h.ctx.Log.Error("Failed to add run", "err", err)
 		return err

@@ -4,6 +4,7 @@ import (
 	"github.com/omegaup/quark/common"
 	"io"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -51,6 +52,9 @@ func NewContext(reader io.Reader) (*Context, error) {
 	}
 	libinteractiveVersion, err := GetLibinteractiveVersion()
 	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(ctx.Config.Grader.RuntimePath, 0755); err != nil {
 		return nil, err
 	}
 	var context = &Context{

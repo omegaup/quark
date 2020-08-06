@@ -126,12 +126,6 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		}
 		return inputFactoryErr
 	}
-	input, err := h.ctx.InputManager.Add(inputFactory.Hash(), inputFactory)
-	if err != nil {
-		h.ctx.Log.Error("Error adding input", "err", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return err
-	}
 
 	runInfo := grader.NewRunInfo()
 	runInfo.Run.InputHash = inputFactory.Hash()
@@ -155,10 +149,16 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		}
 	}(&committed)
 
-	runWaitHandle, err := runs.AddRun(&h.ctx.Context, runInfo, input)
+	inputRef, err := h.ctx.InputManager.Add(inputFactory.Hash(), inputFactory)
+	if err != nil {
+		h.ctx.Log.Error("Error adding input", "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return err
+	}
+	runWaitHandle, err := runs.AddWaitableRun(&h.ctx.Context, runInfo, inputRef)
 	if err != nil {
 		h.ctx.Log.Error("Failed to add run context", "err", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusServiceUnavailable)
 		return err
 	}
 
