@@ -390,7 +390,7 @@ func injectRuns(
 		}
 		ctx.Log.Info("RunContext", "runInfo", runInfo)
 		ctx.Metrics.CounterAdd("grader_runs_total", 1)
-		input, err := ctx.InputManager.Add(
+		inputRef, err := ctx.InputManager.Add(
 			runInfo.Run.InputHash,
 			grader.NewInputFactory(
 				runInfo.Run.ProblemName,
@@ -401,7 +401,7 @@ func injectRuns(
 			ctx.Log.Error("Error getting input", "err", err, "run", runInfo)
 			return err
 		}
-		if _, err = runs.AddRun(&ctx.Context, runInfo, input); err != nil {
+		if err = runs.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
 			ctx.Log.Error("Error adding run information", "err", err, "runId", runInfo.ID)
 			return err
 		}

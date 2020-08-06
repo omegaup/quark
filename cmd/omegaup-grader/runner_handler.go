@@ -183,15 +183,16 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 		)
 		if !ok {
 			ctx.Log.Debug("client gone", "client", runnerName)
-		} else {
-			runCtx.Log.Debug("served run", "run", runCtx, "client", runnerName)
-			w.Header().Set("Content-Type", "text/json; charset=utf-8")
-			ev := runCtx.EventFactory.NewIssuerClockSyncEvent()
-			w.Header().Set("Sync-ID", strconv.FormatUint(ev.SyncID, 10))
-			encoder := json.NewEncoder(w)
-			encoder.Encode(runCtx.RunInfo.Run)
-			runCtx.EventCollector.Add(ev)
+			return
 		}
+
+		runCtx.Log.Debug("served run", "run", runCtx, "client", runnerName)
+		w.Header().Set("Content-Type", "text/json; charset=utf-8")
+		ev := runCtx.EventFactory.NewIssuerClockSyncEvent()
+		w.Header().Set("Sync-ID", strconv.FormatUint(ev.SyncID, 10))
+		encoder := json.NewEncoder(w)
+		encoder.Encode(runCtx.RunInfo.Run)
+		runCtx.EventCollector.Add(ev)
 	})
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
@@ -236,7 +237,10 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 		hash := res[2]
 		var inputRef *common.InputRef
 		if problemName == "" {
-			inputRef, err = ctx.InputManager.Add(hash, &common.CacheOnlyInputFactoryForTesting{})
+			inputRef, err = ctx.InputManager.Add(
+				hash,
+				&common.CacheOnlyInputFactoryForTesting{},
+			)
 		} else {
 			inputRef, err = ctx.InputManager.Add(
 				hash,

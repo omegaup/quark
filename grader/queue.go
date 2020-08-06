@@ -18,6 +18,7 @@ import (
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
+	"github.com/pkg/errors"
 )
 
 // QueuePriority represents the relative priority of a queue with respect with
@@ -324,7 +325,7 @@ type RunContext struct {
 	queueManager *QueueManager
 	monitor      *InflightMonitor
 
-	runWaitHandle RunWaitHandle
+	runWaitHandle *RunWaitHandle
 }
 
 // NewRunInfo returns an empty RunInfo.
@@ -367,7 +368,9 @@ func (runCtx *RunContext) Close() {
 			Type:     QueueEventTypeManagerRemoved,
 		})
 
-		close(runCtx.runWaitHandle.ready)
+		if runCtx.runWaitHandle != nil {
+			close(runCtx.runWaitHandle.ready)
+		}
 		runCtx.queueManager.PostProcessor.PostProcess(runCtx.RunInfo)
 
 		runCtx.Context.Close()
@@ -523,6 +526,44 @@ func (queue *Queue) AddRun(
 	ctx *common.Context,
 	runInfo *RunInfo,
 	inputRef *common.InputRef,
+) error {
+	runCtx := &RunContext{
+		RunInfo:  runInfo,
+		Context:  ctx.DebugContext("id", runInfo.ID),
+		inputRef: inputRef,
+
+		attemptsLeft: ctx.Config.Grader.MaxGradeRetries,
+		queueManager: queue.queueManager,
+	}
+
+	runCtx.queueManager.AddEvent(&QueueEvent{
+		Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+		Priority: runCtx.RunInfo.Priority,
+		Type:     QueueEventTypeManagerAdded,
+	})
+
+	if runInfo.Priority == QueuePriorityEphemeral {
+		if !queue.enqueue(runCtx, runInfo.Priority) {
+			runCtx.Close()
+			return errors.New("The ephemeral queue is full. giving up")
+		}
+	} else {
+		// Any run that is not intended for the ephemeral queue blocks until the
+		// queue is ready to accept more runs.
+		queue.enqueueBlocking(runCtx)
+	}
+
+	return nil
+}
+
+// AddWaitableRun adds a new RunContext to the current Queue, and returns a
+// RunWaitHandle so the caller can wait for the run state changes. If the
+// desired queue is full, there is no retry mechanism and the run is
+// immediately given up.
+func (queue *Queue) AddWaitableRun(
+	ctx *common.Context,
+	runInfo *RunInfo,
+	inputRef *common.InputRef,
 ) (*RunWaitHandle, error) {
 	runCtx := &RunContext{
 		RunInfo:  runInfo,
@@ -531,7 +572,7 @@ func (queue *Queue) AddRun(
 
 		attemptsLeft: ctx.Config.Grader.MaxGradeRetries,
 		queueManager: queue.queueManager,
-		runWaitHandle: RunWaitHandle{
+		runWaitHandle: &RunWaitHandle{
 			running: make(chan struct{}),
 			ready:   make(chan struct{}),
 		},
@@ -543,11 +584,12 @@ func (queue *Queue) AddRun(
 		Type:     QueueEventTypeManagerAdded,
 	})
 
-	// TODO(lhchavez): Add async events for queue operations.
-	// Add new runs to the normal priority by default.
-	queue.enqueueBlocking(runCtx)
+	if !queue.enqueue(runCtx, runInfo.Priority) {
+		runCtx.Close()
+		return nil, errors.New("The queue is full")
+	}
 
-	return &runCtx.runWaitHandle, nil
+	return runCtx.runWaitHandle, nil
 }
 
 // enqueueBlocking adds a run to the queue, waits if needed.
@@ -630,7 +672,7 @@ func (monitor *InflightMonitor) Add(
 	runCtx *RunContext,
 	runner string,
 ) *InflightRun {
-	if atomic.SwapInt32(&runCtx.runningFlag, 1) == 0 {
+	if atomic.SwapInt32(&runCtx.runningFlag, 1) == 0 && runCtx.runWaitHandle != nil {
 		close(runCtx.runWaitHandle.running)
 	}
 	monitor.Lock()
