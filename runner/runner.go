@@ -357,9 +357,10 @@ func parseOutputOnlyFile(
 			)
 			continue
 		}
-		defer rc.Close()
 		var buf bytes.Buffer
-		if _, err := io.Copy(&buf, rc); err != nil {
+		_, err = io.Copy(&buf, rc)
+		rc.Close()
+		if err != nil {
 			ctx.Log.Info(
 				"Error reading file",
 				"name", f.FileHeader.Name,
@@ -1174,7 +1175,6 @@ func Grade(
 					ctx.Log.Warn("Error opening contestant file", "path", contestantPath, "err", err)
 					continue
 				}
-				defer contestantFd.Close()
 				expectedPath := path.Join(
 					input.Path(), "cases", fmt.Sprintf("%s.out", caseData.Name),
 				)
@@ -1184,15 +1184,17 @@ func Grade(
 				}
 				expectedFd, err := os.Open(expectedPath)
 				if err != nil {
+					contestantFd.Close()
 					ctx.Log.Warn("Error opening expected file", "path", expectedPath, "err", err)
 					continue
 				}
-				defer expectedFd.Close()
 				runScore, _, err := CalculateScore(
 					&settings.Validator,
 					expectedFd,
 					contestantFd,
 				)
+				contestantFd.Close()
+				expectedFd.Close()
 				if err != nil {
 					ctx.Log.Debug(
 						"error comparing values",
@@ -1316,16 +1318,18 @@ func createZipFile(runRoot string, files []string) (string, error) {
 		if err != nil {
 			continue
 		}
-		defer f.Close()
 		zf, err := zip.Create(file)
 		if err != nil {
+			f.Close()
 			zip.Close()
 			return zipPath, err
 		}
 		if _, err := io.Copy(zf, f); err != nil {
+			f.Close()
 			zip.Close()
 			return zipPath, err
 		}
+		f.Close()
 	}
 	return zipPath, zip.Close()
 }
