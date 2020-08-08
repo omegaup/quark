@@ -222,8 +222,9 @@ var (
 	VerdictList = []string{
 		"JE",
 		"CE",
-		"MLE",
 		"RFE",
+		"VE",
+		"MLE",
 		"RTE",
 		"TLE",
 		"OLE",
