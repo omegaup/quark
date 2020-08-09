@@ -456,6 +456,11 @@ func (runCtx *RunContext) Requeue(lastAttempt bool) bool {
 	}
 	runCtx.attemptsLeft--
 	if runCtx.attemptsLeft <= 0 {
+		runCtx.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+			Priority: runCtx.RunInfo.Priority,
+			Type:     QueueEventTypeAbandoned,
+		})
 		runCtx.Log.Error("run errored out too many times. giving up")
 		runCtx.Close()
 		return false
@@ -471,10 +476,20 @@ func (runCtx *RunContext) Requeue(lastAttempt bool) bool {
 	// queue.
 	if !runCtx.queue.enqueue(runCtx, QueuePriorityHigh) {
 		// That queue is full. We've exhausted all our options, bail out.
+		runCtx.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+			Priority: runCtx.RunInfo.Priority,
+			Type:     QueueEventTypeAbandoned,
+		})
 		runCtx.Log.Error("The high-priority queue is full. giving up")
 		runCtx.Close()
 		return false
 	}
+	runCtx.queueManager.AddEvent(&QueueEvent{
+		Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+		Priority: runCtx.RunInfo.Priority,
+		Type:     QueueEventTypeRetried,
+	})
 	return true
 }
 
@@ -724,20 +739,7 @@ func (monitor *InflightMonitor) timeout(
 	timeout chan<- struct{},
 ) {
 	runCtx.Log.Error("run timed out. retrying", "context", runCtx)
-	if runCtx.Requeue(false) {
-		runCtx.queueManager.AddEvent(&QueueEvent{
-			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
-			Priority: runCtx.RunInfo.Priority,
-			Type:     QueueEventTypeRetried,
-		})
-	} else {
-		runCtx.queueManager.AddEvent(&QueueEvent{
-			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
-			Priority: runCtx.RunInfo.Priority,
-			Type:     QueueEventTypeAbandoned,
-		})
-		runCtx.Log.Error("run timed out too many times. giving up")
-	}
+	runCtx.Requeue(false)
 	timeout <- struct{}{}
 }
 
