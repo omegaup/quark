@@ -220,9 +220,7 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 		runCtx.Log.Error("run errored out. retrying", "context", runCtx)
 		// status is OK only when the runner successfully sent a JE verdict.
 		lastAttempt := result.status == http.StatusOK
-		if !runCtx.Requeue(lastAttempt) {
-			ctx.Log.Error("run errored out too many times. giving up")
-		}
+		runCtx.Requeue(lastAttempt)
 	}), time.Duration(5*time.Minute), "Request timed out"))
 
 	inputRe := regexp.MustCompile("/input/(?:([a-zA-Z0-9_-]*)/)?([a-f0-9]{40})/?")
