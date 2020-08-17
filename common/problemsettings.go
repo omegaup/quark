@@ -1,13 +1,19 @@
 package common
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math/big"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
 	base "github.com/omegaup/go-base"
 	"github.com/pkg/errors"
-	"math/big"
-	"time"
 )
 
 // LimitsSettings represents runtime limits for the Input.
@@ -234,3 +240,112 @@ var (
 		"OK",
 	}
 )
+
+// CaseWeightMapping is a map representation of []GroupSettings, to make it
+// possible to build it incrementally from a list of files or from a testplan
+// file.
+type CaseWeightMapping map[string]map[string]*big.Rat
+
+// NewCaseWeightMapping returns an empty CaseWeightMapping.
+func NewCaseWeightMapping() CaseWeightMapping {
+	return make(CaseWeightMapping)
+}
+
+// NewCaseWeightMappingFromTestplan returns the CaseWeightMapping representation of
+// the testplan.
+func NewCaseWeightMappingFromTestplan(testplan io.Reader) (CaseWeightMapping, error) {
+	matcher := regexp.MustCompile("^\\s*([^#[:space:]]+)\\s+([0-9.]+)\\s*$")
+	s := bufio.NewScanner(testplan)
+	caseWeightMapping := NewCaseWeightMapping()
+
+	for s.Scan() {
+		tokens := matcher.FindStringSubmatch(s.Text())
+		if len(tokens) != 3 {
+			continue
+		}
+
+		caseName := tokens[1]
+		weight, err := base.ParseRational(tokens[2])
+		if err != nil {
+			return nil, errors.Wrapf(
+				err,
+				"invalid weight '%s'",
+				tokens[2],
+			)
+		}
+
+		caseWeightMapping.AddCaseName(caseName, weight, true)
+	}
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+
+	return caseWeightMapping, nil
+}
+
+// AddCaseName adds a case to the CaseWeightMapping.
+func (c CaseWeightMapping) AddCaseName(
+	caseName string,
+	weight *big.Rat,
+	overwrite bool,
+) {
+	groupComponents := strings.SplitN(caseName, ".", 2)
+	groupName := groupComponents[0]
+	if _, ok := c[groupName]; !ok {
+		c[groupName] = make(map[string]*big.Rat)
+	}
+	if _, ok := c[groupName][caseName]; !ok || overwrite {
+		// Only add the weight if there is no previous entry or if it should be
+		// overwritten.
+		c[groupName][caseName] = weight
+	}
+}
+
+// SymmetricDiff returns an error if the entries in the current
+// CaseWeightMapping are not all present in the other CaseWeightMapping.
+func (c CaseWeightMapping) SymmetricDiff(
+	otherMapping CaseWeightMapping,
+	leftName string,
+) error {
+	for groupName, aGroup := range c {
+		bGroup, ok := otherMapping[groupName]
+		if !ok {
+			bGroup = nil
+		}
+
+		for caseName := range aGroup {
+			if _, ok = bGroup[caseName]; !ok {
+				return errors.Errorf(
+					"%s missing case %q",
+					leftName,
+					caseName,
+				)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToGroupSettings converts the CaseWeightMapping into the []GroupSettings
+// representation.
+func (c CaseWeightMapping) ToGroupSettings() []GroupSettings {
+	groupSettings := make([]GroupSettings, 0)
+	for groupName, groupContents := range c {
+		var caseSettings []CaseSettings
+		for caseName, caseWeight := range groupContents {
+			caseSettings = append(caseSettings, CaseSettings{
+				Name:   caseName,
+				Weight: caseWeight,
+			})
+		}
+		sort.Sort(ByCaseName(caseSettings))
+
+		groupSettings = append(groupSettings, GroupSettings{
+			Name:  groupName,
+			Cases: caseSettings,
+		})
+	}
+	sort.Sort(ByGroupName(groupSettings))
+	return groupSettings
+}
