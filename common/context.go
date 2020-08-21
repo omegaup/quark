@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/inconshreveable/log15"
@@ -215,6 +216,7 @@ func (config *Config) String() string {
 
 // A Context holds data associated with a single request.
 type Context struct {
+	Context         context.Context
 	Config          Config
 	Log             log15.Logger
 	EventCollector  EventCollector
@@ -247,7 +249,8 @@ func NewConfig(reader io.Reader) (*Config, error) {
 // disambiguate process names in the tracing in case multiple roles run from
 // the same host (e.g. grader and runner in the development VM).
 func NewContext(config *Config, role string) (*Context, error) {
-	var context = Context{
+	var ctx = Context{
+		Context: context.Background(),
 		Config:  *config,
 		Metrics: &base.NoOpMetrics{},
 	}
@@ -255,23 +258,23 @@ func NewContext(config *Config, role string) (*Context, error) {
 	// Logging
 	if config.Logging.File != "" {
 		var err error
-		if context.Log, err = base.RotatingLog(
-			context.Config.Logging.File,
-			context.Config.Logging.Level,
+		if ctx.Log, err = base.RotatingLog(
+			ctx.Config.Logging.File,
+			ctx.Config.Logging.Level,
 		); err != nil {
 			return nil, err
 		}
 	} else if config.Logging.Level == "debug" {
-		context.Log = base.StderrLog()
+		ctx.Log = base.StderrLog()
 	} else {
-		context.Log = log15.New()
-		context.Log.SetHandler(base.ErrorCallerStackHandler(log15.LvlInfo, log15.StderrHandler))
+		ctx.Log = log15.New()
+		ctx.Log.SetHandler(base.ErrorCallerStackHandler(log15.LvlInfo, log15.StderrHandler))
 	}
 
 	// Tracing
-	if context.Config.Tracing.Enabled {
+	if ctx.Config.Tracing.Enabled {
 		tracingFile, err := base.NewRotatingFile(
-			context.Config.Tracing.File,
+			ctx.Config.Tracing.File,
 			0644,
 			func(tracingFile *os.File, isEmpty bool) error {
 				_, err := tracingFile.Write([]byte("[\n"))
@@ -281,21 +284,21 @@ func NewContext(config *Config, role string) (*Context, error) {
 		if err != nil {
 			return nil, err
 		}
-		context.EventCollector = NewWriterEventCollector(tracingFile)
+		ctx.EventCollector = NewWriterEventCollector(tracingFile)
 	} else {
-		context.EventCollector = &NullEventCollector{}
+		ctx.EventCollector = &NullEventCollector{}
 	}
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "main"
 	}
-	context.EventFactory = NewEventFactory(
+	ctx.EventFactory = NewEventFactory(
 		fmt.Sprintf("%s (%s)", hostname, role),
 		"main",
 	)
-	context.EventFactory.Register(context.EventCollector)
+	ctx.EventFactory.Register(ctx.EventCollector)
 
-	return &context, nil
+	return &ctx, nil
 }
 
 // NewContextFromReader creates a new Context from the specified reader. This
@@ -309,9 +312,9 @@ func NewContextFromReader(reader io.Reader, role string) (*Context, error) {
 }
 
 // Close releases all resources owned by the context.
-func (context *Context) Close() {
-	context.EventCollector.Close()
-	if closer, ok := context.Log.GetHandler().(io.Closer); ok {
+func (ctx *Context) Close() {
+	ctx.EventCollector.Close()
+	if closer, ok := ctx.Log.GetHandler().(io.Closer); ok {
 		closer.Close()
 	}
 }
@@ -319,19 +322,20 @@ func (context *Context) Close() {
 // DebugContext returns a new Context with an additional handler with a more
 // verbose filter (using the Debug level) and a Buffer in which all logging
 // statements will be (also) written to.
-func (context *Context) DebugContext(logCtx ...interface{}) *Context {
+func (ctx *Context) DebugContext(logCtx ...interface{}) *Context {
 	var buffer bytes.Buffer
 	childContext := &Context{
-		Config:          context.Config,
-		Log:             context.Log.New(logCtx...),
+		Context:         ctx.Context,
+		Config:          ctx.Config,
+		Log:             ctx.Log.New(logCtx...),
 		logBuffer:       &buffer,
 		memoryCollector: NewMemoryEventCollector(),
-		EventFactory:    context.EventFactory,
-		Metrics:         context.Metrics,
+		EventFactory:    ctx.EventFactory,
+		Metrics:         ctx.Metrics,
 	}
 	childContext.EventCollector = NewMultiEventCollector(
 		childContext.memoryCollector,
-		context.EventCollector,
+		ctx.EventCollector,
 	)
 	childContext.EventFactory.Register(childContext.memoryCollector)
 	childContext.Log.SetHandler(log15.MultiHandler(
@@ -339,34 +343,34 @@ func (context *Context) DebugContext(logCtx ...interface{}) *Context {
 			log15.LvlDebug,
 			log15.StreamHandler(&buffer, log15.LogfmtFormat()),
 		),
-		context.Log.GetHandler(),
+		ctx.Log.GetHandler(),
 	))
 	return childContext
 }
 
 // AppendLogSection adds a complete section of logs to the log buffer. This
 // typcally comes from a client.
-func (context *Context) AppendLogSection(sectionName string, contents []byte) {
-	fmt.Fprintf(context.logBuffer, "================  %s  ================\n", sectionName)
-	context.logBuffer.Write(contents)
-	fmt.Fprintf(context.logBuffer, "================ /%s  ================\n", sectionName)
+func (ctx *Context) AppendLogSection(sectionName string, contents []byte) {
+	fmt.Fprintf(ctx.logBuffer, "================  %s  ================\n", sectionName)
+	ctx.logBuffer.Write(contents)
+	fmt.Fprintf(ctx.logBuffer, "================ /%s  ================\n", sectionName)
 }
 
 // LogBuffer returns the contents of the logging buffer for this context.
-func (context *Context) LogBuffer() []byte {
-	if context.logBuffer == nil {
+func (ctx *Context) LogBuffer() []byte {
+	if ctx.logBuffer == nil {
 		return nil
 	}
-	return context.logBuffer.Bytes()
+	return ctx.logBuffer.Bytes()
 }
 
 // TraceBuffer returns a JSON representation of the Trace Event stream for this
 // Context.
-func (context *Context) TraceBuffer() []byte {
-	if context.memoryCollector == nil {
+func (ctx *Context) TraceBuffer() []byte {
+	if ctx.memoryCollector == nil {
 		return nil
 	}
-	data, err := json.Marshal(context.memoryCollector)
+	data, err := json.Marshal(ctx.memoryCollector)
 	if err != nil {
 		return []byte(err.Error())
 	}
