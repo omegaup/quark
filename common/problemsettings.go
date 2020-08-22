@@ -210,6 +210,14 @@ type SolutionSettings struct {
 	Language   string      `json:"language,omitempty"`
 }
 
+// String returns a string representation of the SolutionSettings.
+func (s *SolutionSettings) String() string {
+	if s == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%+v", *s)
+}
+
 // InputsValidatorSettings represents a validator for the .in files.
 type InputsValidatorSettings struct {
 	Filename string `json:"filename"`

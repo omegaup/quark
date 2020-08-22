@@ -48,8 +48,17 @@ type LiteralCaseSettings struct {
 	Weight         *big.Rat `json:"weight"`
 }
 
+var _ fmt.Stringer = &LiteralCaseSettings{}
 var _ json.Marshaler = &LiteralCaseSettings{}
 var _ json.Unmarshaler = &LiteralCaseSettings{}
+
+// String implements the fmt.Stringer interface.
+func (c *LiteralCaseSettings) String() string {
+	if c == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%+v", *c)
+}
 
 // MarshalJSON implements the json.Marshaler interface.
 func (c *LiteralCaseSettings) MarshalJSON() ([]byte, error) {
@@ -145,6 +154,14 @@ type LiteralInput struct {
 	Limits      *LimitsSettings                 `json:"limits,omitempty"`
 	Validator   *LiteralValidatorSettings       `json:"validator,omitempty"`
 	Interactive *LiteralInteractiveSettings     `json:"interactive,omitempty"`
+}
+
+// String implements the fmt.Stringer interface.
+func (i *LiteralInput) String() string {
+	if i == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%+v", *i)
 }
 
 // LiteralRun is a standalone representation of a Run. It is useful for testing

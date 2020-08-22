@@ -71,6 +71,7 @@ type filesystemProblemFiles struct {
 
 var _ ProblemFiles = &filesystemProblemFiles{}
 
+// String implements the fmt.Stringer interface.
 func (f *filesystemProblemFiles) String() string {
 	return f.path
 }
@@ -152,6 +153,7 @@ type gitProblemFiles struct {
 
 var _ ProblemFiles = &gitProblemFiles{}
 
+// String implements the fmt.Stringer interface.
 func (f *gitProblemFiles) String() string {
 	return fmt.Sprintf("%s:%s", f.repo.Path(), f.commitID.String())
 }
@@ -285,6 +287,7 @@ type inMemoryProblemFiles struct {
 
 var _ ProblemFiles = &inMemoryProblemFiles{}
 
+// String implements the fmt.Stringer interface.
 func (f *inMemoryProblemFiles) String() string {
 	return f.name
 }
@@ -345,6 +348,7 @@ type zipProblemFiles struct {
 
 var _ ProblemFiles = &zipProblemFiles{}
 
+// String implements the fmt.Stringer interface.
 func (f *zipProblemFiles) String() string {
 	return f.path
 }
@@ -468,6 +472,7 @@ type chainedProblemFiles struct {
 
 var _ ProblemFiles = &chainedProblemFiles{}
 
+// String implements the fmt.Stringer interface.
 func (f *chainedProblemFiles) String() string {
 	var names []string
 

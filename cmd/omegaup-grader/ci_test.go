@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/omegaup/quark/grader"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +11,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/omegaup/quark/grader"
+	"github.com/omegaup/quark/runner/ci"
 )
 
 func readReport(
@@ -19,8 +21,8 @@ func readReport(
 	ctx *grader.Context,
 	client *http.Client,
 	url string,
-	report *CIReport,
-	excludedStates []CIState,
+	report *ci.Report,
+	excludedStates []ci.State,
 ) {
 	// There is no synchronization between when the ephemeral grader finishes
 	// running and the CI commits the updated results to disk, so we need to poll
@@ -85,29 +87,29 @@ func TestCI(t *testing.T) {
 		t.Fatalf("Failed to parse URL: %s", err)
 	}
 
-	var report CIReport
+	var report ci.Report
 
-	readReport(t, ctx, ts.Client(), requestURL.String(), &report, []CIState{})
+	readReport(t, ctx, ts.Client(), requestURL.String(), &report, []ci.State{})
 
 	for range report.Tests {
 		ctx.Log.Info("Gonna request a run")
 		RunnerRequestRun(t, ctx, ts)
 	}
 
-	readReport(t, ctx, ts.Client(), requestURL.String(), &report, []CIState{CIStateWaiting, CIStateRunning})
+	readReport(t, ctx, ts.Client(), requestURL.String(), &report, []ci.State{ci.StateWaiting, ci.StateRunning})
 
 	// Since the no-op runner always returns AC, it fails the PA test.
-	if report.State != CIStateFailed {
-		t.Errorf("report.State == %q, want %q", report.State, CIStateFailed)
+	if report.State != ci.StateFailed {
+		t.Errorf("report.State == %q, want %q", report.State, ci.StateFailed)
 	}
 	for _, test := range report.Tests {
 		if test.Filename == "solutions/PA.cpp" {
-			if test.State != CIStateFailed {
-				t.Errorf("%s: test.State == %q, want %q", test.Filename, test.State, CIStateFailed)
+			if test.State != ci.StateFailed {
+				t.Errorf("%s: test.State == %q, want %q", test.Filename, test.State, ci.StateFailed)
 			}
 		} else {
-			if test.State != CIStatePassed {
-				t.Errorf("%s: test.State == %q, want %q", test.Filename, test.State, CIStatePassed)
+			if test.State != ci.StatePassed {
+				t.Errorf("%s: test.State == %q, want %q", test.Filename, test.State, ci.StatePassed)
 			}
 		}
 	}
