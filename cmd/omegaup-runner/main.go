@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"math/rand"
 	"net"
 	"net/http"
@@ -29,22 +30,24 @@ import (
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
+	"github.com/omegaup/quark/runner/ci"
+	errors "github.com/pkg/errors"
 	"golang.org/x/net/http2"
 )
 
 var (
 	// One-shot mode: Performs a single operation and exits.
 	oneshot = flag.String("oneshot", "",
-		"Perform one action and return. Valid values are 'benchmark' and 'run'.")
+		"Perform one action and return. Valid values are 'benchmark', 'run', and 'ci'.")
 	verbose = flag.Bool("verbose", false, "Enable verbose logging in oneshot mode.")
 	request = flag.String("request", "",
 		"With -oneshot=run, the path to the JSON request.")
 	source = flag.String("source", "",
 		"With -oneshot=run, the path to the source file.")
 	input = flag.String("input", "",
-		"With -oneshot=run, the path to the input directory, which should be a checkout of a problem.")
+		"With -oneshot={run,ci}, the path to the input directory, which should be a checkout of a problem.")
 	resultsOutputDirectory = flag.String("results", "",
-		"With -oneshot=run, the path to the directory to copy the results to.")
+		"With -oneshot={run,ci}, the path to the directory to copy the results to.")
 	debug = flag.Bool("debug", false, "Enables debug in oneshot mode.")
 
 	version    = flag.Bool("version", false, "Print the version and exit")
@@ -62,7 +65,7 @@ var (
 )
 
 func isOneShotMode() bool {
-	return *oneshot == "benchmark" || *oneshot == "run"
+	return *oneshot == "benchmark" || *oneshot == "run" || *oneshot == "ci"
 }
 
 func loadContext() error {
@@ -86,6 +89,59 @@ func loadContext() error {
 	}
 	globalContext.Store(ctx)
 	return nil
+}
+
+func persistResults(ctx *common.Context, root string, target string) error {
+	return filepath.Walk(
+		root,
+		func(srcPath string, info os.FileInfo, err error) error {
+			if err != nil {
+				ctx.Log.Error("Failed to walk", "dir", root, "path", srcPath, "err", err)
+				return err
+			}
+			if !info.Mode().IsRegular() {
+				// Skip anything that is not a regular file.
+				return nil
+			}
+
+			relDstPath, err := filepath.Rel(root, srcPath)
+			if err != nil {
+				ctx.Log.Error("Failed to relativize path", "dir", root, "path", srcPath, "err", err)
+				return err
+			}
+			dstPath := path.Join(target, relDstPath)
+			if err := os.MkdirAll(path.Dir(dstPath), 0755); err != nil {
+				ctx.Log.Error(
+					"Failed to create intermediate directory",
+					"dir", root,
+					"path", srcPath,
+					"destination", dstPath,
+					"err", err,
+				)
+				return err
+			}
+
+			srcFile, err := os.Open(srcPath)
+			if err != nil {
+				ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+				return err
+			}
+			defer srcFile.Close()
+
+			dstFile, err := os.Create(dstPath)
+			if err != nil {
+				ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
+				return err
+			}
+			defer dstFile.Close()
+
+			if _, err := io.Copy(dstFile, srcFile); err != nil {
+				ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)
+				return err
+			}
+			return nil
+		},
+	)
 }
 
 func runOneshotBenchmark(ctx *common.Context, sandbox runner.Sandbox) {
@@ -179,60 +235,130 @@ func runOneshotRun(ctx *common.Context, sandbox runner.Sandbox) {
 	if err := encoder.Encode(results); err != nil {
 		ctx.Log.Error("Failed to encode JSON", "err", err)
 	}
-
 	if *resultsOutputDirectory != "" {
-		if err := filepath.Walk(
-			runRoot,
-			func(srcPath string, info os.FileInfo, err error) error {
-				if err != nil {
-					ctx.Log.Error("Failed to walk", "dir", runRoot, "path", srcPath, "err", err)
-					return err
-				}
-				if !info.Mode().IsRegular() {
-					return nil
-				}
-
-				relDstPath, err := filepath.Rel(runRoot, srcPath)
-				if err != nil {
-					ctx.Log.Error("Failed to relativize path", "dir", runRoot, "path", srcPath, "err", err)
-					return err
-				}
-				dstPath := path.Join(*resultsOutputDirectory, relDstPath)
-				if err := os.MkdirAll(path.Dir(dstPath), 0755); err != nil {
-					ctx.Log.Error(
-						"Failed to create intermediate directory",
-						"dir", runRoot,
-						"path", srcPath,
-						"destination", dstPath,
-						"err", err,
-					)
-					return err
-				}
-
-				srcFile, err := os.Open(srcPath)
-				if err != nil {
-					ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
-					return err
-				}
-				defer srcFile.Close()
-
-				dstFile, err := os.Create(dstPath)
-				if err != nil {
-					ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
-					return err
-				}
-				defer dstFile.Close()
-
-				if _, err := io.Copy(dstFile, srcFile); err != nil {
-					ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)
-					return err
-				}
-				return nil
-			},
-		); err != nil {
-			ctx.Log.Error("Failed to encode JSON", "err", err)
+		if err := persistResults(ctx, runRoot, *resultsOutputDirectory); err != nil {
+			ctx.Log.Error("Failed to persist results", "err", err)
 		}
 	}
+}
+
+func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
+	report := &ci.Report{
+		Problem:   path.Base(*input),
+		StartTime: time.Now(),
+		State:     ci.StateError,
+	}
+	defer func() {
+		report.UpdateState()
+		finishTime := time.Now()
+		report.FinishTime = &finishTime
+		duration := base.Duration(report.FinishTime.Sub(report.StartTime))
+		report.Duration = &duration
+	}()
+	if *input == "" {
+		ctx.Log.Error("Missing -input parameter")
+		report.State = ci.StateSkipped
+		report.Error = errors.New("Missing -input parameter")
+		return report
+	}
+
+	problemFiles, err := common.NewProblemFilesFromFilesystem(*input)
+	if err != nil {
+		ctx.Log.Error("Error loading input", "path", *input, "err", err)
+		report.State = ci.StateSkipped
+		report.Error = err
+		return report
+	}
+	runConfig, err := ci.NewRunConfig(problemFiles)
+	if err != nil {
+		ctx.Log.Error("Error loading run configuration", "path", *input, "err", err)
+		report.State = ci.StateSkipped
+		report.Error = err
+		return report
+	}
+
+	report.State = ci.StatePassed
+
+	for i, testConfig := range runConfig.TestConfigs {
+		(func() {
+			testConfig.Test.StartTime = time.Now()
+			testConfig.Test.State = ci.StateError
+			defer func() {
+				finishTime := time.Now()
+				testConfig.Test.FinishTime = &finishTime
+				duration := base.Duration(testConfig.Test.FinishTime.Sub(testConfig.Test.StartTime))
+				testConfig.Test.Duration = &duration
+			}()
+
+			factory, err := common.NewLiteralInputFactory(
+				testConfig.Input,
+				ctx.Config.Grader.RuntimePath,
+				common.LiteralPersistRunner,
+			)
+			if err != nil {
+				ctx.Log.Error("Error loading input", "test", testConfig, "err", err)
+				testConfig.Test.State = ci.StateError
+				testConfig.Test.Error = err
+				return
+			}
+
+			run := common.Run{
+				InputHash:   factory.Hash(),
+				AttemptID:   uint64(i),
+				MaxScore:    big.NewRat(1, 1),
+				Source:      testConfig.Source,
+				Language:    testConfig.Language,
+				ProblemName: report.Problem,
+			}
+			if *debug {
+				run.Debug = true
+			}
+
+			inputRef, err := inputManager.Add(
+				run.InputHash,
+				factory,
+			)
+			if err != nil {
+				ctx.Log.Error("Error loading input", "test", testConfig, "err", err)
+				testConfig.Test.State = ci.StateError
+				testConfig.Test.Error = err
+				return
+			}
+			defer inputRef.Release()
+
+			runRoot := path.Join(
+				ctx.Config.Runner.RuntimePath,
+				"grade",
+				strconv.FormatUint(run.AttemptID, 10),
+			)
+			if *resultsOutputDirectory != "" {
+				defer func() {
+					if err := persistResults(
+						ctx,
+						runRoot,
+						path.Join(
+							*resultsOutputDirectory,
+							strconv.FormatUint(run.AttemptID, 10),
+						),
+					); err != nil {
+						ctx.Log.Error("Failed to persist results", "err", err)
+					}
+					os.RemoveAll(runRoot)
+				}()
+			}
+
+			result, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
+			if err != nil {
+				ctx.Log.Error("Error grading run", "test", testConfig, "err", err)
+				testConfig.Test.State = ci.StateError
+				testConfig.Test.Error = err
+				return
+			}
+			testConfig.Test.SetResult(result)
+		})()
+		report.Tests = append(report.Tests, testConfig.Test)
+	}
+	return report
 }
 
 func main() {
@@ -284,6 +410,45 @@ func main() {
 			runOneshotBenchmark(ctx, sandbox)
 		} else if *oneshot == "run" {
 			runOneshotRun(ctx, sandbox)
+		} else if *oneshot == "ci" {
+			if *resultsOutputDirectory != "" {
+				ctx.Config.Runner.PreserveFiles = true
+				ctx = ctx.DebugContext()
+			}
+			report := runOneshotCI(ctx, sandbox)
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			if err := encoder.Encode(report); err != nil {
+				ctx.Log.Error("Failed to encode JSON", "err", err)
+			}
+			if *resultsOutputDirectory != "" {
+				{
+					f, err := os.Create(path.Join(*resultsOutputDirectory, "ci.log"))
+					if err != nil {
+						ctx.Log.Error("Failed to create log file", "err", err)
+					} else {
+						_, err = f.Write(ctx.LogBuffer())
+						f.Close()
+						if err != nil {
+							ctx.Log.Error("Failed to write log file", "err", err)
+						}
+					}
+				}
+				{
+					f, err := os.Create(path.Join(*resultsOutputDirectory, "report.json"))
+					if err != nil {
+						ctx.Log.Error("Failed to create report file", "err", err)
+					} else {
+						encoder := json.NewEncoder(f)
+						encoder.SetIndent("", "  ")
+						err = encoder.Encode(report)
+						f.Close()
+						if err != nil {
+							ctx.Log.Error("Failed to write report file", "err", err)
+						}
+					}
+				}
+			}
 		} else {
 			ctx.Log.Error("Unknown oneshot mode", "mode", *oneshot)
 		}
