@@ -105,5 +105,5 @@ jobs:
           docker build -t omegaup/omegaup-runner-ci docker/
 
           container_name=docker.pkg.github.com/${{ github.repository }}/omegaup-runner-ci:${{ steps.bump-version.outputs.tag }}
-          docker tag omegaup/omegajail-builder-rootfs-runtime "${container_name}"
+          docker tag omegaup/omegaup-runner-ci "${container_name}"
           docker push "${container_name}"
