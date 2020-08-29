@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	stderrors "errors"
@@ -295,7 +296,9 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 			err,
 		)
 	}
-	if err := json.Unmarshal(testsJSONContents, &config.TestsSettings); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(testsJSONContents))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&config.TestsSettings); err != nil {
 		return nil, errors.Wrapf(
 			err,
 			"failed to unmarshal tests/tests.json for %s",
