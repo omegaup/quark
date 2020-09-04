@@ -1,4 +1,4 @@
-FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.1.0
+FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.2.0
 
 RUN mkdir -p /etc/omegaup/runner /var/lib/omegaup
 COPY bin/omegaup-runner /usr/bin/omegaup-runner
