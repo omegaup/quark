@@ -97,6 +97,9 @@ jobs:
 
       - name: Build Docker image
         run: |
+          echo "${{ github.token }}" | \
+              docker login https://docker.pkg.github.com "--username=${{ github.actor }}" --password-stdin
+
           mkdir -p docker/bin
           cp artifacts/runner/usr/bin/omegaup-runner docker/bin/omegaup-runner
           docker build -t omegaup/runner-ci docker/
