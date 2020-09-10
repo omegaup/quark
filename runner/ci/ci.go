@@ -377,10 +377,27 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 	}
 	if problemSettings.Validator.Name == "custom" {
 		if problemSettings.Validator.Lang == nil {
-			return nil, errors.Errorf(
-				"failed to get validator language for %s",
-				files.String(),
-			)
+			var validators []string
+			for _, problemFile := range files.Files() {
+				filenameExtension := strings.SplitN(problemFile, ".", 2)
+				if len(filenameExtension) == 2 && filenameExtension[0] == "validator" {
+					validators = append(validators, filenameExtension[1])
+				}
+			}
+
+			if len(validators) == 0 {
+				return nil, errors.Errorf(
+					"failed to get validator language for %s",
+					files.String(),
+				)
+			}
+			if len(validators) > 1 {
+				return nil, errors.Errorf(
+					"multiple validator.* files for %s",
+					files.String(),
+				)
+			}
+			problemSettings.Validator.Lang = &validators[0]
 		}
 		customValidatorSettings := &common.LiteralCustomValidatorSettings{
 			Language: *problemSettings.Validator.Lang,
