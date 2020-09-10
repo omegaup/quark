@@ -1,4 +1,4 @@
-FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.5.0 AS base
+FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.6.0 AS base
 
 FROM base AS builder
 
