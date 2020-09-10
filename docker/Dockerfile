@@ -1,4 +1,4 @@
-FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.4.0 AS builder
+FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.5.0 AS builder
 
 # Install karel.js in a builder container to avoid leaving a lot of trash in
 # the /root directory.
