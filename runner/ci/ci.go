@@ -377,8 +377,7 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 	}
 	if problemSettings.Validator.Name == "custom" {
 		if problemSettings.Validator.Lang == nil {
-			return nil, errors.Wrapf(
-				err,
+			return nil, errors.Errorf(
 				"failed to get validator language for %s",
 				files.String(),
 			)
