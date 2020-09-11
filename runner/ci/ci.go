@@ -271,11 +271,24 @@ func (r *Report) Write(reportPath string) error {
 	)
 }
 
+// SolutionConfig represents the configuration of a solution.
+type SolutionConfig struct {
+	Source   string
+	Language string
+}
+
+// String implements the fmt.Stringer interface.
+func (c *SolutionConfig) String() string {
+	if c == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%+v", *c)
+}
+
 // TestConfig represents the configuration of a single test within a tests.json file.
 type TestConfig struct {
 	Test     *ReportTest
-	Source   string
-	Language string
+	Solution SolutionConfig
 	Input    *common.LiteralInput
 }
 
@@ -287,15 +300,14 @@ func (c *TestConfig) String() string {
 	return fmt.Sprintf("%+v", *c)
 }
 
-// GeneratorConfig represents the configuration of a generator.
-type GeneratorConfig struct {
-	Source   string
-	Language string
+// OutGeneratorConfig represents the configuration of the .out file generation.
+type OutGeneratorConfig struct {
+	Solution SolutionConfig
 	Input    *common.LiteralInput
 }
 
 // String implements the fmt.Stringer interface.
-func (c *GeneratorConfig) String() string {
+func (c *OutGeneratorConfig) String() string {
 	if c == nil {
 		return "<nil>"
 	}
@@ -305,44 +317,58 @@ func (c *GeneratorConfig) String() string {
 // RunConfig represents the configuration of a suite of tests that need to run
 // for a problem.
 type RunConfig struct {
-	TestsSettings   common.TestsSettings
-	GeneratorConfig *GeneratorConfig
-	TestConfigs     []*TestConfig
+	TestsSettings      common.TestsSettings
+	OutGeneratorConfig *OutGeneratorConfig
+	TestConfigs        []*TestConfig
 }
 
 // NewRunConfig creates a RunConfig based on the contents of ProblemFiles.
-func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
+func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConfig, error) {
 	config := &RunConfig{}
 	input := &common.LiteralInput{
 		Cases: make(map[string]*common.LiteralCaseSettings),
 	}
 
-	// Generator
+	// Official solutions
+	var solution *SolutionConfig
 	{
-		var generators []string
+		var solutions []string
 		for _, filename := range files.Files() {
 			filenameExtension := strings.SplitN(filename, ".", 2)
-			if len(filenameExtension) == 2 && filenameExtension[0] == "generator" {
-				generators = append(generators, filenameExtension[1])
+			if len(filenameExtension) == 2 && filenameExtension[0] == "solutions/solution" {
+				solutions = append(solutions, filenameExtension[1])
 			}
 		}
-		if len(generators) > 1 {
+		if len(solutions) > 1 {
 			return nil, errors.Errorf(
-				"multiple generator.* files for %s",
+				"multiple solutions/solution.* files for %s",
 				files.String(),
 			)
 		}
-		if len(generators) == 1 {
-			config.GeneratorConfig = &GeneratorConfig{
-				Language: generators[0],
-				Input:    input,
+		if len(solutions) == 1 {
+			solution = &SolutionConfig{
+				Language: solutions[0],
 			}
 			var err error
-			if config.GeneratorConfig.Source, err = files.GetStringContents(
-				fmt.Sprintf("generator.%s", generators[0]),
+			if solution.Source, err = files.GetStringContents(
+				fmt.Sprintf("solutions/solution.%s", solutions[0]),
 			); err != nil {
 				return nil, err
 			}
+		}
+	}
+
+	// .out generation
+	if generateOutputFiles {
+		if solution == nil {
+			return nil, errors.Errorf(
+				"missing solutions/solution.* files for .out generation in %s",
+				files.String(),
+			)
+		}
+		config.OutGeneratorConfig = &OutGeneratorConfig{
+			Solution: *solution,
+			Input:    input,
 		}
 	}
 
@@ -414,14 +440,14 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 			}
 
 			outFilename := fmt.Sprintf("cases/%s.out", caseSettings.Name)
-			if config.GeneratorConfig != nil {
+			if generateOutputFiles {
 				f, err := files.Open(outFilename)
 				if f != nil {
 					f.Close()
 				}
 				if !os.IsNotExist(err) {
 					return nil, errors.Errorf(
-						"generators and explicit output files are not compatible: found %s in %s",
+						".out generation and existing .out files are not compatible: found %s in %s",
 						outFilename,
 						files.String(),
 					)
@@ -533,10 +559,12 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 				Filename:        solutionSetting.Filename,
 				SolutionSetting: &solutionSettingCopy,
 			},
-			Language: language,
-			Input:    input,
+			Input: input,
+			Solution: SolutionConfig{
+				Language: language,
+			},
 		}
-		if testConfig.Source, err = files.GetStringContents(
+		if testConfig.Solution.Source, err = files.GetStringContents(
 			fmt.Sprintf("tests/%s", solutionSetting.Filename),
 		); err != nil {
 			return nil, err
@@ -564,8 +592,10 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 				Filename:               config.TestsSettings.InputsValidator.Filename,
 				InputsValidatorSetting: config.TestsSettings.InputsValidator,
 			},
-			Source:   CopyStdinToStdoutSource,
-			Language: "cpp11",
+			Solution: SolutionConfig{
+				Source:   CopyStdinToStdoutSource,
+				Language: "cpp11",
+			},
 			Input: &common.LiteralInput{
 				Cases: input.Cases,
 				Validator: &common.LiteralValidatorSettings{

@@ -288,7 +288,7 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 		report.ReportError = &ci.ReportError{Error: err}
 		return report
 	}
-	runConfig, err := ci.NewRunConfig(problemFiles)
+	runConfig, err := ci.NewRunConfig(problemFiles, *outputsDirectory != "")
 	if err != nil {
 		ctx.Log.Error("Error loading run configuration", "path", *input, "err", err)
 		report.State = ci.StateSkipped
@@ -298,15 +298,15 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 
 	report.State = ci.StatePassed
 
-	if runConfig.GeneratorConfig != nil {
+	if runConfig.OutGeneratorConfig != nil {
 		err = (func() error {
 			factory, err := common.NewLiteralInputFactory(
-				runConfig.GeneratorConfig.Input,
+				runConfig.OutGeneratorConfig.Input,
 				ctx.Config.Grader.RuntimePath,
 				common.LiteralPersistRunner,
 			)
 			if err != nil {
-				ctx.Log.Error("Error loading input", "config", runConfig.GeneratorConfig, "err", err)
+				ctx.Log.Error("Error loading input", "config", runConfig.OutGeneratorConfig, "err", err)
 				return err
 			}
 
@@ -314,8 +314,8 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				InputHash:   factory.Hash(),
 				AttemptID:   uint64(len(runConfig.TestConfigs)),
 				MaxScore:    big.NewRat(1, 1),
-				Source:      runConfig.GeneratorConfig.Source,
-				Language:    runConfig.GeneratorConfig.Language,
+				Source:      runConfig.OutGeneratorConfig.Solution.Source,
+				Language:    runConfig.OutGeneratorConfig.Solution.Language,
 				ProblemName: report.Problem,
 			}
 			if *debug {
@@ -327,7 +327,7 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				factory,
 			)
 			if err != nil {
-				ctx.Log.Error("Error loading input", "config", runConfig.GeneratorConfig, "err", err)
+				ctx.Log.Error("Error loading input", "config", runConfig.OutGeneratorConfig, "err", err)
 				return err
 			}
 			defer inputRef.Release()
@@ -341,18 +341,18 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 
 			result, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
 			if err != nil {
-				ctx.Log.Error("Error generating outputs", "config", runConfig.GeneratorConfig, "err", err)
+				ctx.Log.Error("Error generating outputs", "config", runConfig.OutGeneratorConfig, "err", err)
 				return err
 			}
 			if result.Verdict != "AC" && result.Verdict != "PA" && result.Verdict != "WA" {
-				ctx.Log.Error("Error generating outputs", "config", runConfig.GeneratorConfig, "err", err)
+				ctx.Log.Error("Error generating outputs", "config", runConfig.OutGeneratorConfig, "err", err)
 				return errors.Errorf(
 					"expecting a verdict of {AC, PA, WA}; got %s",
 					result.Verdict,
 				)
 			}
 
-			for caseName, caseSettings := range runConfig.GeneratorConfig.Input.Cases {
+			for caseName, caseSettings := range runConfig.OutGeneratorConfig.Input.Cases {
 				srcPath := path.Join(runRoot, fmt.Sprintf("%s.out", caseName))
 				outContents, err := ioutil.ReadFile(srcPath)
 				if err != nil {
@@ -420,8 +420,8 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				InputHash:   factory.Hash(),
 				AttemptID:   uint64(i),
 				MaxScore:    big.NewRat(1, 1),
-				Source:      testConfig.Source,
-				Language:    testConfig.Language,
+				Source:      testConfig.Solution.Source,
+				Language:    testConfig.Solution.Language,
 				ProblemName: report.Problem,
 			}
 			if *debug {
