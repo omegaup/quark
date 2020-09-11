@@ -287,11 +287,27 @@ func (c *TestConfig) String() string {
 	return fmt.Sprintf("%+v", *c)
 }
 
+// GeneratorConfig represents the configuration of a generator.
+type GeneratorConfig struct {
+	Source   string
+	Language string
+	Input    *common.LiteralInput
+}
+
+// String implements the fmt.Stringer interface.
+func (c *GeneratorConfig) String() string {
+	if c == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%+v", *c)
+}
+
 // RunConfig represents the configuration of a suite of tests that need to run
 // for a problem.
 type RunConfig struct {
-	TestsSettings common.TestsSettings
-	TestConfigs   []*TestConfig
+	TestsSettings   common.TestsSettings
+	GeneratorConfig *GeneratorConfig
+	TestConfigs     []*TestConfig
 }
 
 // NewRunConfig creates a RunConfig based on the contents of ProblemFiles.
@@ -299,6 +315,35 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 	config := &RunConfig{}
 	input := &common.LiteralInput{
 		Cases: make(map[string]*common.LiteralCaseSettings),
+	}
+
+	// Generator
+	{
+		var generators []string
+		for _, filename := range files.Files() {
+			filenameExtension := strings.SplitN(filename, ".", 2)
+			if len(filenameExtension) == 2 && filenameExtension[0] == "generator" {
+				generators = append(generators, filenameExtension[1])
+			}
+		}
+		if len(generators) > 1 {
+			return nil, errors.Errorf(
+				"multiple generator.* files for %s",
+				files.String(),
+			)
+		}
+		if len(generators) == 1 {
+			config.GeneratorConfig = &GeneratorConfig{
+				Language: generators[0],
+				Input:    input,
+			}
+			var err error
+			if config.GeneratorConfig.Source, err = files.GetStringContents(
+				fmt.Sprintf("generator.%s", generators[0]),
+			); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Settings
@@ -368,15 +413,30 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 				)
 			}
 
-			if literalCaseSettings.ExpectedOutput, err = files.GetStringContents(
-				fmt.Sprintf("cases/%s.out", caseSettings.Name),
-			); err != nil {
-				return nil, errors.Wrapf(
-					err,
-					"failed to get case information for %s %s",
-					files.String(),
-					caseSettings.Name,
-				)
+			outFilename := fmt.Sprintf("cases/%s.out", caseSettings.Name)
+			if config.GeneratorConfig != nil {
+				f, err := files.Open(outFilename)
+				if f != nil {
+					f.Close()
+				}
+				if !os.IsNotExist(err) {
+					return nil, errors.Errorf(
+						"generators and explicit output files are not compatible: found %s in %s",
+						outFilename,
+						files.String(),
+					)
+				}
+			} else {
+				if literalCaseSettings.ExpectedOutput, err = files.GetStringContents(
+					outFilename,
+				); err != nil {
+					return nil, errors.Wrapf(
+						err,
+						"failed to get case information for %s %s",
+						files.String(),
+						caseSettings.Name,
+					)
+				}
 			}
 
 			input.Cases[caseSettings.Name] = literalCaseSettings
@@ -391,8 +451,8 @@ func NewRunConfig(files common.ProblemFiles) (*RunConfig, error) {
 	if problemSettings.Validator.Name == "custom" {
 		if problemSettings.Validator.Lang == nil {
 			var validators []string
-			for _, problemFile := range files.Files() {
-				filenameExtension := strings.SplitN(problemFile, ".", 2)
+			for _, filename := range files.Files() {
+				filenameExtension := strings.SplitN(filename, ".", 2)
 				if len(filenameExtension) == 2 && filenameExtension[0] == "validator" {
 					validators = append(validators, filenameExtension[1])
 				}

@@ -367,6 +367,57 @@ func TestNewRunConfig(t *testing.T) {
 			"\"tests/validator.py\" in \":memory:\": file does not exist",
 		},
 		{
+			"input generator, multiple files",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"generator.cpp": "",
+					"generator.py":  "",
+					"settings.json": "{}",
+				},
+				":memory:",
+			),
+			nil,
+			"multiple generator.* files",
+		},
+		{
+			"input generator, .out files present",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"cases/0.in":       "1 2",
+					"cases/0.out":      "3",
+					"tests/tests.json": "{}",
+					"generator.py":     "print(3)",
+					"settings.json":    "{}",
+				},
+				":memory:",
+			),
+			nil,
+			"generators and explicit output files are not compatible: found cases/0.out in :memory:",
+		},
+		{
+			"input generator",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"tests/tests.json": "{}",
+					"generator.py":     "print(3)",
+					"settings.json":    "{}",
+				},
+				":memory:",
+			),
+			&RunConfig{
+				GeneratorConfig: &GeneratorConfig{
+					Language: "py",
+					Source:   "print(3)",
+					Input: &common.LiteralInput{
+						Cases:     map[string]*common.LiteralCaseSettings{},
+						Limits:    &common.DefaultLimits,
+						Validator: &common.LiteralValidatorSettings{},
+					},
+				},
+			},
+			"",
+		},
+		{
 			"explicit cases, missing .in",
 			common.NewProblemFilesFromMap(
 				map[string]string{

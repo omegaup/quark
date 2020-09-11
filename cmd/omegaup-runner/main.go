@@ -48,6 +48,8 @@ var (
 		"With -oneshot={run,ci}, the path to the input directory, which should be a checkout of a problem.")
 	resultsOutputDirectory = flag.String("results", "",
 		"With -oneshot={run,ci}, the path to the directory to copy the results to.")
+	outputsDirectory = flag.String("outputs", "",
+		"With -oneshot=ci and an output generator, the path to the directory to copy the .out files to.")
 	debug = flag.Bool("debug", false, "Enables debug in oneshot mode.")
 
 	version    = flag.Bool("version", false, "Print the version and exit")
@@ -261,6 +263,23 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 		report.ReportError = &ci.ReportError{Error: errors.New("Missing -input parameter")}
 		return report
 	}
+	if *outputsDirectory != "" {
+		if err := os.MkdirAll(*outputsDirectory, 0755); err != nil {
+			ctx.Log.Error(
+				"Failed to create outputs directory",
+				"dir", *outputsDirectory,
+				"err", err,
+			)
+			report.State = ci.StateSkipped
+			report.ReportError = &ci.ReportError{
+				Error: errors.Wrapf(
+					err,
+					"failed to create outputs directory",
+				),
+			}
+			return report
+		}
+	}
 
 	problemFiles, err := common.NewProblemFilesFromFilesystem(*input)
 	if err != nil {
@@ -278,6 +297,101 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 	}
 
 	report.State = ci.StatePassed
+
+	if runConfig.GeneratorConfig != nil {
+		err = (func() error {
+			factory, err := common.NewLiteralInputFactory(
+				runConfig.GeneratorConfig.Input,
+				ctx.Config.Grader.RuntimePath,
+				common.LiteralPersistRunner,
+			)
+			if err != nil {
+				ctx.Log.Error("Error loading input", "config", runConfig.GeneratorConfig, "err", err)
+				return err
+			}
+
+			run := common.Run{
+				InputHash:   factory.Hash(),
+				AttemptID:   uint64(len(runConfig.TestConfigs)),
+				MaxScore:    big.NewRat(1, 1),
+				Source:      runConfig.GeneratorConfig.Source,
+				Language:    runConfig.GeneratorConfig.Language,
+				ProblemName: report.Problem,
+			}
+			if *debug {
+				run.Debug = true
+			}
+
+			inputRef, err := inputManager.Add(
+				run.InputHash,
+				factory,
+			)
+			if err != nil {
+				ctx.Log.Error("Error loading input", "config", runConfig.GeneratorConfig, "err", err)
+				return err
+			}
+			defer inputRef.Release()
+
+			runRoot := path.Join(
+				ctx.Config.Runner.RuntimePath,
+				"grade",
+				strconv.FormatUint(run.AttemptID, 10),
+			)
+			defer os.RemoveAll(runRoot)
+
+			result, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
+			if err != nil {
+				ctx.Log.Error("Error generating outputs", "config", runConfig.GeneratorConfig, "err", err)
+				return err
+			}
+			if result.Verdict != "AC" && result.Verdict != "PA" && result.Verdict != "WA" {
+				ctx.Log.Error("Error generating outputs", "config", runConfig.GeneratorConfig, "err", err)
+				return errors.Errorf(
+					"expecting a verdict of {AC, PA, WA}; got %s",
+					result.Verdict,
+				)
+			}
+
+			for caseName, caseSettings := range runConfig.GeneratorConfig.Input.Cases {
+				srcPath := path.Join(runRoot, fmt.Sprintf("%s.out", caseName))
+				outContents, err := ioutil.ReadFile(srcPath)
+				if err != nil {
+					ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+					return err
+				}
+
+				caseSettings.ExpectedOutput = string(outContents)
+
+				if *outputsDirectory != "" {
+					dstPath := path.Join(*outputsDirectory, fmt.Sprintf("%s.out", caseName))
+					dstFile, err := os.Create(dstPath)
+					if err != nil {
+						ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
+						return err
+					}
+					_, err = dstFile.Write(outContents)
+					dstFile.Close()
+					if err != nil {
+						ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)
+						return err
+					}
+				}
+			}
+			return nil
+		})()
+		if err != nil {
+			ctx.Log.Error("Error generating .out files", "path", *input, "err", err)
+			report.State = ci.StateSkipped
+			report.ReportError = &ci.ReportError{
+				Error: errors.Wrapf(
+					err,
+					"failed to generate .out files for %s",
+					problemFiles.String(),
+				),
+			}
+			return report
+		}
+	}
 
 	for i, testConfig := range runConfig.TestConfigs {
 		(func() {
@@ -414,6 +528,9 @@ func main() {
 			if *resultsOutputDirectory != "" {
 				ctx.Config.Runner.PreserveFiles = true
 				ctx = ctx.DebugContext()
+			}
+			if *outputsDirectory != "" {
+				ctx.Config.Runner.PreserveFiles = true
 			}
 			report := runOneshotCI(ctx, sandbox)
 			encoder := json.NewEncoder(os.Stdout)
