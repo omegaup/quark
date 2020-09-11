@@ -175,8 +175,8 @@ func (h *ciHandler) runTest(
 	h.ctx.Log.Debug(
 		"Adding new run",
 		"run", &grader.EphemeralRunRequest{
-			Source:   testConfig.Source,
-			Language: testConfig.Language,
+			Source:   testConfig.Solution.Source,
+			Language: testConfig.Solution.Language,
 			Input:    testConfig.Input,
 		},
 	)
@@ -196,9 +196,9 @@ func (h *ciHandler) runTest(
 
 	runInfo := grader.NewRunInfo()
 	runInfo.Run.InputHash = inputFactory.Hash()
-	runInfo.Run.Language = testConfig.Language
 	runInfo.Run.MaxScore = maxScore
-	runInfo.Run.Source = testConfig.Source
+	runInfo.Run.Language = testConfig.Solution.Language
+	runInfo.Run.Source = testConfig.Solution.Source
 	runInfo.Priority = grader.QueuePriorityEphemeral
 	testConfig.Test.EphemeralToken, err = h.ephemeralRunManager.SetEphemeral(runInfo)
 	if err != nil {
@@ -258,8 +258,8 @@ func (h *ciHandler) runTest(
 		h.ctx,
 		runInfo,
 		&grader.EphemeralRunRequest{
-			Source:   testConfig.Source,
-			Language: testConfig.Language,
+			Source:   testConfig.Solution.Source,
+			Language: testConfig.Solution.Language,
 			Input:    testConfig.Input,
 		},
 	); err != nil {
@@ -297,7 +297,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 		}
 		return
 	}
-	ciRunConfig, err := ci.NewRunConfig(problemFiles)
+	ciRunConfig, err := ci.NewRunConfig(problemFiles, false)
 	if err != nil {
 		h.ctx.Log.Error("Failed to validate commit", "err", err)
 		if base.HasErrorCategory(err, ci.ErrSkipped) {

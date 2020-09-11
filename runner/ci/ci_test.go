@@ -175,10 +175,11 @@ func TestReportUpdateState(t *testing.T) {
 
 func TestNewRunConfig(t *testing.T) {
 	for _, tt := range []struct {
-		name              string
-		problemFiles      common.ProblemFiles
-		expectedRunConfig *RunConfig
-		errorSubstring    string
+		name                string
+		problemFiles        common.ProblemFiles
+		generateOutputFiles bool
+		expectedRunConfig   *RunConfig
+		errorSubstring      string
 	}{
 		{
 			"missing tests.json",
@@ -186,6 +187,7 @@ func TestNewRunConfig(t *testing.T) {
 				map[string]string{},
 				":memory:",
 			),
+			false,
 			nil,
 			"",
 		},
@@ -197,6 +199,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			nil,
 			"",
 		},
@@ -209,6 +212,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			&RunConfig{
 				TestsSettings: common.TestsSettings{},
 				TestConfigs:   nil,
@@ -230,6 +234,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			nil,
 			"failed to get solution language",
 		},
@@ -248,6 +253,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			nil,
 			"\"tests/ac.py\" in \":memory:\": file does not exist",
 		},
@@ -267,6 +273,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			&RunConfig{
 				TestsSettings: common.TestsSettings{
 					Solutions: []common.SolutionSettings{
@@ -280,8 +287,10 @@ func TestNewRunConfig(t *testing.T) {
 							Filename:        "ac.py",
 							SolutionSetting: &common.SolutionSettings{Filename: "ac.py"},
 						},
-						Source:   "print(3)",
-						Language: "py",
+						Solution: SolutionConfig{
+							Source:   "print(3)",
+							Language: "py",
+						},
 						Input: &common.LiteralInput{
 							Cases:     map[string]*common.LiteralCaseSettings{},
 							Limits:    &common.DefaultLimits,
@@ -305,6 +314,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			nil,
 			"failed to get input validator language",
 		},
@@ -321,6 +331,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			nil,
 			"\"tests/validator.py\" in \":memory:\": file does not exist",
 		},
@@ -338,6 +349,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			&RunConfig{
 				TestsSettings: common.TestsSettings{
 					InputsValidator: &common.InputsValidatorSettings{Filename: "validator.py"},
@@ -349,8 +361,10 @@ func TestNewRunConfig(t *testing.T) {
 							Filename:               "validator.py",
 							InputsValidatorSetting: &common.InputsValidatorSettings{Filename: "validator.py"},
 						},
-						Source:   CopyStdinToStdoutSource,
-						Language: "cpp11",
+						Solution: SolutionConfig{
+							Source:   CopyStdinToStdoutSource,
+							Language: "cpp11",
+						},
 						Input: &common.LiteralInput{
 							Cases: map[string]*common.LiteralCaseSettings{},
 							Validator: &common.LiteralValidatorSettings{
@@ -367,47 +381,52 @@ func TestNewRunConfig(t *testing.T) {
 			"\"tests/validator.py\" in \":memory:\": file does not exist",
 		},
 		{
-			"input generator, multiple files",
+			"output generator, multiple files",
 			common.NewProblemFilesFromMap(
 				map[string]string{
-					"generator.cpp": "",
-					"generator.py":  "",
-					"settings.json": "{}",
+					"solutions/solution.cpp": "",
+					"solutions/solution.py":  "",
+					"settings.json":          "{}",
 				},
 				":memory:",
 			),
+			true,
 			nil,
-			"multiple generator.* files",
+			"multiple solutions/solution.* files",
 		},
 		{
-			"input generator, .out files present",
+			"output generator, .out files present",
 			common.NewProblemFilesFromMap(
 				map[string]string{
-					"cases/0.in":       "1 2",
-					"cases/0.out":      "3",
-					"tests/tests.json": "{}",
-					"generator.py":     "print(3)",
-					"settings.json":    "{}",
+					"cases/0.in":            "1 2",
+					"cases/0.out":           "3",
+					"tests/tests.json":      "{}",
+					"solutions/solution.py": "print(3)",
+					"settings.json":         "{}",
 				},
 				":memory:",
 			),
+			true,
 			nil,
-			"generators and explicit output files are not compatible: found cases/0.out in :memory:",
+			".out generation and existing .out files are not compatible: found cases/0.out in :memory:",
 		},
 		{
-			"input generator",
+			"output generator",
 			common.NewProblemFilesFromMap(
 				map[string]string{
-					"tests/tests.json": "{}",
-					"generator.py":     "print(3)",
-					"settings.json":    "{}",
+					"tests/tests.json":      "{}",
+					"solutions/solution.py": "print(3)",
+					"settings.json":         "{}",
 				},
 				":memory:",
 			),
+			true,
 			&RunConfig{
-				GeneratorConfig: &GeneratorConfig{
-					Language: "py",
-					Source:   "print(3)",
+				OutGeneratorConfig: &OutGeneratorConfig{
+					Solution: SolutionConfig{
+						Language: "py",
+						Source:   "print(3)",
+					},
 					Input: &common.LiteralInput{
 						Cases:     map[string]*common.LiteralCaseSettings{},
 						Limits:    &common.DefaultLimits,
@@ -445,6 +464,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			nil,
 			"open \"cases/0.in\"",
 		},
@@ -477,6 +497,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			nil,
 			"open \"cases/0.out\"",
 		},
@@ -510,6 +531,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			&RunConfig{
 				TestsSettings: common.TestsSettings{
 					Solutions: []common.SolutionSettings{
@@ -523,8 +545,10 @@ func TestNewRunConfig(t *testing.T) {
 							Filename:        "ac.py",
 							SolutionSetting: &common.SolutionSettings{Filename: "ac.py"},
 						},
-						Source:   "print(3)",
-						Language: "py",
+						Solution: SolutionConfig{
+							Source:   "print(3)",
+							Language: "py",
+						},
 						Input: &common.LiteralInput{
 							Cases: map[string]*common.LiteralCaseSettings{
 								"0": {
@@ -558,6 +582,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			nil,
 			"open \"cases/0.out\"",
 		},
@@ -579,6 +604,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			&RunConfig{
 				TestsSettings: common.TestsSettings{
 					Solutions: []common.SolutionSettings{
@@ -592,8 +618,10 @@ func TestNewRunConfig(t *testing.T) {
 							Filename:        "ac.py",
 							SolutionSetting: &common.SolutionSettings{Filename: "ac.py"},
 						},
-						Source:   "print(3)",
-						Language: "py",
+						Solution: SolutionConfig{
+							Source:   "print(3)",
+							Language: "py",
+						},
 						Input: &common.LiteralInput{
 							Cases: map[string]*common.LiteralCaseSettings{
 								"0": {
@@ -631,6 +659,7 @@ func TestNewRunConfig(t *testing.T) {
 				},
 				":memory:",
 			),
+			false,
 			&RunConfig{
 				TestsSettings: common.TestsSettings{
 					Solutions: []common.SolutionSettings{
@@ -644,8 +673,10 @@ func TestNewRunConfig(t *testing.T) {
 							Filename:        "ac.py",
 							SolutionSetting: &common.SolutionSettings{Filename: "ac.py"},
 						},
-						Source:   "print(3)",
-						Language: "py",
+						Solution: SolutionConfig{
+							Source:   "print(3)",
+							Language: "py",
+						},
 						Input: &common.LiteralInput{
 							Cases: map[string]*common.LiteralCaseSettings{
 								"0": {
@@ -670,7 +701,7 @@ func TestNewRunConfig(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			runConfig, err := NewRunConfig(tt.problemFiles)
+			runConfig, err := NewRunConfig(tt.problemFiles, tt.generateOutputFiles)
 			if err != nil {
 				if base.HasErrorCategory(err, ErrSkipped) && tt.expectedRunConfig == nil {
 					// Everything is okay.
