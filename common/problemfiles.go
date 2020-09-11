@@ -125,7 +125,7 @@ func NewProblemFilesFromFilesystem(
 		if err != nil {
 			return err
 		}
-		if !info.Mode().IsRegular() {
+		if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
 			// Skip
 			return nil
 		}
