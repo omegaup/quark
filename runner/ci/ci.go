@@ -3,6 +3,7 @@ package ci
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
@@ -143,6 +144,18 @@ func (s *State) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ReportError is a wrapper around error such that it can be marshaled to JSON.
+type ReportError struct {
+	Error error
+}
+
+var _ encoding.TextMarshaler = &ReportError{}
+
+// MarshalText implements the encoding.TextMarshaler interface.
+func (s *ReportError) MarshalText() ([]byte, error) {
+	return []byte(s.Error.Error()), nil
+}
+
 // ReportTest represents the result of an individual test case within the CI run.
 type ReportTest struct {
 	Index                  int                             `json:"index"`
@@ -153,7 +166,7 @@ type ReportTest struct {
 	FinishTime             *time.Time                      `json:"finish_time,omitempty"`
 	Duration               *base.Duration                  `json:"duration,omitempty"`
 	State                  State                           `json:"state"`
-	Error                  error                           `json:"error,omitempty"`
+	ReportError            *ReportError                    `json:"error,omitempty"`
 	SolutionSetting        *common.SolutionSettings        `json:"solution,omitempty"`
 	InputsValidatorSetting *common.InputsValidatorSettings `json:"inputs,omitempty"`
 	Result                 *runner.RunResult               `json:"result,omitempty"`
@@ -194,14 +207,14 @@ func (t *ReportTest) String() string {
 
 // Report represents the result of a CI run.
 type Report struct {
-	Problem    string         `json:"problem"`
-	CommitHash string         `json:"commit_hash"`
-	StartTime  time.Time      `json:"start_time"`
-	FinishTime *time.Time     `json:"finish_time,omitempty"`
-	Duration   *base.Duration `json:"duration,omitempty"`
-	State      State          `json:"state"`
-	Error      error          `json:"error,omitempty"`
-	Tests      []*ReportTest  `json:"tests,omitempty"`
+	Problem     string         `json:"problem"`
+	CommitHash  string         `json:"commit_hash"`
+	StartTime   time.Time      `json:"start_time"`
+	FinishTime  *time.Time     `json:"finish_time,omitempty"`
+	Duration    *base.Duration `json:"duration,omitempty"`
+	State       State          `json:"state"`
+	ReportError *ReportError   `json:"error,omitempty"`
+	Tests       []*ReportTest  `json:"tests,omitempty"`
 }
 
 // UpdateState should be called when all of the tests have finished running.
