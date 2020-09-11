@@ -285,7 +285,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 	if err != nil {
 		h.ctx.Log.Error("Failed to validate commit", "err", err)
 		report.State = ci.StateError
-		report.Error = err
+		report.ReportError = &ci.ReportError{Error: err}
 		{
 			finishTime := time.Now()
 			report.FinishTime = &finishTime
@@ -305,7 +305,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 		} else {
 			report.State = ci.StateError
 		}
-		report.Error = err
+		report.ReportError = &ci.ReportError{Error: err}
 		{
 			finishTime := time.Now()
 			report.FinishTime = &finishTime
@@ -329,7 +329,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 		if err := h.runTest(testConfig, runs, report, reportPath); err != nil {
 			h.ctx.Log.Error("Failed to perform ephemeral run", "err", err)
 			testConfig.Test.State = ci.StateError
-			testConfig.Test.Error = err
+			testConfig.Test.ReportError = &ci.ReportError{Error: err}
 		}
 	}
 	report.State = ci.StatePassed

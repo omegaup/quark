@@ -258,7 +258,7 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 	if *input == "" {
 		ctx.Log.Error("Missing -input parameter")
 		report.State = ci.StateSkipped
-		report.Error = errors.New("Missing -input parameter")
+		report.ReportError = &ci.ReportError{Error: errors.New("Missing -input parameter")}
 		return report
 	}
 
@@ -266,14 +266,14 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 	if err != nil {
 		ctx.Log.Error("Error loading input", "path", *input, "err", err)
 		report.State = ci.StateSkipped
-		report.Error = err
+		report.ReportError = &ci.ReportError{Error: err}
 		return report
 	}
 	runConfig, err := ci.NewRunConfig(problemFiles)
 	if err != nil {
 		ctx.Log.Error("Error loading run configuration", "path", *input, "err", err)
 		report.State = ci.StateSkipped
-		report.Error = err
+		report.ReportError = &ci.ReportError{Error: err}
 		return report
 	}
 
@@ -298,7 +298,7 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 			if err != nil {
 				ctx.Log.Error("Error loading input", "test", testConfig, "err", err)
 				testConfig.Test.State = ci.StateError
-				testConfig.Test.Error = err
+				testConfig.Test.ReportError = &ci.ReportError{Error: err}
 				return
 			}
 
@@ -321,7 +321,7 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 			if err != nil {
 				ctx.Log.Error("Error loading input", "test", testConfig, "err", err)
 				testConfig.Test.State = ci.StateError
-				testConfig.Test.Error = err
+				testConfig.Test.ReportError = &ci.ReportError{Error: err}
 				return
 			}
 			defer inputRef.Release()
@@ -351,7 +351,7 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 			if err != nil {
 				ctx.Log.Error("Error grading run", "test", testConfig, "err", err)
 				testConfig.Test.State = ci.StateError
-				testConfig.Test.Error = err
+				testConfig.Test.ReportError = &ci.ReportError{Error: err}
 				return
 			}
 			testConfig.Test.SetResult(result)
