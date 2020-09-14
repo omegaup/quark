@@ -21,25 +21,25 @@ func TestReportTestSetResult(t *testing.T) {
 		{
 			"expected explicit verdict",
 			ReportTest{SolutionSetting: &common.SolutionSettings{Verdict: "WA"}},
-			&runner.RunResult{Verdict: "WA"},
+			&runner.RunResult{Verdict: "WA", Score: &big.Rat{}},
 			StatePassed,
 		},
 		{
 			"unexpected explicit verdict",
 			ReportTest{SolutionSetting: &common.SolutionSettings{Verdict: "AC"}},
-			&runner.RunResult{Verdict: "WA"},
+			&runner.RunResult{Verdict: "WA", Score: &big.Rat{}},
 			StateFailed,
 		},
 		{
 			"expected implicit verdict",
 			ReportTest{},
-			&runner.RunResult{Verdict: "AC"},
+			&runner.RunResult{Verdict: "AC", Score: big.NewRat(1, 1)},
 			StatePassed,
 		},
 		{
 			"unexpected implicit verdict",
 			ReportTest{},
-			&runner.RunResult{Verdict: "WA"},
+			&runner.RunResult{Verdict: "WA", Score: &big.Rat{}},
 			StateFailed,
 		},
 		{
@@ -83,12 +83,38 @@ func TestReportTestSetResult(t *testing.T) {
 			&runner.RunResult{Verdict: "PA", Score: big.NewRat(1, 2)},
 			StatePassed,
 		},
+		{
+			"non-integer percentage",
+			ReportTest{
+				SolutionSetting: &common.SolutionSettings{
+					Verdict: "PA",
+				},
+			},
+			&runner.RunResult{Verdict: "PA", Score: big.NewRat(1, 3)},
+			StateFailed,
+		},
+		{
+			"non-integer percentage, explicitly allowing it",
+			ReportTest{
+				SolutionSetting: &common.SolutionSettings{
+					Verdict:                    "PA",
+					AllowFractionalPercentages: true,
+				},
+			},
+			&runner.RunResult{Verdict: "PA", Score: big.NewRat(1, 3)},
+			StatePassed,
+		},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			tt.reportTest.SetResult(tt.result)
 			if tt.expectedState != tt.reportTest.State {
-				t.Errorf("expected ReportTest.State = %v, got %v", tt.expectedState, tt.reportTest.State)
+				t.Errorf(
+					"expected ReportTest.State = %v, got %v (%v)",
+					tt.expectedState,
+					tt.reportTest.State,
+					tt.reportTest.ReportError,
+				)
 			}
 		})
 	}

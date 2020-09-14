@@ -204,10 +204,11 @@ func (r *ScoreRange) UnmarshalJSON(data []byte) error {
 // SolutionSettings represents a single testcase with an expected score range
 // and/or verdict. At least one of those must be present.
 type SolutionSettings struct {
-	Filename   string      `json:"filename"`
-	ScoreRange *ScoreRange `json:"score_range,omitempty"`
-	Verdict    string      `json:"verdict,omitempty"`
-	Language   string      `json:"language,omitempty"`
+	Filename                   string      `json:"filename"`
+	ScoreRange                 *ScoreRange `json:"score_range,omitempty"`
+	Verdict                    string      `json:"verdict,omitempty"`
+	Language                   string      `json:"language,omitempty"`
+	AllowFractionalPercentages bool        `json:"allow_fractional_percentages,omitempty"`
 }
 
 // String returns a string representation of the SolutionSettings.

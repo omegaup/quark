@@ -8,6 +8,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"os"
 	"path"
 	"path/filepath"
@@ -150,10 +151,17 @@ type ReportError struct {
 }
 
 var _ encoding.TextMarshaler = &ReportError{}
+var _ encoding.TextUnmarshaler = &ReportError{}
 
 // MarshalText implements the encoding.TextMarshaler interface.
 func (s *ReportError) MarshalText() ([]byte, error) {
 	return []byte(s.Error.Error()), nil
+}
+
+// UnmarshalText implements the encoding.TextUnmarshaler interface.
+func (s *ReportError) UnmarshalText(text []byte) error {
+	s.Error = errors.New(string(text))
+	return nil
 }
 
 // ReportTest represents the result of an individual test case within the CI run.
@@ -179,17 +187,50 @@ func (t *ReportTest) SetResult(result *runner.RunResult) {
 
 	if t.SolutionSetting != nil {
 		if t.SolutionSetting.Verdict != "" && t.SolutionSetting.Verdict != result.Verdict {
+			t.ReportError = &ReportError{
+				Error: errors.Errorf(
+					"expected verdict to be %q, got %q",
+					t.SolutionSetting.Verdict,
+					result.Verdict,
+				),
+			}
 			t.State = StateFailed
 			return
 		}
 		if t.SolutionSetting.ScoreRange != nil &&
 			(t.SolutionSetting.ScoreRange.Min.Cmp(result.Score) > 0 ||
 				t.SolutionSetting.ScoreRange.Max.Cmp(result.Score) < 0) {
+			t.ReportError = &ReportError{
+				Error: errors.Errorf(
+					"expected score to be in range [%.3f, %.3f], got %.3f",
+					base.RationalToFloat(t.SolutionSetting.ScoreRange.Min),
+					base.RationalToFloat(t.SolutionSetting.ScoreRange.Max),
+					base.RationalToFloat(result.Score),
+				),
+			}
+			t.State = StateFailed
+			return
+		}
+		if !t.SolutionSetting.AllowFractionalPercentages &&
+			result.Score != nil &&
+			(&big.Int{}).Rem(big.NewInt(100), result.Score.Denom()).Cmp(&big.Int{}) != 0 {
+			t.ReportError = &ReportError{
+				Error: errors.Errorf(
+					"expected score to be an integer percentage, got %.6f%%",
+					base.RationalToFloat(result.Score)*100,
+				),
+			}
 			t.State = StateFailed
 			return
 		}
 	} else {
 		if result.Verdict != "AC" {
+			t.ReportError = &ReportError{
+				Error: errors.Errorf(
+					"expected verdict to be \"AC\", got %q",
+					result.Verdict,
+				),
+			}
 			t.State = StateFailed
 			return
 		}
