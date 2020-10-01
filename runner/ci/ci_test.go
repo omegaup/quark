@@ -242,6 +242,11 @@ func TestNewRunConfig(t *testing.T) {
 			&RunConfig{
 				TestsSettings: common.TestsSettings{},
 				TestConfigs:   nil,
+				Input: &common.LiteralInput{
+					Cases:     map[string]*common.LiteralCaseSettings{},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
+				},
 			},
 			"",
 		},
@@ -324,6 +329,11 @@ func TestNewRunConfig(t *testing.T) {
 						},
 					},
 				},
+				Input: &common.LiteralInput{
+					Cases:     map[string]*common.LiteralCaseSettings{},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
+				},
 			},
 			"",
 		},
@@ -403,6 +413,11 @@ func TestNewRunConfig(t *testing.T) {
 						},
 					},
 				},
+				Input: &common.LiteralInput{
+					Cases:     map[string]*common.LiteralCaseSettings{},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
+				},
 			},
 			"\"tests/validator.py\" in \":memory:\": file does not exist",
 		},
@@ -458,6 +473,11 @@ func TestNewRunConfig(t *testing.T) {
 						Limits:    &common.DefaultLimits,
 						Validator: &common.LiteralValidatorSettings{},
 					},
+				},
+				Input: &common.LiteralInput{
+					Cases:     map[string]*common.LiteralCaseSettings{},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
 				},
 			},
 			"",
@@ -588,6 +608,17 @@ func TestNewRunConfig(t *testing.T) {
 						},
 					},
 				},
+				Input: &common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0": {
+							Input:          "1 2",
+							ExpectedOutput: "3",
+							Weight:         big.NewRat(1, 1),
+						},
+					},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
+				},
 			},
 			"",
 		},
@@ -661,6 +692,17 @@ func TestNewRunConfig(t *testing.T) {
 						},
 					},
 				},
+				Input: &common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0": {
+							Input:          "1 2",
+							ExpectedOutput: "3",
+							Weight:         big.NewRat(1, 1),
+						},
+					},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
+				},
 			},
 			"",
 		},
@@ -720,6 +762,22 @@ func TestNewRunConfig(t *testing.T) {
 							Validator: &common.LiteralValidatorSettings{},
 						},
 					},
+				},
+				Input: &common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0": {
+							Input:          "1 2",
+							ExpectedOutput: "3",
+							Weight:         big.NewRat(1, 1),
+						},
+						"1": {
+							Input:          "1 2",
+							ExpectedOutput: "3",
+							Weight:         big.NewRat(2, 1),
+						},
+					},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
 				},
 			},
 			"",

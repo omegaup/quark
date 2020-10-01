@@ -361,13 +361,18 @@ type RunConfig struct {
 	TestsSettings      common.TestsSettings
 	OutGeneratorConfig *OutGeneratorConfig
 	TestConfigs        []*TestConfig
+
+	// Input is the common.LiteralInput shared by all the non-input-validator
+	// TestConfigs.
+	Input *common.LiteralInput
 }
 
 // NewRunConfig creates a RunConfig based on the contents of ProblemFiles.
 func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConfig, error) {
-	config := &RunConfig{}
-	input := &common.LiteralInput{
-		Cases: make(map[string]*common.LiteralCaseSettings),
+	config := &RunConfig{
+		Input: &common.LiteralInput{
+			Cases: make(map[string]*common.LiteralCaseSettings),
+		},
 	}
 
 	// Official solutions
@@ -409,7 +414,7 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 		}
 		config.OutGeneratorConfig = &OutGeneratorConfig{
 			Solution: *solution,
-			Input:    input,
+			Input:    config.Input,
 		}
 	}
 
@@ -460,7 +465,7 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 			)
 		}
 	}
-	input.Limits = &problemSettings.Limits
+	config.Input.Limits = &problemSettings.Limits
 
 	// Cases
 	for _, groupSettings := range problemSettings.Cases {
@@ -506,12 +511,12 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 				}
 			}
 
-			input.Cases[caseSettings.Name] = literalCaseSettings
+			config.Input.Cases[caseSettings.Name] = literalCaseSettings
 		}
 	}
 
 	// Validator
-	input.Validator = &common.LiteralValidatorSettings{
+	config.Input.Validator = &common.LiteralValidatorSettings{
 		Name:      problemSettings.Validator.Name,
 		Tolerance: problemSettings.Validator.Tolerance,
 	}
@@ -550,28 +555,28 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 			return nil, err
 		}
 
-		input.Validator.CustomValidator = customValidatorSettings
+		config.Input.Validator.CustomValidator = customValidatorSettings
 	}
 
 	// Interactive
 	if problemSettings.Interactive != nil {
-		input.Interactive = &common.LiteralInteractiveSettings{
+		config.Input.Interactive = &common.LiteralInteractiveSettings{
 			ModuleName: problemSettings.Interactive.ModuleName,
 			ParentLang: problemSettings.Interactive.ParentLang,
 			Templates:  problemSettings.Interactive.Templates,
 		}
-		if input.Interactive.IDLSource, err = files.GetStringContents(
+		if config.Input.Interactive.IDLSource, err = files.GetStringContents(
 			fmt.Sprintf(
 				"interactive/%s.idl",
-				common.LanguageFileExtension(input.Interactive.ModuleName),
+				common.LanguageFileExtension(config.Input.Interactive.ModuleName),
 			),
 		); err != nil {
 			return nil, err
 		}
-		if input.Interactive.MainSource, err = files.GetStringContents(
+		if config.Input.Interactive.MainSource, err = files.GetStringContents(
 			fmt.Sprintf(
 				"interactive/Main.%s",
-				common.LanguageFileExtension(input.Interactive.ParentLang),
+				common.LanguageFileExtension(config.Input.Interactive.ParentLang),
 			),
 		); err != nil {
 			return nil, err
@@ -600,7 +605,7 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 				Filename:        solutionSetting.Filename,
 				SolutionSetting: &solutionSettingCopy,
 			},
-			Input: input,
+			Input: config.Input,
 			Solution: SolutionConfig{
 				Language: language,
 			},
@@ -638,7 +643,7 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 				Language: "cpp11",
 			},
 			Input: &common.LiteralInput{
-				Cases: input.Cases,
+				Cases: config.Input.Cases,
 				Validator: &common.LiteralValidatorSettings{
 					Name: "custom",
 					CustomValidator: &common.LiteralCustomValidatorSettings{
