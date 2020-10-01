@@ -21,6 +21,7 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -352,24 +353,40 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				)
 			}
 
-			for caseName, caseSettings := range runConfig.OutGeneratorConfig.Input.Cases {
-				srcPath := path.Join(runRoot, fmt.Sprintf("%s.out", caseName))
-				outContents, err := ioutil.ReadFile(srcPath)
-				if err != nil {
-					ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
-					return err
+			for pathCaseName := range runConfig.OutGeneratorConfig.Input.Cases {
+				if strings.HasPrefix(pathCaseName, "cases/") {
+					srcPath := path.Join(runRoot, fmt.Sprintf("%s.out", pathCaseName))
+					outContents, err := ioutil.ReadFile(srcPath)
+					if err != nil {
+						ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+						return err
+					}
+
+					caseName := strings.TrimPrefix(pathCaseName, "cases/")
+					runConfig.Input.Cases[caseName].ExpectedOutput = string(outContents)
 				}
 
-				caseSettings.ExpectedOutput = string(outContents)
-
 				if *outputsDirectory != "" {
-					dstPath := path.Join(*outputsDirectory, fmt.Sprintf("%s.out", caseName))
+					srcPath := path.Join(runRoot, fmt.Sprintf("%s.out", pathCaseName))
+					srcFile, err := os.Open(srcPath)
+					if err != nil {
+						ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+						return err
+					}
+					dstPath := path.Join(*outputsDirectory, fmt.Sprintf("%s.out", pathCaseName))
+					if err := os.MkdirAll(path.Dir(dstPath), 0o755); err != nil {
+						srcFile.Close()
+						ctx.Log.Error("Failed to create target file directory", "path", dstPath, "err", err)
+						return err
+					}
 					dstFile, err := os.Create(dstPath)
 					if err != nil {
+						srcFile.Close()
 						ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
 						return err
 					}
-					_, err = dstFile.Write(outContents)
+					_, err = io.Copy(dstFile, srcFile)
+					srcFile.Close()
 					dstFile.Close()
 					if err != nil {
 						ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)

@@ -292,6 +292,14 @@ func (o *OmegajailSandbox) Run(
 		}
 	}
 
+	// Create intermediate directories, if needed.
+	if err := os.MkdirAll(path.Dir(outputFile), 0o755); err != nil {
+		return &RunMetadata{
+			Verdict:    "JE",
+			ExitStatus: -1,
+		}, err
+	}
+
 	// "640MB should be enough for anybody"
 	hardLimit := base.MinBytes(base.Byte(640)*base.Mebibyte, limits.MemoryLimit)
 
