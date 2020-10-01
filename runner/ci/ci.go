@@ -404,20 +404,6 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 		}
 	}
 
-	// .out generation
-	if generateOutputFiles {
-		if solution == nil {
-			return nil, errors.Errorf(
-				"missing solutions/solution.* files for .out generation in %s",
-				files.String(),
-			)
-		}
-		config.OutGeneratorConfig = &OutGeneratorConfig{
-			Solution: *solution,
-			Input:    config.Input,
-		}
-	}
-
 	// Settings
 	testsJSONContents, err := files.GetContents("tests/tests.json")
 	if err != nil {
@@ -658,6 +644,49 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 			return nil, err
 		}
 		config.TestConfigs = append(config.TestConfigs, testConfig)
+	}
+
+	// .out generation
+	if generateOutputFiles {
+		if solution == nil {
+			return nil, errors.Errorf(
+				"missing solutions/solution.* files for .out generation in %s",
+				files.String(),
+			)
+		}
+		config.OutGeneratorConfig = &OutGeneratorConfig{
+			Solution: *solution,
+			Input: &common.LiteralInput{
+				Cases:     make(map[string]*common.LiteralCaseSettings),
+				Limits:    config.Input.Limits,
+				Validator: config.Input.Validator,
+			},
+		}
+		for _, filename := range files.Files() {
+			if !strings.HasSuffix(filename, ".in") {
+				continue
+			}
+			if !strings.HasPrefix(filename, "cases/") &&
+				!strings.HasPrefix(filename, "examples/") &&
+				!strings.HasPrefix(filename, "statements/") {
+				continue
+			}
+
+			inputContents, err := files.GetStringContents(filename)
+			if err != nil {
+				return nil, errors.Wrapf(
+					err,
+					"failed to get input contents for %s %s",
+					files.String(),
+					filename,
+				)
+			}
+
+			config.OutGeneratorConfig.Input.Cases[strings.TrimSuffix(filename, ".in")] = &common.LiteralCaseSettings{
+				Weight: big.NewRat(1, 1),
+				Input:  inputContents,
+			}
+		}
 	}
 
 	return config, nil
