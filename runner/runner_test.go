@@ -1242,3 +1242,54 @@ func TestWorseVerdict(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeVerdict(t *testing.T) {
+	ctx, err := newRunnerContext(t)
+	if err != nil {
+		t.Fatalf("RunnerContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+
+	entries := []struct {
+		a, b     *RunMetadata
+		expected string
+	}{
+		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "OK"}, "OK"},
+		{&RunMetadata{Verdict: "ANY"}, &RunMetadata{Verdict: "OK"}, "ANY"},
+		{&RunMetadata{Verdict: "ANY"}, nil, "ANY"},
+
+		// TLE.
+		{&RunMetadata{Verdict: "TLE"}, &RunMetadata{Verdict: "OK"}, "TLE"},
+		{&RunMetadata{Verdict: "TLE"}, &RunMetadata{Verdict: "ANY"}, "TLE"},
+		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "TLE"}, "TLE"},
+
+		// TLE with peer death.
+		{&RunMetadata{Verdict: "TLE"}, &RunMetadata{Verdict: "RTE", ExitStatus: 239}, "TLE"},
+
+		// OLE.
+		{&RunMetadata{Verdict: "ANY"}, &RunMetadata{Verdict: "OLE"}, "ANY"},
+		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "OLE"}, "OLE"},
+		{&RunMetadata{Verdict: "OLE"}, &RunMetadata{Verdict: "ANY"}, "OLE"},
+		{&RunMetadata{Verdict: "OLE"}, &RunMetadata{Verdict: "OK"}, "OLE"},
+		{&RunMetadata{Verdict: "OLE"}, &RunMetadata{Verdict: "RTE", ExitStatus: 239}, "OLE"},
+
+		// Child died due to peer death.
+		{&RunMetadata{Verdict: "RTE", ExitStatus: 239}, &RunMetadata{Verdict: "OK"}, "RTE"},
+
+		// Child finished correctly, but parent did not
+		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "OLE"}, "OLE"},
+		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "ANY"}, "VE"},
+	}
+	for _, entry := range entries {
+		t.Run(fmt.Sprintf("mergeVerdict(%v, %v)", entry.a, entry.b), func(t *testing.T) {
+			got := mergeVerdict(ctx, entry.a, entry.b).Verdict
+			if got != entry.expected {
+				t.Errorf(
+					"mergeVerdict().Verdict == %q, expected %q",
+					got,
+					entry.expected,
+				)
+			}
+		})
+	}
+}
