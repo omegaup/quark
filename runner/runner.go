@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	base "github.com/omegaup/go-base"
-	"github.com/omegaup/quark/common"
-	"github.com/vincent-petithory/dataurl"
 	"io"
 	"io/ioutil"
 	"math"
@@ -19,6 +16,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	base "github.com/omegaup/go-base"
+	"github.com/omegaup/quark/common"
+	"github.com/vincent-petithory/dataurl"
 )
 
 // A CaseResult represents the sub-results of a specific test case.
@@ -276,6 +277,53 @@ func targetName(language string, target string) string {
 		return fmt.Sprintf("%s_entry", target)
 	}
 	return target
+}
+
+// mergeVerdict determines the final verdict based on the child and parent's
+// metadata.
+func mergeVerdict(
+	ctx *common.Context,
+	chosenMetadata, parentMetadata *RunMetadata,
+) *RunMetadata {
+	if parentMetadata != nil && parentMetadata.Verdict != "OK" &&
+		chosenMetadata.Verdict == "OK" {
+		ctx.Log.Warn(
+			"child process finished correctly, but parent did not",
+			"parent", parentMetadata,
+		)
+		if parentMetadata.Verdict == "OLE" {
+			chosenMetadata.Verdict = "OLE"
+		} else if parentMetadata.Verdict == "TLE" {
+			chosenMetadata.Verdict = "TLE"
+		} else if parentMetadata.Verdict == "RTE" {
+			// The parent explicitly died. Let's mark the run as not being the
+			// fault of the user.
+			chosenMetadata.Verdict = "VE"
+		} else if parentMetadata.ExitStatus == 239 {
+			// Child died before finishing message
+			chosenMetadata.Verdict = "RTE"
+		} else if parentMetadata.ExitStatus == 240 {
+			// Child sent invalid cookie
+			chosenMetadata.Verdict = "RTE"
+		} else if parentMetadata.ExitStatus == 241 {
+			// Child sent invalid message id
+			chosenMetadata.Verdict = "RTE"
+		} else if parentMetadata.ExitStatus == 242 {
+			// Child terminated without replying call.
+			chosenMetadata.Verdict = "RTE"
+		} else if parentMetadata.Signal != nil &&
+			*parentMetadata.Signal == "SIGPIPE" {
+			// Child unexpectedly closed the pipe.
+			chosenMetadata.Verdict = "RTE"
+		} else {
+			// This is probably the user's fault, but let's not guess this and
+			// mark this explicitly as being the validator's fault so that the
+			// problemsetter can fix this.
+			chosenMetadata.Verdict = "VE"
+		}
+	}
+
+	return chosenMetadata
 }
 
 func normalizedSourceFiles(
@@ -1019,45 +1067,7 @@ func Grade(
 				chosenMetadata.WallTime = totalWallTime
 				chosenMetadata.Memory = totalMemory
 
-				if parentMetadata != nil && parentMetadata.Verdict != "OK" &&
-					chosenMetadata.Verdict == "OK" {
-					ctx.Log.Warn(
-						"child process finished correctly, but parent did not",
-						"parent", parentMetadata,
-					)
-					if parentMetadata.Verdict == "OLE" {
-						chosenMetadata.Verdict = "OLE"
-					} else if parentMetadata.Verdict == "TLE" {
-						chosenMetadata.Verdict = "TLE"
-					} else if parentMetadata.Verdict == "RTE" {
-						// The parent explicitly died. Let's mark the run as not being the
-						// fault of the user.
-						chosenMetadata.Verdict = "VE"
-					} else if parentMetadata.ExitStatus == 239 {
-						// Child died before finishing message
-						chosenMetadata.Verdict = "RTE"
-					} else if parentMetadata.ExitStatus == 240 {
-						// Child sent invalid cookie
-						chosenMetadata.Verdict = "RTE"
-					} else if parentMetadata.ExitStatus == 241 {
-						// Child sent invalid message id
-						chosenMetadata.Verdict = "RTE"
-					} else if parentMetadata.ExitStatus == 242 {
-						// Child terminated without replying call.
-						chosenMetadata.Verdict = "RTE"
-					} else if parentMetadata.Signal != nil &&
-						*parentMetadata.Signal == "SIGPIPE" {
-						// Child unexpectedly closed the pipe.
-						chosenMetadata.Verdict = "RTE"
-					} else {
-						// This is probably the user's fault, but let's not guess this and
-						// mark this explicitly as being the validator's fault so that the
-						// problemsetter can fix this.
-						chosenMetadata.Verdict = "VE"
-					}
-				}
-
-				runMeta = &chosenMetadata
+				runMeta = mergeVerdict(ctx, &chosenMetadata, parentMetadata)
 			}
 			runResult.Verdict = worseVerdict(runResult.Verdict, runMeta.Verdict)
 			runResult.Time += runMeta.Time
