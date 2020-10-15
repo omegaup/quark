@@ -279,48 +279,86 @@ func targetName(language string, target string) string {
 	return target
 }
 
+// isPeerDeath determines whether a process died because of their peer dying or
+// misbehaving. These deaths will be considered to the peer's fault.
+func isPeerDeath(meta *RunMetadata) bool {
+	return meta.ExitStatus == 239 || // Peer died before finishing message
+		meta.ExitStatus == 240 || //  Peer sent invalid cookie
+		meta.ExitStatus == 241 || // Peer sent invalid message id
+		meta.ExitStatus == 242 || // Peer terminated without replying call.
+		(meta.Signal != nil && *meta.Signal == "SIGPIPE") // Peer unexpectedly closed the pipe.
+}
+
 // mergeVerdict determines the final verdict based on the child and parent's
 // metadata.
 func mergeVerdict(
 	ctx *common.Context,
 	chosenMetadata, parentMetadata *RunMetadata,
 ) *RunMetadata {
-	if parentMetadata != nil && parentMetadata.Verdict != "OK" &&
-		chosenMetadata.Verdict == "OK" {
+	if parentMetadata == nil || parentMetadata.Verdict == "OK" {
+		return chosenMetadata
+	}
+
+	// Make a copy to avoid modifying the in-parameter.
+	copied := *chosenMetadata
+	chosenMetadata = &copied
+
+	if parentMetadata.Verdict == "TLE" {
+		// Regardless of what happened, if one of the processes died of TLE, the
+		// whole run is marked as TLE.
 		ctx.Log.Warn(
-			"child process finished correctly, but parent did not",
+			"parent took too long. marking as TLE",
+			"meta", chosenMetadata,
+			"parent", parentMetadata,
+		)
+		chosenMetadata.Verdict = "TLE"
+		return chosenMetadata
+	}
+
+	if isPeerDeath(chosenMetadata) {
+		// The child died because of the parent's fault.
+		ctx.Log.Warn(
+			"child process crashed due to the parent's fault",
+			"meta", chosenMetadata,
 			"parent", parentMetadata,
 		)
 		if parentMetadata.Verdict == "OLE" {
+			// This should only happen if the child caused the parent to print out
+			// too much stuff.
+			ctx.Log.Warn(
+				"child caused parent to OLE",
+				"meta", chosenMetadata,
+				"parent", parentMetadata,
+			)
 			chosenMetadata.Verdict = "OLE"
-		} else if parentMetadata.Verdict == "TLE" {
-			chosenMetadata.Verdict = "TLE"
-		} else if parentMetadata.Verdict == "RTE" {
-			// The parent explicitly died. Let's mark the run as not being the
-			// fault of the user.
-			chosenMetadata.Verdict = "VE"
-		} else if parentMetadata.ExitStatus == 239 {
-			// Child died before finishing message
-			chosenMetadata.Verdict = "RTE"
-		} else if parentMetadata.ExitStatus == 240 {
-			// Child sent invalid cookie
-			chosenMetadata.Verdict = "RTE"
-		} else if parentMetadata.ExitStatus == 241 {
-			// Child sent invalid message id
-			chosenMetadata.Verdict = "RTE"
-		} else if parentMetadata.ExitStatus == 242 {
-			// Child terminated without replying call.
-			chosenMetadata.Verdict = "RTE"
-		} else if parentMetadata.Signal != nil &&
-			*parentMetadata.Signal == "SIGPIPE" {
-			// Child unexpectedly closed the pipe.
-			chosenMetadata.Verdict = "RTE"
-		} else {
-			// This is probably the user's fault, but let's not guess this and
-			// mark this explicitly as being the validator's fault so that the
-			// problemsetter can fix this.
-			chosenMetadata.Verdict = "VE"
+			return chosenMetadata
 		}
+		chosenMetadata.Verdict = "VE"
+		return chosenMetadata
+	}
+
+	if chosenMetadata.Verdict == "OK" {
+		ctx.Log.Warn(
+			"child process finished correctly, but parent did not",
+			"meta", chosenMetadata,
+			"parent", parentMetadata,
+		)
+		if parentMetadata.Verdict == "OLE" {
+			// This should only happen if the child caused the parent to print out
+			// too much stuff.
+			chosenMetadata.Verdict = "OLE"
+			return chosenMetadata
+		}
+		if isPeerDeath(parentMetadata) {
+			// The parent died because of the parent's fault.
+			chosenMetadata.Verdict = "RTE"
+			return chosenMetadata
+		}
+		// This is probably the user's fault, but let's not guess this and mark
+		// this explicitly as being the validator's fault so that the problemsetter
+		// can fix this.
+		chosenMetadata.Verdict = "VE"
+		return chosenMetadata
 	}
 
 	return chosenMetadata

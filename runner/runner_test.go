@@ -1250,39 +1250,98 @@ func TestMergeVerdict(t *testing.T) {
 	}
 	defer ctx.Close()
 
-	entries := []struct {
-		a, b     *RunMetadata
+	noFaultVerdict := &RunMetadata{Verdict: "RTE", ExitStatus: 239}
+
+	// Contestant has a no fault verdict.
+	for _, entry := range []struct {
+		b        *RunMetadata
 		expected string
 	}{
-		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "OK"}, "OK"},
-		{&RunMetadata{Verdict: "ANY"}, &RunMetadata{Verdict: "OK"}, "ANY"},
-		{&RunMetadata{Verdict: "ANY"}, nil, "ANY"},
-
-		// TLE.
-		{&RunMetadata{Verdict: "TLE"}, &RunMetadata{Verdict: "OK"}, "TLE"},
-		{&RunMetadata{Verdict: "TLE"}, &RunMetadata{Verdict: "ANY"}, "TLE"},
-		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "TLE"}, "TLE"},
-
-		// TLE with peer death.
-		{&RunMetadata{Verdict: "TLE"}, &RunMetadata{Verdict: "RTE", ExitStatus: 239}, "TLE"},
-
-		// OLE.
-		{&RunMetadata{Verdict: "ANY"}, &RunMetadata{Verdict: "OLE"}, "ANY"},
-		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "OLE"}, "OLE"},
-		{&RunMetadata{Verdict: "OLE"}, &RunMetadata{Verdict: "ANY"}, "OLE"},
-		{&RunMetadata{Verdict: "OLE"}, &RunMetadata{Verdict: "OK"}, "OLE"},
-		{&RunMetadata{Verdict: "OLE"}, &RunMetadata{Verdict: "RTE", ExitStatus: 239}, "OLE"},
-
-		// Child died due to peer death.
-		{&RunMetadata{Verdict: "RTE", ExitStatus: 239}, &RunMetadata{Verdict: "OK"}, "RTE"},
-
-		// Child finished correctly, but parent did not
-		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "OLE"}, "OLE"},
-		{&RunMetadata{Verdict: "OK"}, &RunMetadata{Verdict: "ANY"}, "VE"},
+		{&RunMetadata{Verdict: "CE"}, "VE"},
+		{&RunMetadata{Verdict: "RFE"}, "VE"},
+		{&RunMetadata{Verdict: "MLE"}, "VE"},
+		{&RunMetadata{Verdict: "RTE"}, "VE"},
+		{&RunMetadata{Verdict: "TLE"}, "TLE"},
+		{&RunMetadata{Verdict: "OLE"}, "OLE"},
+		{&RunMetadata{Verdict: "OK"}, "RTE"},
+	} {
+		t.Run(fmt.Sprintf("mergeVerdict(noFault, %v)", entry.b.Verdict), func(t *testing.T) {
+			got := mergeVerdict(ctx, noFaultVerdict, entry.b).Verdict
+			if got != entry.expected {
+				t.Errorf(
+					"mergeVerdict().Verdict == %q, expected %q",
+					got,
+					entry.expected,
+				)
+			}
+		})
 	}
-	for _, entry := range entries {
-		t.Run(fmt.Sprintf("mergeVerdict(%v, %v)", entry.a, entry.b), func(t *testing.T) {
-			got := mergeVerdict(ctx, entry.a, entry.b).Verdict
+
+	// Contestant finished successfully.
+	for _, entry := range []struct {
+		b        *RunMetadata
+		expected string
+	}{
+		{&RunMetadata{Verdict: "CE"}, "VE"},
+		{&RunMetadata{Verdict: "RFE"}, "VE"},
+		{&RunMetadata{Verdict: "MLE"}, "VE"},
+		{&RunMetadata{Verdict: "RTE"}, "VE"},
+		{&RunMetadata{Verdict: "TLE"}, "TLE"},
+		{&RunMetadata{Verdict: "OLE"}, "OLE"},
+		{&RunMetadata{Verdict: "OK"}, "OK"},
+	} {
+		t.Run(fmt.Sprintf("mergeVerdict(OK, %v)", entry.b.Verdict), func(t *testing.T) {
+			got := mergeVerdict(ctx, &RunMetadata{Verdict: "OK"}, entry.b).Verdict
+			if got != entry.expected {
+				t.Errorf(
+					"mergeVerdict().Verdict == %q, expected %q",
+					got,
+					entry.expected,
+				)
+			}
+		})
+	}
+
+	// Parent has a no fault verdict.
+	for _, entry := range []struct {
+		a        *RunMetadata
+		expected string
+	}{
+		{&RunMetadata{Verdict: "CE"}, "CE"},
+		{&RunMetadata{Verdict: "RFE"}, "RFE"},
+		{&RunMetadata{Verdict: "MLE"}, "MLE"},
+		{&RunMetadata{Verdict: "RTE"}, "RTE"},
+		{&RunMetadata{Verdict: "TLE"}, "TLE"},
+		{&RunMetadata{Verdict: "OLE"}, "OLE"},
+		{&RunMetadata{Verdict: "OK"}, "RTE"},
+	} {
+		t.Run(fmt.Sprintf("mergeVerdict(%v, noFault)", entry.a.Verdict), func(t *testing.T) {
+			got := mergeVerdict(ctx, entry.a, noFaultVerdict).Verdict
+			if got != entry.expected {
+				t.Errorf(
+					"mergeVerdict().Verdict == %q, expected %q",
+					got,
+					entry.expected,
+				)
+			}
+		})
+	}
+
+	// Parent finished successfully.
+	for _, entry := range []struct {
+		a        *RunMetadata
+		expected string
+	}{
+		{&RunMetadata{Verdict: "CE"}, "CE"},
+		{&RunMetadata{Verdict: "RFE"}, "RFE"},
+		{&RunMetadata{Verdict: "MLE"}, "MLE"},
+		{&RunMetadata{Verdict: "RTE"}, "RTE"},
+		{&RunMetadata{Verdict: "TLE"}, "TLE"},
+		{&RunMetadata{Verdict: "OLE"}, "OLE"},
+		{&RunMetadata{Verdict: "OK"}, "OK"},
+	} {
+		t.Run(fmt.Sprintf("mergeVerdict(%v, OK)", entry.a.Verdict), func(t *testing.T) {
+			got := mergeVerdict(ctx, entry.a, &RunMetadata{Verdict: "OK"}).Verdict
 			if got != entry.expected {
 				t.Errorf(
 					"mergeVerdict().Verdict == %q, expected %q",
