@@ -235,6 +235,12 @@ func runPostProcessor(
 	}
 }
 
+// dbRun represents a run in the database.
+type dbRun struct {
+	runID        int64
+	submissionID int64
+}
+
 func runQueueLoop(
 	ctx *grader.Context,
 	runs *grader.Queue,
@@ -250,24 +256,27 @@ func runQueueLoop(
 			status = 'new'
 		WHERE
 			status != 'ready';
-		`)
+		`,
+	)
 	if err != nil {
 		ctx.Log.Error("Failed to reset pending runs", "err", err)
 	}
 
-	var maxRunID int64
+	var maxSubmissionID int64
 	err = db.QueryRow(
-		`SELECT
-			MAX(r.run_id)
+		`
+		SELECT
+			MAX(s.submission_id)
 		FROM
-			Runs r;
-		`).Scan(
-		&maxRunID,
+			Submissions s;
+		`,
+	).Scan(
+		&maxSubmissionID,
 	)
 	if err != nil {
-		ctx.Log.Error("Failed to get the max run ID", "err", err)
+		ctx.Log.Error("Failed to get the max submission ID", "err", err)
 	}
-	ctx.Log.Debug("Max run ID found", "maxRunID", maxRunID)
+	ctx.Log.Debug("Max run ID found", "maxSubmissionID", maxSubmissionID)
 
 	for range newRuns {
 		ctx.Log.Debug("New run in the queue")
@@ -279,73 +288,99 @@ func runQueueLoop(
 			hasNewRuns = false
 			rows, err := db.Query(
 				`
-			(
-				SELECT
-					run_id
-				FROM
-					Runs
-				WHERE
-					status = 'new'
-				AND
-					run_id > ?
-				ORDER BY
-					run_id
-			)
-			UNION
-			(
-				SELECT
-					run_id
-				FROM
-					Runs
-				WHERE
-					status = 'new'
-				AND
-					run_id <= ?
-				ORDER BY
-					run_id
-			)
-			LIMIT 128;
-			`,
-				maxRunID,
-				maxRunID,
+				(
+					SELECT
+						run_id,
+						submission_id
+					FROM
+						Runs
+					WHERE
+						status = 'new'
+					AND
+						submission_id > ?
+					ORDER BY
+						submission_id ASC,
+						run_id ASC
+					LIMIT 128
+				)
+				UNION
+				(
+					SELECT
+						run_id,
+						submission_id
+					FROM
+						Runs
+					WHERE
+						status = 'new'
+					AND
+						submission_id <= ?
+					ORDER BY
+						submission_id ASC,
+						run_id ASC
+					LIMIT 128
+				);
+				`,
+				maxSubmissionID,
+				maxSubmissionID,
 			)
 			if err != nil {
 				ctx.Log.Error("Failed to get new runs", "err", err)
 				break
 			}
+
+			var oldRuns, newRuns []dbRun
 			for rows.Next() {
 				hasNewRuns = true
-				var runID int64
-				err = rows.Scan(&runID)
-				_, err := db.Exec(
-					`
-				UPDATE
-					Runs
-				SET
-					status = 'waiting'
-				WHERE
-					run_id = ?;
-				`,
-					runID)
+				var dbRun dbRun
+				err = rows.Scan(&dbRun.runID, &dbRun.submissionID)
 				if err != nil {
-					ctx.Log.Error("Failed to mark a run as waiting", "err", err)
+					ctx.Log.Error("Failed to get run", "err", err)
 					continue
 				}
-				runInfo, err := newRunInfoFromID(ctx, db, runID)
+				if maxSubmissionID >= dbRun.submissionID {
+					oldRuns = append(oldRuns, dbRun)
+				} else {
+					newRuns = append(newRuns, dbRun)
+				}
+			}
+
+			// Always favor the new runs over the old ones.
+			dbRuns := append(newRuns, oldRuns...)
+			if len(dbRuns) > 128 {
+				dbRuns = dbRuns[:128]
+			}
+
+			for _, dbRun := range dbRuns {
+				_, err := db.Exec(
+					`
+					UPDATE
+						Runs
+					SET
+						status = 'waiting'
+					WHERE
+						run_id = ?;
+					`,
+					dbRun.runID,
+				)
+				if err != nil {
+					ctx.Log.Error("Failed to mark a run as waiting", "run", dbRun, "err", err)
+					continue
+				}
+				runInfo, err := newRunInfoFromID(ctx, db, dbRun.runID)
 				if err != nil {
 					ctx.Log.Error(
 						"Error getting run information",
 						"err", err,
-						"runId", runID,
+						"run", dbRun,
 					)
 					continue
 				}
 
 				priority := grader.QueuePriorityNormal
-				if maxRunID >= runID {
+				if maxSubmissionID >= dbRun.submissionID {
 					priority = grader.QueuePriorityLow
 				} else {
-					maxRunID = runID
+					maxSubmissionID = dbRun.submissionID
 				}
 				if err := injectRuns(
 					ctx,
@@ -353,7 +388,11 @@ func runQueueLoop(
 					priority,
 					runInfo,
 				); err != nil {
-					ctx.Log.Error("Error injecting run", "runId", runID, "err", err)
+					ctx.Log.Error(
+						"Error injecting run",
+						"run", dbRun,
+						"err", err,
+					)
 				}
 				totalRunsInRound++
 			}
