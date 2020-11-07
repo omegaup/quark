@@ -751,6 +751,24 @@ func registerFrontendHandlers(
 			return
 		}
 
+		// This helps close a race where several runs are created and the run loop
+		// grabs the ID of a run whose submission's source has not yet been written
+		// to disk.
+		_, err = db.Exec(
+			`
+			UPDATE
+				Runs
+			SET
+				status = 'new'
+			WHERE
+				run_id = ?;
+			`,
+			runID,
+		)
+		if err != nil {
+			ctx.Log.Error("Failed to mark a run as new", "run", runInfo, "err", err)
+		}
+
 		// Try to notify the channel that there's something new. If it has already
 		// been notified, do nothing.
 		select {
