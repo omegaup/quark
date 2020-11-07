@@ -373,6 +373,24 @@ func runQueueLoop(
 						"err", err,
 						"run", dbRun,
 					)
+					_, err := db.Exec(
+						`
+						UPDATE
+							Runs
+						SET
+							status = 'ready',
+							verdict = 'JE',
+							score = 0,
+							contest_score = 0,
+							judged_by = ''
+						WHERE
+							run_id = ?;
+						`,
+						dbRun.runID,
+					)
+					if err != nil {
+						ctx.Log.Error("Failed to mark a run as ready", "run", dbRun, "err", err)
+					}
 					continue
 				}
 
@@ -382,7 +400,7 @@ func runQueueLoop(
 				} else {
 					maxSubmissionID = dbRun.submissionID
 				}
-				if err := injectRuns(
+				if err := injectRun(
 					ctx,
 					runs,
 					priority,
@@ -393,6 +411,14 @@ func runQueueLoop(
 						"run", dbRun,
 						"err", err,
 					)
+					err = updateDatabase(ctx, db, runInfo)
+					if err != nil {
+						ctx.Log.Error(
+							"Error marking run as ready",
+							"run", dbRun,
+							"err", err,
+						)
+					}
 				}
 				totalRunsInRound++
 			}
@@ -513,41 +539,39 @@ func readSource(ctx *grader.Context, runInfo *grader.RunInfo) error {
 	return nil
 }
 
-func injectRuns(
+func injectRun(
 	ctx *grader.Context,
 	runs *grader.Queue,
 	priority grader.QueuePriority,
-	runInfos ...*grader.RunInfo,
+	runInfo *grader.RunInfo,
 ) error {
-	for _, runInfo := range runInfos {
-		if err := readSource(ctx, runInfo); err != nil {
-			ctx.Log.Error(
-				"Error getting run source",
-				"err", err,
-				"runId", runInfo.ID,
-			)
-			return err
-		}
-		if runInfo.Priority == grader.QueuePriorityNormal {
-			runInfo.Priority = priority
-		}
-		ctx.Log.Info("RunContext", "runInfo", runInfo)
-		ctx.Metrics.CounterAdd("grader_runs_total", 1)
-		inputRef, err := ctx.InputManager.Add(
-			runInfo.Run.InputHash,
-			grader.NewInputFactory(
-				runInfo.Run.ProblemName,
-				&ctx.Config,
-			),
+	if err := readSource(ctx, runInfo); err != nil {
+		ctx.Log.Error(
+			"Error getting run source",
+			"err", err,
+			"runId", runInfo.ID,
 		)
-		if err != nil {
-			ctx.Log.Error("Error getting input", "err", err, "run", runInfo)
-			return err
-		}
-		if err = runs.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
-			ctx.Log.Error("Error adding run information", "err", err, "runId", runInfo.ID)
-			return err
-		}
+		return err
+	}
+	if runInfo.Priority == grader.QueuePriorityNormal {
+		runInfo.Priority = priority
+	}
+	ctx.Log.Info("RunContext", "runInfo", runInfo)
+	ctx.Metrics.CounterAdd("grader_runs_total", 1)
+	inputRef, err := ctx.InputManager.Add(
+		runInfo.Run.InputHash,
+		grader.NewInputFactory(
+			runInfo.Run.ProblemName,
+			&ctx.Config,
+		),
+	)
+	if err != nil {
+		ctx.Log.Error("Error getting input", "err", err, "run", runInfo)
+		return err
+	}
+	if err = runs.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
+		ctx.Log.Error("Error adding run information", "err", err, "runId", runInfo.ID)
+		return err
 	}
 	return nil
 }
