@@ -318,7 +318,8 @@ func runQueueLoop(
 						submission_id ASC,
 						run_id ASC
 					LIMIT 128
-				);
+				)
+				ORDER BY run_id ASC;
 				`,
 				maxSubmissionID,
 				maxSubmissionID,
