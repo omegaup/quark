@@ -13,7 +13,6 @@ jobs:
       fail-fast: false
       matrix:
         go:
-          - 1.14
           - 1.15
     name: Go ${{ matrix.go }}
 
