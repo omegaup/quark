@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/grader"
-	"github.com/omegaup/quark/runner"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -17,6 +15,10 @@ import (
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/grader"
+	"github.com/omegaup/quark/runner"
 )
 
 func processRun(
@@ -91,11 +93,13 @@ func processRun(
 			}
 			for _, e := range runnerCollector.Events {
 				if err := runCtx.EventCollector.Add(e); err != nil {
-					runCtx.Log.Error(
-						"Unable to add tracing data",
-						"err", err,
-						"runner", runnerName,
-					)
+					if !errors.Is(err, os.ErrClosed) {
+						runCtx.Log.Error(
+							"Unable to add tracing data",
+							"err", err,
+							"runner", runnerName,
+						)
+					}
 					break
 				}
 			}
