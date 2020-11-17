@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -19,11 +20,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/net/http2"
+
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/grader"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/net/http2"
+)
+
+const (
+	sqlMaxRetries = 3
 )
 
 var (
@@ -60,13 +67,50 @@ type runGradeResource struct {
 	Filename string `json:"filename"`
 }
 
+func isRetriable(err error) bool {
+	var mErr *mysql.MySQLError
+	// ERROR 1205 (HY000): Lock wait timeout exceeded; try restarting transaction
+	return errors.As(err, &mErr) && mErr.Number == 1205
+}
+
+func execWithRetry(db *sql.DB, query string, args ...interface{}) (result sql.Result, err error) {
+	for tries := 0; tries < sqlMaxRetries; tries++ {
+		result, err = db.Exec(query, args...)
+		if !isRetriable(err) {
+			break
+		}
+	}
+	return
+}
+
+func queryWithRetry(db *sql.DB, query string, args ...interface{}) (rows *sql.Rows, err error) {
+	for tries := 0; tries < sqlMaxRetries; tries++ {
+		rows, err = db.Query(query, args...)
+		if !isRetriable(err) {
+			break
+		}
+	}
+	return
+}
+
+func queryRowWithRetry(db *sql.DB, query string, args ...interface{}) (row *sql.Row) {
+	for tries := 0; tries < sqlMaxRetries; tries++ {
+		row = db.QueryRow(query, args...)
+		if !isRetriable(row.Err()) {
+			break
+		}
+	}
+	return
+}
+
 func updateDatabase(
 	ctx *grader.Context,
 	db *sql.DB,
 	run *grader.RunInfo,
 ) error {
 	if run.PenaltyType == "runtime" {
-		_, err := db.Exec(
+		_, err := execWithRetry(
+			db,
 			`UPDATE
 				Runs
 			SET
@@ -87,7 +131,8 @@ func updateDatabase(
 			return err
 		}
 	} else {
-		_, err := db.Exec(
+		_, err := execWithRetry(
+			db,
 			`UPDATE
 				Runs
 			SET
@@ -174,7 +219,8 @@ func broadcastRun(
 		},
 	}
 	var runTime time.Time
-	err := db.QueryRow(
+	err := queryRowWithRetry(
+		db,
 		`SELECT
 			i.username, r.penalty, s.submit_delay, r.time
 		FROM
@@ -248,7 +294,8 @@ func runQueueLoop(
 	newRuns <-chan struct{},
 ) {
 	ctx.Log.Info("Starting run queue loop")
-	_, err := db.Exec(
+	_, err := execWithRetry(
+		db,
 		`
 		UPDATE
 			Runs
@@ -263,7 +310,8 @@ func runQueueLoop(
 	}
 
 	var maxSubmissionID int64
-	err = db.QueryRow(
+	err = queryRowWithRetry(
+		db,
 		`
 		SELECT
 			MAX(s.submission_id)
@@ -286,7 +334,8 @@ func runQueueLoop(
 		hasNewRuns := true
 		for hasNewRuns {
 			hasNewRuns = false
-			rows, err := db.Query(
+			rows, err := queryWithRetry(
+				db,
 				`
 				(
 					SELECT
@@ -352,7 +401,8 @@ func runQueueLoop(
 			}
 
 			for _, dbRun := range dbRuns {
-				_, err := db.Exec(
+				_, err := execWithRetry(
+					db,
 					`
 					UPDATE
 						Runs
@@ -374,7 +424,8 @@ func runQueueLoop(
 						"err", err,
 						"run", dbRun,
 					)
-					_, err := db.Exec(
+					_, err := execWithRetry(
+						db,
 						`
 						UPDATE
 							Runs
@@ -473,7 +524,8 @@ func newRunInfoFromID(
 	var penaltyType sql.NullString
 	var contestPoints sql.NullFloat64
 	var partialScore sql.NullBool
-	err := db.QueryRow(
+	err := queryRowWithRetry(
+		db,
 		`SELECT
 			s.guid, c.alias, s.problemset_id, c.penalty_type, c.partial_score,
 			s.language, p.alias, pp.points, r.version
@@ -755,7 +807,8 @@ func registerFrontendHandlers(
 		// This helps close a race where several runs are created and the run loop
 		// grabs the ID of a run whose submission's source has not yet been written
 		// to disk.
-		_, err = db.Exec(
+		_, err = execWithRetry(
+			db,
 			`
 			UPDATE
 				Runs
