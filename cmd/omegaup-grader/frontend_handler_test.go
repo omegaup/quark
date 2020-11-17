@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+
 	base "github.com/omegaup/go-base"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
@@ -30,7 +31,9 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 		t.Fatalf("Failed to ping database: %v", err)
 	}
 
-	if _, err := db.Exec(`
+	if _, err := execWithRetry(
+		db,
+		`
 		CREATE TABLE Identities (
 			identity_id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username varchar NOT NULL UNIQUE,
@@ -197,7 +200,8 @@ func TestUpdateDatabase(t *testing.T) {
 	db := newInMemoryDB(t, true)
 
 	var count int
-	if err := db.QueryRow(
+	if err := queryRowWithRetry(
+		db,
 		`SELECT COUNT(*) FROM Runs WHERE verdict = "AC";`,
 	).Scan(
 		&count,
@@ -228,7 +232,8 @@ func TestUpdateDatabase(t *testing.T) {
 		t.Fatalf("Error updating the database: %v", err)
 	}
 
-	if err := db.QueryRow(
+	if err := queryRowWithRetry(
+		db,
 		`SELECT COUNT(*) FROM Runs WHERE verdict = "AC";`,
 	).Scan(
 		&count,
