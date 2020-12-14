@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	git "github.com/lhchavez/git2go/v29"
+	git "github.com/lhchavez/git2go/v32"
 	"github.com/omegaup/quark/common"
 	"github.com/pkg/errors"
 )
@@ -114,10 +114,9 @@ func CreateArchiveFromGit(
 	archive := tar.NewWriter(gz)
 	defer archive.Close()
 
-	var walkErr error
 	foundSettings := false
 	var uncompressedSize int64
-	tree.Walk(func(parent string, entry *git.TreeEntry) int {
+	err = tree.Walk(func(parent string, entry *git.TreeEntry) error {
 		entryPath := path.Join(parent, entry.Name)
 		if entryPath == "settings.json" {
 			foundSettings = true
@@ -130,17 +129,15 @@ func CreateArchiveFromGit(
 				Mode:     0755,
 				Size:     0,
 			}
-			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
-				walkErr = errors.Wrapf(walkErr, "failed to write header for tree %s", entryPath)
-				return -1
+			err := archive.WriteHeader(hdr)
+			if err != nil {
+				return errors.Wrapf(err, "failed to write header for tree %s", entryPath)
 			}
 
 		case git.ObjectBlob:
-			var blob *git.Blob
-			blob, walkErr = repository.LookupBlob(entry.Id)
-			if walkErr != nil {
-				walkErr = errors.Wrapf(walkErr, "failed to lookup blob %s", entryPath)
-				return -1
+			blob, err := repository.LookupBlob(entry.Id)
+			if err != nil {
+				return errors.Wrapf(err, "failed to lookup blob %s", entryPath)
 			}
 			defer blob.Free()
 
@@ -151,9 +148,9 @@ func CreateArchiveFromGit(
 				Size:     blob.Size(),
 			}
 			uncompressedSize += blob.Size()
-			if walkErr = archive.WriteHeader(hdr); walkErr != nil {
-				walkErr = errors.Wrapf(walkErr, "failed to write header for blob %s", entryPath)
-				return -1
+			err = archive.WriteHeader(hdr)
+			if err != nil {
+				return errors.Wrapf(err, "failed to write header for blob %s", entryPath)
 			}
 
 			// Attempt to uncompress this object on the fly from the gzip stream
@@ -162,23 +159,23 @@ func CreateArchiveFromGit(
 			stream, err := odb.NewReadStream(entry.Id)
 			if err == nil {
 				defer stream.Free()
-				if _, walkErr = io.Copy(archive, stream); walkErr != nil {
-					walkErr = errors.Wrapf(walkErr, "failed to copy blob stream %s", entryPath)
-					return -1
+				_, err = io.Copy(archive, stream)
+				if err != nil {
+					return errors.Wrapf(err, "failed to copy blob stream %s", entryPath)
 				}
 			} else {
 				// That particular object cannot be streamed. Allocate the blob in
 				// memory and write it to the archive.
-				if _, walkErr = archive.Write(blob.Contents()); walkErr != nil {
-					walkErr = errors.Wrapf(walkErr, "failed to write blob %s", entryPath)
-					return -1
+				_, err = archive.Write(blob.Contents())
+				if err != nil {
+					return errors.Wrapf(err, "failed to write blob %s", entryPath)
 				}
 			}
 		}
-		return 0
+		return nil
 	})
-	if walkErr != nil {
-		return 0, errors.Wrapf(walkErr, "failed to create archive for %s:%s", repositoryPath, inputHash)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to create archive for %s:%s", repositoryPath, inputHash)
 	}
 	if !foundSettings {
 		return 0, errors.Errorf(

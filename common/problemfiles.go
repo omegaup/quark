@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	git "github.com/lhchavez/git2go/v29"
+	git "github.com/lhchavez/git2go/v32"
 	"github.com/pkg/errors"
 )
 
@@ -262,13 +262,13 @@ func NewProblemFilesFromGit(
 	}
 	grp.tree = tree
 
-	err = tree.Walk(func(dirname string, entry *git.TreeEntry) int {
+	err = tree.Walk(func(dirname string, entry *git.TreeEntry) error {
 		if entry.Type != git.ObjectBlob {
 			// Skip
-			return 0
+			return nil
 		}
 		grp.files = append(grp.files, path.Join(dirname, entry.Name))
-		return 0
+		return nil
 	})
 	if err != nil {
 		grp.Close()
