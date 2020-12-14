@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	git "github.com/lhchavez/git2go/v29"
+	git "github.com/lhchavez/git2go/v32"
 )
 
 const (

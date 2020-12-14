@@ -22,7 +22,7 @@ import (
 
 	"github.com/coreos/go-systemd/v22/daemon"
 	_ "github.com/go-sql-driver/mysql"
-	git "github.com/lhchavez/git2go/v29"
+	git "github.com/lhchavez/git2go/v32"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"

@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgcrypt-dev l
 
 # Get/build all dependencies.
 RUN go get -d github.com/lhchavez/git2go
-RUN (cd /go/src/github.com/lhchavez/git2go && git checkout next && git submodule update --init && make install)
+RUN (cd /go/src/github.com/lhchavez/git2go && git checkout v32.0.0-prerelease.0 && git submodule update --init && make install)
 RUN go get -d github.com/mattn/go-sqlite3
 RUN go install github.com/mattn/go-sqlite3
 RUN go get github.com/go-sql-driver/mysql
