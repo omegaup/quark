@@ -314,7 +314,7 @@ func runQueueLoop(
 		db,
 		`
 		SELECT
-			MAX(s.submission_id)
+			IFNULL(MAX(s.submission_id), 0)
 		FROM
 			Submissions s;
 		`,
