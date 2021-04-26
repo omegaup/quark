@@ -24,7 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 
-	base "github.com/omegaup/go-base"
+	base "github.com/omegaup/go-base/v2"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/grader"
 )
