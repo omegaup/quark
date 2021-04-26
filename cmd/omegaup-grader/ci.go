@@ -12,7 +12,7 @@ import (
 	"time"
 
 	git "github.com/lhchavez/git2go/v32"
-	base "github.com/omegaup/go-base"
+	base "github.com/omegaup/go-base/v2"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner/ci"

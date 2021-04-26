@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	base "github.com/omegaup/go-base"
+	base "github.com/omegaup/go-base/v2"
 	"github.com/omegaup/quark/common"
 	"github.com/vincent-petithory/dataurl"
 )

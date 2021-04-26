@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/inconshreveable/log15"
-	base "github.com/omegaup/go-base"
+	base "github.com/omegaup/go-base/v2"
 	"io"
 	"os"
 	"time"
@@ -105,6 +105,7 @@ type TracingConfig struct {
 type LoggingConfig struct {
 	File  string
 	Level string
+	JSON  bool
 }
 
 // MetricsConfig represents the configuration for metrics.
@@ -258,17 +259,22 @@ func NewContext(config *Config, role string) (*Context, error) {
 	// Logging
 	if config.Logging.File != "" {
 		var err error
-		if ctx.Log, err = base.RotatingLog(
+		ctx.Log, err = base.RotatingLog(
 			ctx.Config.Logging.File,
 			ctx.Config.Logging.Level,
-		); err != nil {
+			config.Logging.JSON,
+		)
+		if err != nil {
 			return nil, err
 		}
 	} else if config.Logging.Level == "debug" {
-		ctx.Log = base.StderrLog()
+		ctx.Log = base.StderrLog(config.Logging.JSON)
 	} else {
 		ctx.Log = log15.New()
-		ctx.Log.SetHandler(base.ErrorCallerStackHandler(log15.LvlInfo, log15.StderrHandler))
+		ctx.Log.SetHandler(base.ErrorCallerStackHandler(
+			log15.LvlInfo,
+			base.StderrHandler(config.Logging.JSON),
+		))
 	}
 
 	// Tracing

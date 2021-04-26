@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
-	base "github.com/omegaup/go-base"
+	base "github.com/omegaup/go-base/v2"
 	"hash"
 	"io"
 	"io/ioutil"

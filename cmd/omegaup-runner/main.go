@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-systemd/v22/daemon"
-	base "github.com/omegaup/go-base"
+	base "github.com/omegaup/go-base/v2"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"github.com/omegaup/quark/runner/ci"

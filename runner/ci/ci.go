@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/inconshreveable/log15"
-	base "github.com/omegaup/go-base"
+	base "github.com/omegaup/go-base/v2"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"github.com/pkg/errors"

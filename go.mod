@@ -12,7 +12,7 @@ require (
 	github.com/lhchavez/git2go/v32 v32.0.0-prerelease.0
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible
-	github.com/omegaup/go-base v1.0.1
+	github.com/omegaup/go-base/v2 v2.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
 	github.com/prometheus/common v0.15.0 // indirect
@@ -22,6 +22,5 @@ require (
 	golang.org/x/net v0.0.0-20201209123823-ac852fbbde11
 	golang.org/x/sys v0.0.0-20201214095126-aec9a390925b // indirect
 	golang.org/x/text v0.3.4 // indirect
-	google.golang.org/appengine v1.6.5 // indirect
 	google.golang.org/protobuf v1.25.0 // indirect
 )

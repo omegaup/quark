@@ -5,7 +5,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
-	base "github.com/omegaup/go-base"
+	base "github.com/omegaup/go-base/v2"
 	"io"
 	"io/ioutil"
 	"os"
