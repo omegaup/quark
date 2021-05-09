@@ -80,6 +80,10 @@ func graderContext() *grader.Context {
 }
 
 func peerName(r *http.Request, insecure bool) string {
+	peerName := r.Header.Get("OmegaUp-Runner-Name")
+	if peerName != "" {
+		return peerName
+	}
 	if insecure {
 		return r.RemoteAddr
 	}
