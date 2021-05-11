@@ -165,6 +165,9 @@ func processRun(
 	if err != nil {
 		return err
 	}
+	if parentCtx.Config.Runner.Hostname != "" {
+		req.Header.Add("OmegaUp-Runner-Name", parentCtx.Config.Runner.Hostname)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
