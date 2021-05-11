@@ -228,6 +228,9 @@ func gradeAndUploadResults(
 			close(finished)
 			return
 		}
+		if ctx.Config.Runner.Hostname != "" {
+			req.Header.Add("OmegaUp-Runner-Name", ctx.Config.Runner.Hostname)
+		}
 		req.Header.Add("Content-Type", multipartWriter.FormDataContentType())
 		response, err := client.Do(req)
 		if err != nil {
