@@ -117,11 +117,11 @@ jobs:
           docker tag omegaup/runner-ci "${container_name}"
           docker push "${container_name}"
 
-          container_name=docker.pkg.github.com/${{ github.repository }}/omegaup-runner:${{ steps.bump-version.outputs.tag }}
+          container_name=docker.pkg.github.com/${{ github.repository }}/runner:${{ steps.bump-version.outputs.tag }}
           docker tag omegaup/runner "${container_name}"
           docker push "${container_name}"
 
-          container_name=docker.pkg.github.com/${{ github.repository }}/omegaup-backend:${{ steps.bump-version.outputs.tag }}
+          container_name=docker.pkg.github.com/${{ github.repository }}/backend:${{ steps.bump-version.outputs.tag }}
           docker tag omegaup/backend "${container_name}"
           docker push "${container_name}"
 
