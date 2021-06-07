@@ -1,0 +1,23 @@
+FROM ubuntu:focal AS runner
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -y && \
+    apt-get install --no-install-recommends -y curl ca-certificates xz-utils && \
+    /usr/sbin/update-ca-certificates && \
+    apt-get autoremove -y && \
+    apt-get clean
+
+RUN curl -sL https://github.com/omegaup/quark/releases/download/v1.4.0/omegaup-runner.tar.xz | tar xJ -C /
+RUN mkdir -p /etc/omegaup/runner
+
+RUN useradd --create-home --shell=/bin/bash ubuntu && \
+    mkdir -p /var/log/omegaup /var/lib/omegaup && \
+    chown -R ubuntu /var/log/omegaup ubuntu /var/lib/omegaup
+
+ARG RELEASE
+ENV RELEASE=$RELEASE
+RUN curl -sL https://github.com/omegaup/quark/releases/download/${RELEASE}/omegaup-runner.tar.xz | \
+        tar xJ -C /
+
+USER ubuntu
+WORKDIR /var/lib/omegaup

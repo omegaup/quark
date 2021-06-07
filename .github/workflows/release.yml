@@ -97,16 +97,18 @@ jobs:
           asset_name: omegaup-runner.tar.xz
           asset_content_type: application/octet-stream
 
-      - name: Build Docker image
+      - name: Build Docker images
         run: |
           echo "${{ github.token }}" | \
               docker login https://docker.pkg.github.com "--username=${{ github.actor }}" --password-stdin
 
           mkdir -p docker/bin
           cp artifacts/runner/usr/bin/omegaup-runner docker/bin/omegaup-runner
-          docker build -t omegaup/runner-ci docker/
+          docker build --tags omegaup/runner-ci docker/
+          docker build --tags omegaup/runner -f docker/Dockerfile.runner docker/
+          docker build --tags omegaup/backend -f docker/Dockerfile.backend docker/
 
-      - name: Publish docker.pkg.github.com/omegaup/omegaup-runner-ci container package
+      - name: Push container images to GitHub registry
         run: |
           echo "${{ github.token }}" | \
               docker login https://docker.pkg.github.com "--username=${{ github.actor }}" --password-stdin
@@ -115,11 +117,27 @@ jobs:
           docker tag omegaup/runner-ci "${container_name}"
           docker push "${container_name}"
 
-      - name: Publish omegaup/runner-ci container package
+          container_name=docker.pkg.github.com/${{ github.repository }}/omegaup-runner:${{ steps.bump-version.outputs.tag }}
+          docker tag omegaup/runner "${container_name}"
+          docker push "${container_name}"
+
+          container_name=docker.pkg.github.com/${{ github.repository }}/omegaup-backend:${{ steps.bump-version.outputs.tag }}
+          docker tag omegaup/backend "${container_name}"
+          docker push "${container_name}"
+
+      - name: Push container images to Docker registry
         run: |
           echo "${{ secrets.DOCKER_PASSWORD }}" | \
               docker login "--username=${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
           container_name=omegaup/runner-ci:${{ steps.bump-version.outputs.tag }}
           docker tag omegaup/runner-ci "${container_name}"
+          docker push "${container_name}"
+
+          container_name=omegaup/runner:${{ steps.bump-version.outputs.tag }}
+          docker tag omegaup/runner "${container_name}"
+          docker push "${container_name}"
+
+          container_name=omegaup/backend:${{ steps.bump-version.outputs.tag }}
+          docker tag omegaup/backend "${container_name}"
           docker push "${container_name}"
