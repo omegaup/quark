@@ -104,9 +104,9 @@ jobs:
 
           mkdir -p docker/bin
           cp artifacts/runner/usr/bin/omegaup-runner docker/bin/omegaup-runner
-          docker build --tags omegaup/runner-ci docker/
-          docker build --tags omegaup/runner -f docker/Dockerfile.runner docker/
-          docker build --tags omegaup/backend -f docker/Dockerfile.backend docker/
+          docker build --tag omegaup/runner-ci docker/
+          docker build --tag omegaup/runner -f docker/Dockerfile.runner docker/
+          docker build --tag omegaup/backend -f docker/Dockerfile.backend docker/
 
       - name: Push container images to GitHub registry
         run: |
