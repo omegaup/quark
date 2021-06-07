@@ -2,7 +2,11 @@ FROM ubuntu:focal AS runner
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y && \
-    apt-get install --no-install-recommends -y curl ca-certificates xz-utils && \
+    apt-get install --no-install-recommends -y \
+        ca-certificates \
+        curl \
+        wait-for-it \
+        xz-utils && \
     /usr/sbin/update-ca-certificates && \
     apt-get autoremove -y && \
     apt-get clean
