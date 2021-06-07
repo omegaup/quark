@@ -12,7 +12,7 @@ RUN mkdir -p /etc/omegaup/runner
 
 RUN useradd --create-home --shell=/bin/bash ubuntu && \
     mkdir -p /var/log/omegaup /var/lib/omegaup && \
-    chown -R ubuntu /var/log/omegaup ubuntu /var/lib/omegaup
+    chown -R ubuntu /var/log/omegaup /var/lib/omegaup
 
 ARG RELEASE
 ENV RELEASE=$RELEASE
