@@ -1,8 +1,10 @@
 package main
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
+	"runtime"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -45,6 +47,17 @@ func init() {
 	prometheus.MustRegister(webSocketsGauge)
 	prometheus.MustRegister(processLatencySummary)
 	prometheus.MustRegister(dispatchLatencySummary)
+
+	buildInfoCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Help: "Information about the build",
+		Name: "build_info",
+		ConstLabels: prometheus.Labels{
+			"version":    ProgramVersion,
+			"go_version": runtime.Version(),
+		},
+	})
+	prometheus.MustRegister(buildInfoCounter)
+	buildInfoCounter.Inc()
 }
 
 // PrometheusMetrics is an implementation of broadcaster.Metrics that sends its

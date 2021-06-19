@@ -2,14 +2,17 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"runtime"
+	"time"
+
 	"github.com/omegaup/quark/grader"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/load"
 	"github.com/shirou/gopsutil/mem"
-	"net/http"
-	"time"
 )
 
 var (
@@ -190,6 +193,17 @@ func setupMetrics(ctx *grader.Context) {
 	for _, summary := range summaries {
 		prometheus.MustRegister(summary)
 	}
+
+	buildInfoCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Help: "Information about the build",
+		Name: "build_info",
+		ConstLabels: prometheus.Labels{
+			"version":    ProgramVersion,
+			"go_version": runtime.Version(),
+		},
+	})
+	prometheus.MustRegister(buildInfoCounter)
+	buildInfoCounter.Inc()
 
 	ctx.Metrics = &prometheusMetrics{}
 
