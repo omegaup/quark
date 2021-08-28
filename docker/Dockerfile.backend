@@ -5,7 +5,7 @@ RUN apt-get update -y && \
     apt-get install --no-install-recommends -y \
         ca-certificates \
         curl \
-        openjdk-14-jre-headless \
+        openjdk-16-jre-headless \
         wait-for-it \
         xz-utils && \
     /usr/sbin/update-ca-certificates && \
