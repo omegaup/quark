@@ -1145,7 +1145,9 @@ func Grade(
 	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventBegin))
 	for i, group := range settings.Cases {
 		correct := true
-		score := &big.Rat{}
+		groupScore := &big.Rat{}
+		minGroupScore := big.NewRat(1, 1)
+		groupWeight := &big.Rat{}
 		for j, caseData := range group.Cases {
 			caseResults := &groupResults[i].Cases[j]
 			if caseResults.Verdict == "OK" {
@@ -1251,20 +1253,16 @@ func Grade(
 					)
 				}
 				caseResults.Score.Add(caseResults.Score, runScore)
+				caseWeight := new(big.Rat).Mul(caseData.Weight, totalWeightFactor)
 				caseResults.ContestScore = new(big.Rat).Mul(
-					new(big.Rat).Mul(
-						runResult.MaxScore,
-						new(big.Rat).Mul(caseData.Weight, totalWeightFactor),
-					),
+					new(big.Rat).Mul(runResult.MaxScore, caseWeight),
 					caseResults.Score,
 				)
-				score.Add(
-					score,
-					new(big.Rat).Mul(
-						runScore,
-						new(big.Rat).Mul(caseData.Weight, totalWeightFactor),
-					),
-				)
+				groupWeight = groupWeight.Add(groupWeight, caseWeight)
+				if minGroupScore.Cmp(runScore) > 0 {
+					minGroupScore = runScore
+				}
+				groupScore.Add(groupScore, caseWeight)
 				if runScore.Cmp(big.NewRat(1, 1)) == 0 {
 					caseResults.Verdict = "AC"
 				} else {
@@ -1281,12 +1279,15 @@ func Grade(
 			}
 		}
 		if correct {
-			runResult.Score.Add(runResult.Score, score)
+			if settings.Validator.GroupScorePolicy == common.GroupScorePolicyMin {
+				groupScore = new(big.Rat).Mul(minGroupScore, groupWeight)
+			}
+			runResult.Score.Add(runResult.Score, groupScore)
 
-			groupResults[i].Score.Add(groupResults[i].Score, score)
+			groupResults[i].Score.Add(groupResults[i].Score, groupScore)
 			groupResults[i].ContestScore = new(big.Rat).Mul(
 				runResult.MaxScore,
-				score,
+				groupScore,
 			)
 		}
 	}
