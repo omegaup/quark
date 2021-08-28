@@ -10,9 +10,8 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/inconshreveable/log15 v0.0.0-20201112154412-8562bdadbbac
 	github.com/lhchavez/git2go/v32 v32.0.0-prerelease.0
-	github.com/mattn/go-colorable v0.1.8 // indirect
-	github.com/mattn/go-sqlite3 v2.0.3+incompatible
-	github.com/omegaup/go-base/v2 v2.0.0
+	github.com/mattn/go-sqlite3 v1.14.8
+	github.com/omegaup/go-base/v2 v2.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
 	github.com/prometheus/common v0.15.0 // indirect
@@ -30,7 +29,8 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/golang/protobuf v1.4.3 // indirect
-	github.com/mattn/go-isatty v0.0.12 // indirect
+	github.com/mattn/go-colorable v0.1.4 // indirect
+	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/procfs v0.2.0 // indirect
