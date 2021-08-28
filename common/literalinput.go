@@ -114,9 +114,10 @@ type LiteralCustomValidatorSettings struct {
 // CustomValidator must be provided. If "token-numeric" is chosen, Tolerance
 // must contain a numeric tolerance (typically a small number).
 type LiteralValidatorSettings struct {
-	Name            ValidatorName                   `json:"name"`
-	Tolerance       *float64                        `json:"tolerance,omitempty"`
-	CustomValidator *LiteralCustomValidatorSettings `json:"custom_validator,omitempty"`
+	Name             ValidatorName                   `json:"name"`
+	GroupScorePolicy GroupScorePolicy                `json:"groupScorePolicy,omitempty"`
+	Tolerance        *float64                        `json:"tolerance,omitempty"`
+	CustomValidator  *LiteralCustomValidatorSettings `json:"custom_validator,omitempty"`
 }
 
 // LiteralInteractiveSettings stores the settings for a problem that uses
@@ -247,6 +248,7 @@ func NewLiteralInputFactory(
 	if validator == nil {
 		validator = &DefaultLiteralValidatorSettings
 	}
+	settings.Validator.GroupScorePolicy = validator.GroupScorePolicy
 	switch validator.Name {
 	case ValidatorNameCustom:
 		if validator.CustomValidator == nil {

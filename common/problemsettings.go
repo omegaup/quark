@@ -48,12 +48,30 @@ const (
 	ValidatorNameCustom ValidatorName = "custom"
 )
 
+// GroupScorePolicy is the policy that will be used to assign scores in a group.
+type GroupScorePolicy string
+
+const (
+	// GroupScorePolicySumIfNotZero assigns the sum of all the individual cases'
+	// scores if they are all non-zero. This is the default, and will be used if
+	// the policy is not selected.
+	GroupScorePolicySumIfNotZero GroupScorePolicy = "sum-if-not-zero"
+
+	// GroupScorePolicyDefault is an alias of GroupScorePolicySumIfNotZero.
+	GroupScorePolicyDefault GroupScorePolicy = ""
+
+	// GroupScorePolicyMin assigns the minimum of all the individual cases'
+	// scores multiplied by the weight of the group.
+	GroupScorePolicyMin GroupScorePolicy = "min"
+)
+
 // ValidatorSettings represents the options used to validate outputs.
 type ValidatorSettings struct {
-	Lang      *string         `json:"Lang,omitempty"`
-	Name      ValidatorName   `json:"Name"`
-	Tolerance *float64        `json:"Tolerance,omitempty"`
-	Limits    *LimitsSettings `json:"Limits,omitempty"`
+	Lang             *string          `json:"Lang,omitempty"`
+	Name             ValidatorName    `json:"Name"`
+	Tolerance        *float64         `json:"Tolerance,omitempty"`
+	Limits           *LimitsSettings  `json:"Limits,omitempty"`
+	GroupScorePolicy GroupScorePolicy `json:"GroupScorePolicy,omitempty"`
 }
 
 // InteractiveInterface represents the metadata needed to compile and run
