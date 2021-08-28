@@ -633,7 +633,7 @@ func main() {
 		panic(err)
 	}
 
-	stopChan := make(chan os.Signal)
+	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
 	cancelContext, cancel := context.WithCancel(ctx.Context)
 	ctx.Context = cancelContext

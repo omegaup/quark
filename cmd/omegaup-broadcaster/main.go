@@ -206,7 +206,7 @@ func main() {
 		return
 	}
 
-	stopChan := make(chan os.Signal)
+	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if err := loadContext(); err != nil {
