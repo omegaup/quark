@@ -796,7 +796,7 @@ func Grade(
 
 	validatorBinPath := path.Join(runRoot, "validator", "bin")
 	regularBinaryCount := len(binaries)
-	if settings.Validator.Name == "custom" {
+	if settings.Validator.Name == common.ValidatorNameCustom {
 		if err := os.MkdirAll(validatorBinPath, 0755); err != nil {
 			return runResult, err
 		}
@@ -1152,7 +1152,7 @@ func Grade(
 				contestantPath := path.Join(
 					runRoot, fmt.Sprintf("%s.out", caseData.Name),
 				)
-				if settings.Validator.Name == "custom" {
+				if settings.Validator.Name == common.ValidatorNameCustom {
 					originalInputFile := path.Join(
 						input.Path(),
 						"cases",
@@ -1226,7 +1226,7 @@ func Grade(
 				expectedPath := path.Join(
 					input.Path(), "cases", fmt.Sprintf("%s.out", caseData.Name),
 				)
-				if settings.Validator.Name == "custom" {
+				if settings.Validator.Name == common.ValidatorNameCustom {
 					// No need to open the actual file. It might not even exist.
 					expectedPath = "/dev/null"
 				}

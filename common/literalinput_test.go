@@ -24,7 +24,7 @@ func TestLiteralInput(t *testing.T) {
 				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},
 			Validator: &LiteralValidatorSettings{
-				Name: "token-numeric",
+				Name: ValidatorNameTokenNumeric,
 			},
 		},
 		dirname,

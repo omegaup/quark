@@ -114,7 +114,7 @@ type LiteralCustomValidatorSettings struct {
 // CustomValidator must be provided. If "token-numeric" is chosen, Tolerance
 // must contain a numeric tolerance (typically a small number).
 type LiteralValidatorSettings struct {
-	Name            string                          `json:"name"`
+	Name            ValidatorName                   `json:"name"`
 	Tolerance       *float64                        `json:"tolerance,omitempty"`
 	CustomValidator *LiteralCustomValidatorSettings `json:"custom_validator,omitempty"`
 }
@@ -140,7 +140,7 @@ var (
 	}
 
 	DefaultLiteralValidatorSettings = LiteralValidatorSettings{
-		Name: "token-caseless",
+		Name: ValidatorNameTokenCaseless,
 	}
 
 	DefaultValidatorTolerance = 1e-6
@@ -248,7 +248,7 @@ func NewLiteralInputFactory(
 		validator = &DefaultLiteralValidatorSettings
 	}
 	switch validator.Name {
-	case "custom":
+	case ValidatorNameCustom:
 		if validator.CustomValidator == nil {
 			return nil, errors.New("custom validator empty")
 		}
@@ -263,9 +263,9 @@ func NewLiteralInputFactory(
 			limits := DefaultValidatorLimits
 			validator.CustomValidator.Limits = &limits
 		}
-	case "token", "token-caseless", "literal":
+	case ValidatorNameToken, ValidatorNameTokenCaseless, ValidatorNameLiteral:
 		settings.Validator.Name = validator.Name
-	case "token-numeric":
+	case ValidatorNameTokenNumeric:
 		settings.Validator.Name = validator.Name
 		if validator.Tolerance != nil {
 			settings.Validator.Tolerance = validator.Tolerance

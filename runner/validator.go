@@ -18,12 +18,12 @@ func CalculateScore(
 	expectedOutput, contestantOutput io.Reader,
 ) (*big.Rat, *TokenMismatch, error) {
 	scanFunc := IsNonWhitespace
-	if settings.Name == "token-numeric" {
+	if settings.Name == common.ValidatorNameTokenNumeric {
 		scanFunc = IsNumeric
 	}
 
 	contestantTokenizer := NewTokenizer(contestantOutput, scanFunc)
-	if settings.Name == "literal" || settings.Name == "custom" {
+	if settings.Name == common.ValidatorNameLiteral || settings.Name == common.ValidatorNameCustom {
 		if !contestantTokenizer.Scan() {
 			return &big.Rat{}, nil, io.ErrUnexpectedEOF
 		}
@@ -62,11 +62,11 @@ func CalculateScore(
 		contestantToken := contestantTokenizer.Token()
 		correct := true
 		switch settings.Name {
-		case "token":
+		case common.ValidatorNameToken:
 			correct = tokenEquals(expectedToken.Text, contestantToken.Text)
-		case "token-caseless":
+		case common.ValidatorNameTokenCaseless:
 			correct = tokenCaselessEquals(expectedToken.Text, contestantToken.Text)
-		case "token-numeric":
+		case common.ValidatorNameTokenNumeric:
 			tolerance := common.DefaultValidatorTolerance
 			if settings.Tolerance != nil {
 				tolerance = *settings.Tolerance

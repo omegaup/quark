@@ -38,7 +38,7 @@ func main() {
 	defer contestant.Close()
 
 	validator := &common.ValidatorSettings{
-		Name:      *validatorName,
+		Name:      common.ValidatorName(*validatorName),
 		Tolerance: tolerance,
 	}
 	score, mismatch, err := runner.CalculateScore(

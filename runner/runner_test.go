@@ -182,7 +182,7 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
-				Name: "token-numeric",
+				Name: common.ValidatorNameTokenNumeric,
 			},
 			Limits: &common.LimitsSettings{
 				TimeLimit:            base.Duration(time.Second),
@@ -615,7 +615,7 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
-				Name: "token-numeric",
+				Name: common.ValidatorNameTokenNumeric,
 			},
 			Limits: &common.LimitsSettings{
 				TimeLimit:            common.DefaultLiteralLimitSettings.TimeLimit,
@@ -775,7 +775,7 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 </ejecucion>`, ExpectedOutput: expectedOutput, Weight: big.NewRat(1, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
-				Name: "token-numeric",
+				Name: common.ValidatorNameTokenNumeric,
 			},
 		},
 		ctx.Config.Runner.RuntimePath,
@@ -885,7 +885,7 @@ func TestLibinteractive(t *testing.T) {
 				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
-				Name: "token-numeric",
+				Name: common.ValidatorNameTokenNumeric,
 			},
 			Interactive: &common.LiteralInteractiveSettings{
 				IDLSource: `

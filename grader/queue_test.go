@@ -20,7 +20,7 @@ func addRun(
 				"1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(1, 1)},
 			},
 			Validator: &common.LiteralValidatorSettings{
-				Name: "token-numeric",
+				Name: common.ValidatorNameTokenNumeric,
 			},
 		},
 		ctx.Config.Grader.RuntimePath,
