@@ -30,6 +30,7 @@ type runnerTestCase struct {
 
 type sandboxWrapper interface {
 	sandbox(testCase *runnerTestCase) Sandbox
+	supported() bool
 	name() string
 }
 
@@ -39,6 +40,10 @@ type omegajailSandboxWrapper struct {
 
 func (wrapper *omegajailSandboxWrapper) sandbox(testCase *runnerTestCase) Sandbox {
 	return wrapper.omegajail
+}
+
+func (wrapper *omegajailSandboxWrapper) supported() bool {
+	return wrapper.omegajail.Supported()
 }
 
 func (wrapper *omegajailSandboxWrapper) name() string {
@@ -122,12 +127,16 @@ func (wrapper *fakeSandboxWrapper) sandbox(testCase *runnerTestCase) Sandbox {
 	return &fakeSandbox{testCase: testCase}
 }
 
+func (wrapper *fakeSandboxWrapper) supported() bool {
+	return true
+}
+
 func (wrapper *fakeSandboxWrapper) name() string {
 	return "FakeSandbox"
 }
 
 func newRunnerContext(t *testing.T) (*common.Context, error) {
-	dirname, err := ioutil.TempDir("/tmp", t.Name())
+	dirname, err := ioutil.TempDir("/tmp", strings.ReplaceAll(t.Name(), "/", "_"))
 	if err != nil {
 		return nil, err
 	}
@@ -149,255 +158,253 @@ func newRunnerContext(t *testing.T) (*common.Context, error) {
 }
 
 func TestGrade(t *testing.T) {
-	runGraderTests(t, &fakeSandboxWrapper{})
-}
+	for name, wrapper := range map[string]sandboxWrapper{
+		"fake":      &fakeSandboxWrapper{},
+		"omegajail": &omegajailSandboxWrapper{omegajail: getSandbox()},
+	} {
+		wrapper := wrapper
+		t.Run(name, func(t *testing.T) {
+			if testing.Short() && wrapper.name() == "OmegajailSandbox" {
+				t.Skip("skipping test in short mode.")
+			}
+			if !wrapper.supported() {
+				t.Skip(fmt.Sprintf("%s not supported", wrapper.name()))
+			}
 
-func TestGradeOmegajail(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode.")
-	}
-	omegajail := getSandbox()
-	if !omegajail.Supported() {
-		t.Skip("omegajail sandbox not supported")
-	}
-	runGraderTests(t, &omegajailSandboxWrapper{omegajail: omegajail})
-}
+			ctx, err := newRunnerContext(t)
+			if err != nil {
+				t.Fatalf("RunnerContext creation failed with %q", err)
+			}
+			defer ctx.Close()
+			if !ctx.Config.Runner.PreserveFiles {
+				defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+			}
 
-func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
-	ctx, err := newRunnerContext(t)
-	if err != nil {
-		t.Fatalf("RunnerContext creation failed with %q", err)
-	}
-	defer ctx.Close()
-	if !ctx.Config.Runner.PreserveFiles {
-		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
-	}
+			inputManager := common.NewInputManager(ctx)
+			AplusB, err := common.NewLiteralInputFactory(
+				&common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0":   {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+						"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+						"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
+					},
+					Validator: &common.LiteralValidatorSettings{
+						Name: common.ValidatorNameTokenNumeric,
+					},
+					Limits: &common.LimitsSettings{
+						TimeLimit:            base.Duration(time.Second),
+						MemoryLimit:          64 * base.Mebibyte,
+						OverallWallTimeLimit: base.Duration(time.Duration(5) * time.Second),
+						ExtraWallTime:        base.Duration(0),
+						OutputLimit:          10 * base.Kibibyte,
+					},
+				},
+				ctx.Config.Runner.RuntimePath,
+				common.LiteralPersistRunner,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create Input: %q", err)
+			}
+			inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
+			if err != nil {
+				t.Fatalf("Failed to open problem: %q", err)
+			}
+			defer inputRef.Release()
 
-	inputManager := common.NewInputManager(ctx)
-	AplusB, err := common.NewLiteralInputFactory(
-		&common.LiteralInput{
-			Cases: map[string]*common.LiteralCaseSettings{
-				"0":   {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
-				"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
-				"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
-			},
-			Validator: &common.LiteralValidatorSettings{
-				Name: common.ValidatorNameTokenNumeric,
-			},
-			Limits: &common.LimitsSettings{
-				TimeLimit:            base.Duration(time.Second),
-				MemoryLimit:          64 * base.Mebibyte,
-				OverallWallTimeLimit: base.Duration(time.Duration(5) * time.Second),
-				ExtraWallTime:        base.Duration(0),
-				OutputLimit:          10 * base.Kibibyte,
-			},
-		},
-		ctx.Config.Runner.RuntimePath,
-		common.LiteralPersistRunner,
-	)
-	if err != nil {
-		t.Fatalf("Failed to create Input: %q", err)
-	}
-	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
-	if err != nil {
-		t.Fatalf("Failed to open problem: %q", err)
-	}
-	defer inputRef.Release()
-
-	runtests := []runnerTestCase{
-		{
-			"py2",
-			"print sum(map(int, raw_input().strip().split()))",
-			big.NewRat(1, 1),
-			"AC",
-			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"py3",
-			"print(sum(map(int, input().strip().split())))",
-			big.NewRat(1, 1),
-			"AC",
-			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"py3",
-			"ans = sum(map(int, input().strip().split()))\n" +
-				"assert ans <= 3\n" +
-				"print(ans)",
-			big.NewRat(1, 1),
-			"RTE",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"", "", &RunMetadata{Verdict: "RTE"}},
-			},
-		},
-		{
-			"py3",
-			"print(3)",
-			big.NewRat(1, 1),
-			"PA",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"py3",
-			"print(2)",
-			big.NewRat(1, 1),
-			"WA",
-			big.NewRat(0, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"2", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"2", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"2", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"py3",
-			"if",
-			big.NewRat(1, 1),
-			"CE",
-			big.NewRat(0, 1),
-			expectedResult{
-				"",
-				`  File "test.py", line 1
+			runtests := []runnerTestCase{
+				{
+					"py2",
+					"print sum(map(int, raw_input().strip().split()))",
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"py3",
+					"print(sum(map(int, input().strip().split())))",
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"py3",
+					"ans = sum(map(int, input().strip().split()))\n" +
+						"assert ans <= 3\n" +
+						"print(ans)",
+					big.NewRat(1, 1),
+					"RTE",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"", "", &RunMetadata{Verdict: "RTE"}},
+					},
+				},
+				{
+					"py3",
+					"print(3)",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"py3",
+					"print(2)",
+					big.NewRat(1, 1),
+					"WA",
+					big.NewRat(0, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"2", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"2", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"2", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"py3",
+					"if",
+					big.NewRat(1, 1),
+					"CE",
+					big.NewRat(0, 1),
+					expectedResult{
+						"",
+						`  File "test.py", line 1
 	    if
 		     ^
 				 SyntaxError: invalid syntax`,
-				&RunMetadata{ExitStatus: 1, Verdict: "RTE"},
-			},
-			map[string]expectedResult{},
-		},
-		{
-			"c11-gcc",
-			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
-			big.NewRat(1, 1),
-			"PA",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"c11-clang",
-			"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
-			big.NewRat(1, 1),
-			"PA",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"cpp17-gcc",
-			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
-			big.NewRat(1, 1),
-			"PA",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"cpp17-clang",
-			"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
-			big.NewRat(1, 1),
-			"PA",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"rb",
-			"puts 3",
-			big.NewRat(1, 1),
-			"PA",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"hs",
-			"main = putStrLn \"3\"",
-			big.NewRat(1, 1),
-			"PA",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"pas",
-			`program Main;
+						&RunMetadata{ExitStatus: 1, Verdict: "RTE"},
+					},
+					map[string]expectedResult{},
+				},
+				{
+					"c11-gcc",
+					"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"c11-clang",
+					"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"cpp17-gcc",
+					"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"cpp17-clang",
+					"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"rb",
+					"puts 3",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"hs",
+					"main = putStrLn \"3\"",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"pas",
+					`program Main;
 			begin
 				writeln ('3');
 			end.`,
-			big.NewRat(1, 1),
-			"PA",
-			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"lua",
-			"a = io.read(\"*n\"); b = io.read(\"*n\"); io.write(a + b)",
-			big.NewRat(1, 1),
-			"AC",
-			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"cs",
-			`using System.Collections.Generic;
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"lua",
+					"a = io.read(\"*n\"); b = io.read(\"*n\"); io.write(a + b)",
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"cs",
+					`using System.Collections.Generic;
 			using System.Linq;
 			using System;
 
@@ -412,19 +419,19 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 							Console.WriteLine(l.Sum(x => x));
 					}
 			}`,
-			big.NewRat(1, 1),
-			"AC",
-			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"cs",
-			`using System.Collections.Generic;
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"cs",
+					`using System.Collections.Generic;
 			using System.Linq;
 			using System;
 
@@ -441,19 +448,19 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 							Console.WriteLine(l.Sum(x => x));
 					}
 			}`,
-			big.NewRat(1, 1),
-			"MLE",
-			big.NewRat(0, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"", "", &RunMetadata{Verdict: "MLE"}},
-				"1.0": {"", "", &RunMetadata{Verdict: "MLE"}},
-				"1.1": {"", "", &RunMetadata{Verdict: "MLE"}},
-			},
-		},
-		{
-			"java",
-			`import java.io.*;
+					big.NewRat(1, 1),
+					"MLE",
+					big.NewRat(0, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"", "", &RunMetadata{Verdict: "MLE"}},
+						"1.0": {"", "", &RunMetadata{Verdict: "MLE"}},
+						"1.1": {"", "", &RunMetadata{Verdict: "MLE"}},
+					},
+				},
+				{
+					"java",
+					`import java.io.*;
 			import java.util.*;
 			class Main {
 				public static void main(String[] args) throws IOException {
@@ -466,19 +473,19 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 					System.out.println(total);
 				}
 			}`,
-			big.NewRat(1, 1),
-			"AC",
-			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"java",
-			`import java.io.*;
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"java",
+					`import java.io.*;
 			import java.util.*;
 			class Main {
 				public static void main(String[] args) throws IOException {
@@ -500,89 +507,91 @@ func runGraderTests(t *testing.T, wrapper sandboxWrapper) {
 					System.out.println(total);
 				}
 			}`,
-			big.NewRat(1, 1),
-			"MLE",
-			big.NewRat(0, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
-				"1.0": {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
-				"1.1": {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
-			},
-		},
-		{
-			"cat",
-			"data:application/zip;base64,UEsDBAoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABwAMC5vdX" +
-				"RVVAkAA67WxFb8t4ZYdXgLAAEE6AMAAAToAwAAMwpQSwMECgAAAAAAhhE4StGeZ1UCAAAAAg" +
-				"AAAAcAHAAxLjAub3V0VVQJAAP8t4ZYCbiGWHV4CwABBOgDAAAE6AMAADMKUEsDBAoAAAAAAO" +
-				"eiUUhXOT0DAgAAAAIAAAAHABwAMS4xLm91dFVUCQADstbEVgm4hlh1eAsAAQToAwAABOgDAA" +
-				"A1ClBLAQIeAwoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABgAAAAAAAEAAAC0gQAAAAAwLm91dF" +
-				"VUBQADrtbEVnV4CwABBOgDAAAE6AMAAFBLAQIeAwoAAAAAAIYROErRnmdVAgAAAAIAAAAHAB" +
-				"gAAAAAAAEAAAC0gUEAAAAxLjAub3V0VVQFAAP8t4ZYdXgLAAEE6AMAAAToAwAAUEsBAh4DCg" +
-				"AAAAAA56JRSFc5PQMCAAAAAgAAAAcAGAAAAAAAAQAAALSBhAAAADEuMS5vdXRVVAUAA7LWxF" +
-				"Z1eAsAAQToAwAABOgDAABQSwUGAAAAAAMAAwDlAAAAxwAAAAAA",
-			big.NewRat(1, 1),
-			"AC",
-			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"java",
-			`package foo;
+					big.NewRat(1, 1),
+					"MLE",
+					big.NewRat(0, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
+						"1.0": {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
+						"1.1": {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
+					},
+				},
+				{
+					"cat",
+					"data:application/zip;base64,UEsDBAoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABwAMC5vdX" +
+						"RVVAkAA67WxFb8t4ZYdXgLAAEE6AMAAAToAwAAMwpQSwMECgAAAAAAhhE4StGeZ1UCAAAAAg" +
+						"AAAAcAHAAxLjAub3V0VVQJAAP8t4ZYCbiGWHV4CwABBOgDAAAE6AMAADMKUEsDBAoAAAAAAO" +
+						"eiUUhXOT0DAgAAAAIAAAAHABwAMS4xLm91dFVUCQADstbEVgm4hlh1eAsAAQToAwAABOgDAA" +
+						"A1ClBLAQIeAwoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABgAAAAAAAEAAAC0gQAAAAAwLm91dF" +
+						"VUBQADrtbEVnV4CwABBOgDAAAE6AMAAFBLAQIeAwoAAAAAAIYROErRnmdVAgAAAAIAAAAHAB" +
+						"gAAAAAAAEAAAC0gUEAAAAxLjAub3V0VVQFAAP8t4ZYdXgLAAEE6AMAAAToAwAAUEsBAh4DCg" +
+						"AAAAAA56JRSFc5PQMCAAAAAgAAAAcAGAAAAAAAAQAAALSBhAAAADEuMS5vdXRVVAUAA7LWxF" +
+						"Z1eAsAAQToAwAABOgDAABQSwUGAAAAAAMAAwDlAAAAxwAAAAAA",
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"java",
+					`package foo;
 			class Main {
 				public static void main(String[] args) {
 					System.out.println('3');
 				}
 			}`,
-			big.NewRat(1, 1),
-			"CE",
-			big.NewRat(0, 1),
-			expectedResult{
-				"",
-				"\nClass `Main` not found. Make sure your class is named `Main` and outside all packages",
-				&RunMetadata{ExitStatus: 1, Verdict: "CE"},
-			},
-			map[string]expectedResult{},
-		},
-	}
-	for idx, rte := range runtests {
-		t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
-			results, err := Grade(
-				ctx,
-				&bytes.Buffer{},
-				&common.Run{
-					AttemptID: uint64(idx),
-					Language:  rte.language,
-					InputHash: inputRef.Input.Hash(),
-					Source:    rte.source,
-					MaxScore:  rte.maxScore,
+					big.NewRat(1, 1),
+					"CE",
+					big.NewRat(0, 1),
+					expectedResult{
+						"",
+						"\nClass `Main` not found. Make sure your class is named `Main` and outside all packages",
+						&RunMetadata{ExitStatus: 1, Verdict: "CE"},
+					},
+					map[string]expectedResult{},
 				},
-				inputRef.Input,
-				wrapper.sandbox(&rte),
-			)
-			if err != nil {
-				t.Fatalf("Failed to run %v: %q", rte, err)
 			}
-			if results.Verdict != rte.expectedVerdict {
-				t.Errorf(
-					"results.Verdict = %q, expected %q, test %v: %v",
-					results.Verdict,
-					rte.expectedVerdict,
-					idx,
-					rte,
-				)
-			}
-			if results.Score.Cmp(rte.expectedScore) != 0 {
-				t.Errorf(
-					"results.Score = %s, expected %s",
-					results.Score.String(),
-					rte.expectedScore.String(),
-				)
+			for idx, rte := range runtests {
+				t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
+					results, err := Grade(
+						ctx,
+						&bytes.Buffer{},
+						&common.Run{
+							AttemptID: uint64(idx),
+							Language:  rte.language,
+							InputHash: inputRef.Input.Hash(),
+							Source:    rte.source,
+							MaxScore:  rte.maxScore,
+						},
+						inputRef.Input,
+						wrapper.sandbox(&rte),
+					)
+					if err != nil {
+						t.Fatalf("Failed to run %v: %q", rte, err)
+					}
+					if results.Verdict != rte.expectedVerdict {
+						t.Errorf(
+							"results.Verdict = %q, expected %q, test %v: %v",
+							results.Verdict,
+							rte.expectedVerdict,
+							idx,
+							rte,
+						)
+					}
+					if results.Score.Cmp(rte.expectedScore) != 0 {
+						t.Errorf(
+							"results.Score = %s, expected %s",
+							results.Score.String(),
+							rte.expectedScore.String(),
+						)
+					}
+				})
 			}
 		})
 	}
@@ -721,32 +730,30 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 }
 
 func TestKarelGrade(t *testing.T) {
-	runKarelGraderTests(t, &fakeSandboxWrapper{})
-}
+	for name, wrapper := range map[string]sandboxWrapper{
+		"fake":      &fakeSandboxWrapper{},
+		"omegajail": &omegajailSandboxWrapper{omegajail: getSandbox()},
+	} {
+		wrapper := wrapper
+		t.Run(name, func(t *testing.T) {
+			if testing.Short() && wrapper.name() == "OmegajailSandbox" {
+				t.Skip("skipping test in short mode.")
+			}
+			if !wrapper.supported() {
+				t.Skip(fmt.Sprintf("%s not supported", wrapper.name()))
+			}
 
-func TestKarelGradeOmegajail(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode.")
-	}
-	omegajail := getSandbox()
-	if !omegajail.Supported() {
-		t.Skip("omegajail sandbox not supported")
-	}
-	runKarelGraderTests(t, &omegajailSandboxWrapper{omegajail: omegajail})
-}
+			ctx, err := newRunnerContext(t)
+			if err != nil {
+				t.Fatalf("RunnerContext creation failed with %q", err)
+			}
+			defer ctx.Close()
+			if !ctx.Config.Runner.PreserveFiles {
+				defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+			}
 
-func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
-	ctx, err := newRunnerContext(t)
-	if err != nil {
-		t.Fatalf("RunnerContext creation failed with %q", err)
-	}
-	defer ctx.Close()
-	if !ctx.Config.Runner.PreserveFiles {
-		defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
-	}
-
-	inputManager := common.NewInputManager(ctx)
-	expectedOutput := `<resultados>
+			inputManager := common.NewInputManager(ctx)
+			expectedOutput := `<resultados>
 	<mundos>
 		<mundo nombre="mundo_0"/>
 	</mundos>
@@ -756,10 +763,10 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		</programa>
 	</programas>
 </resultados>`
-	AplusB, err := common.NewLiteralInputFactory(
-		&common.LiteralInput{
-			Cases: map[string]*common.LiteralCaseSettings{
-				"0": {Input: `<ejecucion>
+			AplusB, err := common.NewLiteralInputFactory(
+				&common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0": {Input: `<ejecucion>
 	<condiciones instruccionesMaximasAEjecutar="10000000" longitudStack="65000"></condiciones>
 	<mundos>
 		<mundo nombre="mundo_0" ancho="100" alto="100">
@@ -773,28 +780,28 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 		</programa>
 	</programas>
 </ejecucion>`, ExpectedOutput: expectedOutput, Weight: big.NewRat(1, 1)},
-			},
-			Validator: &common.LiteralValidatorSettings{
-				Name: common.ValidatorNameTokenNumeric,
-			},
-		},
-		ctx.Config.Runner.RuntimePath,
-		common.LiteralPersistRunner,
-	)
-	if err != nil {
-		t.Fatalf("Failed to create Input: %q", err)
-	}
+					},
+					Validator: &common.LiteralValidatorSettings{
+						Name: common.ValidatorNameTokenNumeric,
+					},
+				},
+				ctx.Config.Runner.RuntimePath,
+				common.LiteralPersistRunner,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create Input: %q", err)
+			}
 
-	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
-	if err != nil {
-		t.Fatalf("Failed to open problem: %q", err)
-	}
-	defer inputRef.Release()
+			inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
+			if err != nil {
+				t.Fatalf("Failed to open problem: %q", err)
+			}
+			defer inputRef.Release()
 
-	runtests := []runnerTestCase{
-		{
-			"kp",
-			`
+			runtests := []runnerTestCase{
+				{
+					"kp",
+					`
 			iniciar-programa
 				inicia-ejecucion
 					mientras no-junto-a-zumbador hacer avanza;
@@ -802,59 +809,61 @@ func runKarelGraderTests(t *testing.T, wrapper sandboxWrapper) {
 				termina-ejecucion
 			finalizar-programa
 			`,
-			big.NewRat(1, 1),
-			"AC",
-			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-		{
-			"kj",
-			"class program { program () { while (!nextToABeeper()) move(); turnoff(); } }",
-			big.NewRat(1, 1),
-			"AC",
-			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
-			map[string]expectedResult{
-				"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
-			},
-		},
-	}
-	for idx, rte := range runtests {
-		t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
-			results, err := Grade(
-				ctx,
-				&bytes.Buffer{},
-				&common.Run{
-					AttemptID: uint64(idx),
-					Language:  rte.language,
-					InputHash: inputRef.Input.Hash(),
-					Source:    rte.source,
-					MaxScore:  rte.maxScore,
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
+					},
 				},
-				inputRef.Input,
-				wrapper.sandbox(&rte),
-			)
-			if err != nil {
-				t.Fatalf("Failed to run %v: %q", rte, err)
+				{
+					"kj",
+					"class program { program () { while (!nextToABeeper()) move(); turnoff(); } }",
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
 			}
-			if results.Verdict != rte.expectedVerdict {
-				t.Errorf(
-					"results.Verdict = %q, expected %q, test %v: %v",
-					results.Verdict,
-					rte.expectedVerdict,
-					idx,
-					rte,
-				)
-			}
-			if results.Score.Cmp(rte.expectedScore) != 0 {
-				t.Errorf(
-					"results.Score = %s, expected %s",
-					results.Score.String(),
-					rte.expectedScore.String(),
-				)
+			for idx, rte := range runtests {
+				t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
+					results, err := Grade(
+						ctx,
+						&bytes.Buffer{},
+						&common.Run{
+							AttemptID: uint64(idx),
+							Language:  rte.language,
+							InputHash: inputRef.Input.Hash(),
+							Source:    rte.source,
+							MaxScore:  rte.maxScore,
+						},
+						inputRef.Input,
+						wrapper.sandbox(&rte),
+					)
+					if err != nil {
+						t.Fatalf("Failed to run %v: %q", rte, err)
+					}
+					if results.Verdict != rte.expectedVerdict {
+						t.Errorf(
+							"results.Verdict = %q, expected %q, test %v: %v",
+							results.Verdict,
+							rte.expectedVerdict,
+							idx,
+							rte,
+						)
+					}
+					if results.Score.Cmp(rte.expectedScore) != 0 {
+						t.Errorf(
+							"results.Score = %s, expected %s",
+							results.Score.String(),
+							rte.expectedScore.String(),
+						)
+					}
+				})
 			}
 		})
 	}
