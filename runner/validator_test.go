@@ -47,29 +47,29 @@ func TestValidator(t *testing.T) {
 		got, expect   string
 		settings      VS
 	}{
-		{big.NewRat(0, 1), "a", "b", VS{Name: "token"}},
-		{big.NewRat(1, 1), "a", "a", VS{Name: "token"}},
-		{big.NewRat(0, 1), "A", "a", VS{Name: "token"}},
-		{big.NewRat(1, 1), "A", "a", VS{Name: "token-caseless"}},
-		{big.NewRat(0, 1), "A", "b", VS{Name: "token-caseless"}},
-		{big.NewRat(1, 1), "11\x1f\n", "11\n", VS{Name: "token-caseless"}},
-		{big.NewRat(0, 1), "1", "2", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "1", "1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "1", "1.1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(0, 1), "1", "1.2", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "1.15", "1.20", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "1.24", "1.20", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(0, 1), "1", "x", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(0, 1), "x", "1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "x 1", "x 1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "1", "x 1 x", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(0, 1), "1", "-1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "0 -1", "0 -1", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "1e99999999", "1e99999999", VS{Name: "token-numeric", Tolerance: &t1}},
-		{big.NewRat(1, 1), "0.000002", "0.000003", VS{Name: "token-numeric", Tolerance: &t6}},
-		{big.NewRat(0, 1), "a a", "a", VS{Name: "token"}},
-		{big.NewRat(0, 1), "a", "a a", VS{Name: "token"}},
-		{big.NewRat(1, 2), "0.5", "", VS{Name: "literal"}},
+		{big.NewRat(0, 1), "a", "b", VS{Name: common.ValidatorNameToken}},
+		{big.NewRat(1, 1), "a", "a", VS{Name: common.ValidatorNameToken}},
+		{big.NewRat(0, 1), "A", "a", VS{Name: common.ValidatorNameToken}},
+		{big.NewRat(1, 1), "A", "a", VS{Name: common.ValidatorNameTokenCaseless}},
+		{big.NewRat(0, 1), "A", "b", VS{Name: common.ValidatorNameTokenCaseless}},
+		{big.NewRat(1, 1), "11\x1f\n", "11\n", VS{Name: common.ValidatorNameTokenCaseless}},
+		{big.NewRat(0, 1), "1", "2", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "1", "1", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "1", "1.1", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(0, 1), "1", "1.2", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "1.15", "1.20", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "1.24", "1.20", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(0, 1), "1", "x", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(0, 1), "x", "1", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "x 1", "x 1", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "1", "x 1 x", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(0, 1), "1", "-1", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "0 -1", "0 -1", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "1e99999999", "1e99999999", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t1}},
+		{big.NewRat(1, 1), "0.000002", "0.000003", VS{Name: common.ValidatorNameTokenNumeric, Tolerance: &t6}},
+		{big.NewRat(0, 1), "a a", "a", VS{Name: common.ValidatorNameToken}},
+		{big.NewRat(0, 1), "a", "a a", VS{Name: common.ValidatorNameToken}},
+		{big.NewRat(1, 2), "0.5", "", VS{Name: common.ValidatorNameLiteral}},
 	}
 	for _, vet := range validatorentries {
 		gotScore, _, err := CalculateScore(
@@ -96,9 +96,9 @@ func TestValidator(t *testing.T) {
 		settings    common.ValidatorSettings
 	}{
 		{"a", "a", common.ValidatorSettings{}},
-		{"", "", common.ValidatorSettings{Name: "literal"}},
-		{"x", "", common.ValidatorSettings{Name: "literal"}},
-		{"", "", common.ValidatorSettings{Name: "custom"}},
+		{"", "", common.ValidatorSettings{Name: common.ValidatorNameLiteral}},
+		{"x", "", common.ValidatorSettings{Name: common.ValidatorNameLiteral}},
+		{"", "", common.ValidatorSettings{Name: common.ValidatorNameCustom}},
 	}
 	for _, vet := range invalidvalidatorentries {
 		if _, _, err := CalculateScore(

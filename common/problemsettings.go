@@ -25,10 +25,33 @@ type LimitsSettings struct {
 	TimeLimit            base.Duration
 }
 
+// ValidatorName is a valid name for a validator.
+type ValidatorName string
+
+const (
+	// ValidatorNameToken compares whitespace-separated tokens.
+	ValidatorNameToken ValidatorName = "token"
+	// ValidatorNameTokenNumeric compares numeric tokens only, ignoring anything
+	// that is not numeric.
+	ValidatorNameTokenNumeric ValidatorName = "token-numeric"
+	// ValidatorNameTokenCaseless compares whitespace-separated tokens, ignoring
+	// the case.
+	ValidatorNameTokenCaseless ValidatorName = "token-caseless"
+	// ValidatorNameLiteral parses the output as a floating point number in the
+	// [0.0, 1.0] range and assigns it as the score. This is typically only used
+	// for interactive problems.
+	ValidatorNameLiteral ValidatorName = "literal"
+	// ValidatorNameCustom runs a custom validator that is responsible for
+	// reading the expected and contestant's outputs and printing a single
+	// floating point number in the [0.0, 1.0] range to stdout. The score will be
+	// that number.
+	ValidatorNameCustom ValidatorName = "custom"
+)
+
 // ValidatorSettings represents the options used to validate outputs.
 type ValidatorSettings struct {
 	Lang      *string         `json:"Lang,omitempty"`
-	Name      string          `json:"Name"`
+	Name      ValidatorName   `json:"Name"`
 	Tolerance *float64        `json:"Tolerance,omitempty"`
 	Limits    *LimitsSettings `json:"Limits,omitempty"`
 }

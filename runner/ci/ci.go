@@ -506,7 +506,7 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 		Name:      problemSettings.Validator.Name,
 		Tolerance: problemSettings.Validator.Tolerance,
 	}
-	if problemSettings.Validator.Name == "custom" {
+	if problemSettings.Validator.Name == common.ValidatorNameCustom {
 		if problemSettings.Validator.Lang == nil {
 			var validators []string
 			for _, filename := range files.Files() {
@@ -631,7 +631,7 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 			Input: &common.LiteralInput{
 				Cases: config.Input.Cases,
 				Validator: &common.LiteralValidatorSettings{
-					Name: "custom",
+					Name: common.ValidatorNameCustom,
 					CustomValidator: &common.LiteralCustomValidatorSettings{
 						Language: language,
 					},

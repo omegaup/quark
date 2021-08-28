@@ -404,7 +404,7 @@ func TestNewRunConfig(t *testing.T) {
 						Input: &common.LiteralInput{
 							Cases: map[string]*common.LiteralCaseSettings{},
 							Validator: &common.LiteralValidatorSettings{
-								Name: "custom",
+								Name: common.ValidatorNameCustom,
 								CustomValidator: &common.LiteralCustomValidatorSettings{
 									Source:   "print(3)",
 									Language: "py",
