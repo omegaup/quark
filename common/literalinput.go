@@ -115,7 +115,7 @@ type LiteralCustomValidatorSettings struct {
 // must contain a numeric tolerance (typically a small number).
 type LiteralValidatorSettings struct {
 	Name             ValidatorName                   `json:"name"`
-	GroupScorePolicy GroupScorePolicy                `json:"groupScorePolicy,omitempty"`
+	GroupScorePolicy GroupScorePolicy                `json:"group_score_policy,omitempty"`
 	Tolerance        *float64                        `json:"tolerance,omitempty"`
 	CustomValidator  *LiteralCustomValidatorSettings `json:"custom_validator,omitempty"`
 }
