@@ -1255,14 +1255,23 @@ func Grade(
 				caseResults.Score.Add(caseResults.Score, runScore)
 				caseWeight := new(big.Rat).Mul(caseData.Weight, totalWeightFactor)
 				caseResults.ContestScore = new(big.Rat).Mul(
-					new(big.Rat).Mul(runResult.MaxScore, caseWeight),
+					new(big.Rat).Mul(
+						runResult.MaxScore,
+						caseWeight,
+					),
 					caseResults.Score,
 				)
-				groupWeight = groupWeight.Add(groupWeight, caseWeight)
+				groupWeight.Add(groupWeight, caseWeight)
 				if minGroupScore.Cmp(runScore) > 0 {
 					minGroupScore = runScore
 				}
-				groupScore.Add(groupScore, caseWeight)
+				groupScore.Add(
+					groupScore,
+					new(big.Rat).Mul(
+						runScore,
+						new(big.Rat).Mul(caseData.Weight, totalWeightFactor),
+					),
+				)
 				if runScore.Cmp(big.NewRat(1, 1)) == 0 {
 					caseResults.Verdict = "AC"
 				} else {
