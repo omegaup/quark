@@ -597,6 +597,156 @@ func TestGrade(t *testing.T) {
 	}
 }
 
+func TestGradeGroupScorePolicySumIfNotZero(t *testing.T) {
+	for name, wrapper := range map[string]sandboxWrapper{
+		"fake":      &fakeSandboxWrapper{},
+		"omegajail": &omegajailSandboxWrapper{omegajail: getSandbox()},
+	} {
+		wrapper := wrapper
+		t.Run(name, func(t *testing.T) {
+			if testing.Short() && wrapper.name() == "OmegajailSandbox" {
+				t.Skip("skipping test in short mode.")
+			}
+			if !wrapper.supported() {
+				t.Skip(fmt.Sprintf("%s not supported", wrapper.name()))
+			}
+
+			ctx, err := newRunnerContext(t)
+			if err != nil {
+				t.Fatalf("RunnerContext creation failed with %q", err)
+			}
+			defer ctx.Close()
+			if !ctx.Config.Runner.PreserveFiles {
+				defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+			}
+
+			inputManager := common.NewInputManager(ctx)
+			AplusB, err := common.NewLiteralInputFactory(
+				&common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0":   {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+						"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+						"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
+					},
+					Validator: &common.LiteralValidatorSettings{
+						Name:             common.ValidatorNameCustom,
+						GroupScorePolicy: common.GroupScorePolicySumIfNotZero,
+						CustomValidator: &common.LiteralCustomValidatorSettings{
+							Source: `#!/usr/bin/python3
+
+def _main() -> None:
+  with open('data.in', 'r') as f:
+    expected = float(f.read().strip())
+  got = float(input().strip())
+  print(f'{1 - abs(got - expected) / expected}')
+
+if __name__ == '__main__':
+  _main()
+`,
+							Language: "python3",
+						},
+					},
+					Limits: &common.LimitsSettings{
+						TimeLimit:            base.Duration(time.Second),
+						MemoryLimit:          64 * base.Mebibyte,
+						OverallWallTimeLimit: base.Duration(time.Duration(5) * time.Second),
+						ExtraWallTime:        base.Duration(0),
+						OutputLimit:          10 * base.Kibibyte,
+					},
+				},
+				ctx.Config.Runner.RuntimePath,
+				common.LiteralPersistRunner,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create Input: %q", err)
+			}
+			inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
+			if err != nil {
+				t.Fatalf("Failed to open problem: %q", err)
+			}
+			defer inputRef.Release()
+
+			runtests := []runnerTestCase{
+				{
+					"py3",
+					"print(sum(map(int, input().strip().split())))",
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"1", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"1", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"1", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"py3",
+					"print(3)",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(4, 5),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"1", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"1", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"0.6", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+				{
+					"py3",
+					"print(2)",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(8, 15),
+					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					map[string]expectedResult{
+						"0":   {"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
+						"1.0": {"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
+						"1.1": {"0.4", "", &RunMetadata{Verdict: "OK"}},
+					},
+				},
+			}
+			for idx, rte := range runtests {
+				t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
+					results, err := Grade(
+						ctx,
+						&bytes.Buffer{},
+						&common.Run{
+							AttemptID: uint64(idx),
+							Language:  rte.language,
+							InputHash: inputRef.Input.Hash(),
+							Source:    rte.source,
+							MaxScore:  rte.maxScore,
+						},
+						inputRef.Input,
+						wrapper.sandbox(&rte),
+					)
+					if err != nil {
+						t.Fatalf("Failed to run %v: %q", rte, err)
+					}
+					if results.Verdict != rte.expectedVerdict {
+						t.Errorf(
+							"results.Verdict = %q, expected %q, test %v: %v",
+							results.Verdict,
+							rte.expectedVerdict,
+							idx,
+							rte,
+						)
+					}
+					if results.Score.Cmp(rte.expectedScore) != 0 {
+						t.Errorf(
+							"results.Score = %s, expected %s",
+							results.Score.String(),
+							rte.expectedScore.String(),
+						)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestGradeGroupScorePolicyMin(t *testing.T) {
 	for name, wrapper := range map[string]sandboxWrapper{
 		"fake":      &fakeSandboxWrapper{},
