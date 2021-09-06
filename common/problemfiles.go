@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	git "github.com/lhchavez/git2go/v32"
+	git "github.com/libgit2/git2go/v32"
 	"github.com/pkg/errors"
 )
 

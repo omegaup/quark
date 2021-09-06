@@ -4,17 +4,26 @@ go 1.17
 
 require (
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
+	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.1.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
+	github.com/go-stack/stack v1.8.0 // indirect
+	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/gorilla/websocket v1.4.2
 	github.com/inconshreveable/log15 v0.0.0-20201112154412-8562bdadbbac
-	github.com/lhchavez/git2go/v32 v32.0.0-prerelease.0
+	github.com/libgit2/git2go/v32 v32.0.4
+	github.com/mattn/go-colorable v0.1.4 // indirect
+	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/mattn/go-sqlite3 v1.14.8
+	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/omegaup/go-base/v2 v2.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
+	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.15.0 // indirect
+	github.com/prometheus/procfs v0.2.0 // indirect
 	github.com/shirou/gopsutil v3.20.11+incompatible
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50
 	golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9 // indirect
@@ -22,16 +31,4 @@ require (
 	golang.org/x/sys v0.0.0-20201214095126-aec9a390925b // indirect
 	golang.org/x/text v0.3.4 // indirect
 	google.golang.org/protobuf v1.25.0 // indirect
-)
-
-require (
-	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/cespare/xxhash/v2 v2.1.1 // indirect
-	github.com/go-stack/stack v1.8.0 // indirect
-	github.com/golang/protobuf v1.4.3 // indirect
-	github.com/mattn/go-colorable v0.1.4 // indirect
-	github.com/mattn/go-isatty v0.0.10 // indirect
-	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
-	github.com/prometheus/client_model v0.2.0 // indirect
-	github.com/prometheus/procfs v0.2.0 // indirect
 )

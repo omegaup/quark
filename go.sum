@@ -164,8 +164,8 @@ github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515/go.mod h1:+0opPa2QZZtGFB
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
-github.com/lhchavez/git2go/v32 v32.0.0-prerelease.0 h1:WulJqhctwHAenw8sNRWqJ1HVs3i97yjLXQF9Yjm58ME=
-github.com/lhchavez/git2go/v32 v32.0.0-prerelease.0/go.mod h1:0iSqM2vxVO1dfqzpi4eMzlp2mtjiMQ4S1/z89H2IIb8=
+github.com/libgit2/git2go/v32 v32.0.4 h1:qK2yWGh88K2Gh76E1+vUEsjKDfOAq0J2THKaoaFIPbA=
+github.com/libgit2/git2go/v32 v32.0.4/go.mod h1:FAA2ePV5PlLjw1ccncFIvu2v8hJSZVN5IzEn4lo/vwo=
 github.com/lightstep/lightstep-tracer-common/golang/gogo v0.0.0-20190605223551-bc2310a04743/go.mod h1:qklhhLq1aX+mtWk9cPHPzaBjWImj5ULL6C7HFJtXQMM=
 github.com/lightstep/lightstep-tracer-go v0.18.1/go.mod h1:jlF1pusYV4pidLvZ+XD0UBX0ZE6WURAspgAczcDHrL4=
 github.com/lyft/protoc-gen-validate v0.0.13/go.mod h1:XbGvPuh87YZc5TdIa2/I4pLk0QoUACkjt2znoq26NVQ=
