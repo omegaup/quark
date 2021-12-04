@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	base "github.com/omegaup/go-base/v2"
+	"os"
+
+	"github.com/omegaup/go-base/logging/log15"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
-	"os"
 )
 
 var (
@@ -21,18 +22,31 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	log := base.StderrLog(false)
+	log, err := log15.New("info", false)
+	if err != nil {
+		panic(err)
+	}
 
 	expected, err := os.Open(args[0])
 	if err != nil {
-		log.Error("Unable to open expected file", "err", err)
+		log.Error(
+			"Unable to open expected file",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		os.Exit(1)
 	}
 	defer expected.Close()
 
 	contestant, err := os.Open(args[1])
 	if err != nil {
-		log.Error("Unable to open contestant file", "err", err)
+		log.Error(
+			"Unable to open contestant file",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		os.Exit(1)
 	}
 	defer contestant.Close()
@@ -48,15 +62,22 @@ func main() {
 	)
 
 	if err != nil {
-		log.Error("Error validating", "err", err)
+		log.Error(
+			"Error validating",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		os.Exit(1)
 	}
 
 	if mismatch != nil {
 		log.Info(
 			"Token mismatch",
-			"expected", mismatch.Expected,
-			"got", mismatch.Contestant,
+			map[string]interface{}{
+				"expected": mismatch.Expected,
+				"got":      mismatch.Contestant,
+			},
 		)
 	}
 

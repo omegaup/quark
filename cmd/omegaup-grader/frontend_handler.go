@@ -24,7 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/grader"
 )
@@ -253,7 +253,12 @@ func broadcastRun(
 	message.Message = string(marshaled)
 
 	if err := broadcast(ctx, client, &message); err != nil {
-		ctx.Log.Error("Error sending run broadcast", "err", err)
+		ctx.Log.Error(
+			"Error sending run broadcast",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 	}
 	return nil
 }
@@ -270,12 +275,23 @@ func runPostProcessor(
 		}
 		if ctx.Config.Grader.V1.UpdateDatabase {
 			if err := updateDatabase(ctx, db, run); err != nil {
-				ctx.Log.Error("Error updating the database", "err", err, "run", run)
+				ctx.Log.Error(
+					"Error updating the database",
+					map[string]interface{}{
+						"err": err,
+						"run": run,
+					},
+				)
 			}
 		}
 		if ctx.Config.Grader.V1.SendBroadcast {
 			if err := broadcastRun(ctx, db, client, run); err != nil {
-				ctx.Log.Error("Error sending run broadcast", "err", err)
+				ctx.Log.Error(
+					"Error sending run broadcast",
+					map[string]interface{}{
+						"err": err,
+					},
+				)
 			}
 		}
 	}
@@ -293,7 +309,7 @@ func runQueueLoop(
 	db *sql.DB,
 	newRuns <-chan struct{},
 ) {
-	ctx.Log.Info("Starting run queue loop")
+	ctx.Log.Info("Starting run queue loop", nil)
 	_, err := execWithRetry(
 		db,
 		`
@@ -306,7 +322,12 @@ func runQueueLoop(
 		`,
 	)
 	if err != nil {
-		ctx.Log.Error("Failed to reset pending runs", "err", err)
+		ctx.Log.Error(
+			"Failed to reset pending runs",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 	}
 
 	var maxSubmissionID int64
@@ -322,12 +343,22 @@ func runQueueLoop(
 		&maxSubmissionID,
 	)
 	if err != nil {
-		ctx.Log.Error("Failed to get the max submission ID", "err", err)
+		ctx.Log.Error(
+			"Failed to get the max submission ID",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 	}
-	ctx.Log.Debug("Max run ID found", "maxSubmissionID", maxSubmissionID)
+	ctx.Log.Debug(
+		"Max run ID found",
+		map[string]interface{}{
+			"maxSubmissionID": maxSubmissionID,
+		},
+	)
 
 	for range newRuns {
-		ctx.Log.Debug("New run in the queue")
+		ctx.Log.Debug("New run in the queue", nil)
 		totalRunsInRound := 0
 		// Every time a new notification arrives, continuously get all the new runs
 		// from the database until there's nothing new.
@@ -374,7 +405,12 @@ func runQueueLoop(
 				maxSubmissionID,
 			)
 			if err != nil {
-				ctx.Log.Error("Failed to get new runs", "err", err)
+				ctx.Log.Error(
+					"Failed to get new runs",
+					map[string]interface{}{
+						"err": err,
+					},
+				)
 				break
 			}
 
@@ -384,7 +420,12 @@ func runQueueLoop(
 				var dbRun dbRun
 				err = rows.Scan(&dbRun.runID, &dbRun.submissionID)
 				if err != nil {
-					ctx.Log.Error("Failed to get run", "err", err)
+					ctx.Log.Error(
+						"Failed to get run",
+						map[string]interface{}{
+							"err": err,
+						},
+					)
 					continue
 				}
 				if maxSubmissionID >= dbRun.submissionID {
@@ -414,15 +455,23 @@ func runQueueLoop(
 					dbRun.runID,
 				)
 				if err != nil {
-					ctx.Log.Error("Failed to mark a run as waiting", "run", dbRun, "err", err)
+					ctx.Log.Error(
+						"Failed to mark a run as waiting",
+						map[string]interface{}{
+							"run": dbRun,
+							"err": err,
+						},
+					)
 					continue
 				}
 				runInfo, err := newRunInfoFromID(ctx, db, dbRun.runID)
 				if err != nil {
 					ctx.Log.Error(
 						"Error getting run information",
-						"err", err,
-						"run", dbRun,
+						map[string]interface{}{
+							"err": err,
+							"run": dbRun,
+						},
 					)
 					_, err := execWithRetry(
 						db,
@@ -441,7 +490,13 @@ func runQueueLoop(
 						dbRun.runID,
 					)
 					if err != nil {
-						ctx.Log.Error("Failed to mark a run as ready", "run", dbRun, "err", err)
+						ctx.Log.Error(
+							"Failed to mark a run as ready",
+							map[string]interface{}{
+								"run": dbRun,
+								"err": err,
+							},
+						)
 					}
 					continue
 				}
@@ -460,15 +515,19 @@ func runQueueLoop(
 				); err != nil {
 					ctx.Log.Error(
 						"Error injecting run",
-						"run", dbRun,
-						"err", err,
+						map[string]interface{}{
+							"run": dbRun,
+							"err": err,
+						},
 					)
 					err = updateDatabase(ctx, db, runInfo)
 					if err != nil {
 						ctx.Log.Error(
 							"Error marking run as ready",
-							"run", dbRun,
-							"err", err,
+							map[string]interface{}{
+								"run": dbRun,
+								"err": err,
+							},
 						)
 					}
 				}
@@ -476,7 +535,12 @@ func runQueueLoop(
 			}
 			rows.Close()
 		}
-		ctx.Log.Debug("Round finished", "runs processed", totalRunsInRound)
+		ctx.Log.Debug(
+			"Round finished",
+			map[string]interface{}{
+				"runs processed": totalRunsInRound,
+			},
+		)
 	}
 }
 
@@ -601,15 +665,22 @@ func injectRun(
 	if err := readSource(ctx, runInfo); err != nil {
 		ctx.Log.Error(
 			"Error getting run source",
-			"err", err,
-			"runId", runInfo.ID,
+			map[string]interface{}{
+				"err":   err,
+				"runId": runInfo.ID,
+			},
 		)
 		return err
 	}
 	if runInfo.Priority == grader.QueuePriorityNormal {
 		runInfo.Priority = priority
 	}
-	ctx.Log.Info("RunContext", "runInfo", runInfo)
+	ctx.Log.Info(
+		"RunContext",
+		map[string]interface{}{
+			"runInfo": runInfo,
+		},
+	)
 	ctx.Metrics.CounterAdd("grader_runs_total", 1)
 	inputRef, err := ctx.InputManager.Add(
 		runInfo.Run.InputHash,
@@ -619,11 +690,23 @@ func injectRun(
 		),
 	)
 	if err != nil {
-		ctx.Log.Error("Error getting input", "err", err, "run", runInfo)
+		ctx.Log.Error(
+			"Error getting input",
+			map[string]interface{}{
+				"err": err,
+				"run": runInfo,
+			},
+		)
 		return err
 	}
 	if err = runs.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
-		ctx.Log.Error("Error adding run information", "err", err, "runId", runInfo.ID)
+		ctx.Log.Error(
+			"Error adding run information",
+			map[string]interface{}{
+				"err":   err,
+				"runId": runInfo.ID,
+			},
+		)
 		return err
 	}
 	return nil
@@ -644,7 +727,14 @@ func broadcast(
 		"text/json",
 		bytes.NewReader(marshaled),
 	)
-	ctx.Log.Debug("Broadcast", "message", message, "resp", resp, "err", err)
+	ctx.Log.Debug(
+		"Broadcast",
+		map[string]interface{}{
+			"message": message,
+			"resp":    resp,
+			"err":     err,
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -732,13 +822,24 @@ func registerFrontendHandlers(
 		encoder := json.NewEncoder(w)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		if err := encoder.Encode(&status); err != nil {
-			ctx.Log.Error("Error writing /grader/status/ response", "err", err)
+			ctx.Log.Error(
+				"Error writing /grader/status/ response",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 		}
 	})
 
 	mux.HandleFunc("/run/new/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
-			ctx.Log.Error("Invalid request", "url", r.URL.Path, "method", r.Method)
+			ctx.Log.Error(
+				"Invalid request",
+				map[string]interface{}{
+					"url":    r.URL.Path,
+					"method": r.Method,
+				},
+			)
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
@@ -746,14 +847,24 @@ func registerFrontendHandlers(
 		tokens := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 
 		if len(tokens) != 3 {
-			ctx.Log.Error("Invalid request", "url", r.URL.Path)
+			ctx.Log.Error(
+				"Invalid request",
+				map[string]interface{}{
+					"url": r.URL.Path,
+				},
+			)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		runID, err := strconv.ParseUint(tokens[2], 10, 64)
 		if err != nil {
-			ctx.Log.Error("Invalid Run ID", "run id", tokens[2])
+			ctx.Log.Error(
+				"Invalid Run ID",
+				map[string]interface{}{
+					"run id": tokens[2],
+				},
+			)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -761,9 +872,11 @@ func registerFrontendHandlers(
 		if err != nil {
 			ctx.Log.Error(
 				"/run/new/",
-				"runID", runID,
-				"response", "internal server error",
-				"err", err,
+				map[string]interface{}{
+					"runID":    runID,
+					"response": "internal server error",
+					"err":      err,
+				},
 			)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -778,9 +891,11 @@ func registerFrontendHandlers(
 		if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
 			ctx.Log.Error(
 				"/run/new/",
-				"runID", runID,
-				"response", "internal server error",
-				"err", err,
+				map[string]interface{}{
+					"runID":    runID,
+					"response": "internal server error",
+					"err":      err,
+				},
 			)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -788,18 +903,38 @@ func registerFrontendHandlers(
 		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 		if err != nil {
 			if os.IsExist(err) {
-				ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "already exists")
+				ctx.Log.Info(
+					"/run/new/",
+					map[string]interface{}{
+						"guid":     runInfo.GUID,
+						"response": "already exists",
+					},
+				)
 				w.WriteHeader(http.StatusConflict)
 				return
 			}
-			ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "internal server error", "err", err)
+			ctx.Log.Info(
+				"/run/new/",
+				map[string]interface{}{
+					"guid":     runInfo.GUID,
+					"response": "internal server error",
+					"err":      err,
+				},
+			)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		defer f.Close()
 
 		if _, err := io.Copy(f, r.Body); err != nil {
-			ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "failed to copy submission", "err", err)
+			ctx.Log.Info(
+				"/run/new/",
+				map[string]interface{}{
+					"guid":     runInfo.GUID,
+					"response": "failed to copy submission",
+					"err":      err,
+				},
+			)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -820,7 +955,13 @@ func registerFrontendHandlers(
 			runID,
 		)
 		if err != nil {
-			ctx.Log.Error("Failed to mark a run as new", "run", runInfo, "err", err)
+			ctx.Log.Error(
+				"Failed to mark a run as new",
+				map[string]interface{}{
+					"run": runInfo,
+					"err": err,
+				},
+			)
 		}
 
 		// Try to notify the channel that there's something new. If it has already
@@ -830,7 +971,13 @@ func registerFrontendHandlers(
 		default:
 		}
 
-		ctx.Log.Info("/run/new/", "guid", runInfo.GUID, "response", "ok")
+		ctx.Log.Info(
+			"/run/new/",
+			map[string]interface{}{
+				"guid":     runInfo.GUID,
+				"response": "ok",
+			},
+		)
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -840,11 +987,21 @@ func registerFrontendHandlers(
 
 		var request runGradeRequest
 		if err := decoder.Decode(&request); err != nil {
-			ctx.Log.Error("Error receiving grade request", "err", err)
+			ctx.Log.Error(
+				"Error receiving grade request",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		ctx.Log.Info("/run/grade/", "request", request)
+		ctx.Log.Info(
+			"/run/grade/",
+			map[string]interface{}{
+				"request": request,
+			},
+		)
 
 		// Try to notify the channel that there's something new. If it has already
 		// been notified, do nothing.
@@ -859,7 +1016,13 @@ func registerFrontendHandlers(
 
 	mux.HandleFunc("/submission/source/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
-			ctx.Log.Error("Invalid request", "url", r.URL.Path, "method", r.Method)
+			ctx.Log.Error(
+				"Invalid request",
+				map[string]interface{}{
+					"url":    r.URL.Path,
+					"method": r.Method,
+				},
+			)
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
@@ -867,7 +1030,12 @@ func registerFrontendHandlers(
 		tokens := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 
 		if len(tokens) != 3 {
-			ctx.Log.Error("Invalid request", "url", r.URL.Path)
+			ctx.Log.Error(
+				"Invalid request",
+				map[string]interface{}{
+					"url": r.URL.Path,
+				},
+			)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -875,7 +1043,12 @@ func registerFrontendHandlers(
 		guid := tokens[2]
 
 		if len(guid) != 32 || !guidRegex.MatchString(guid) {
-			ctx.Log.Error("Invalid GUID", "guid", guid)
+			ctx.Log.Error(
+				"Invalid GUID",
+				map[string]interface{}{
+					"guid": guid,
+				},
+			)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -889,11 +1062,24 @@ func registerFrontendHandlers(
 		f, err := os.Open(filePath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				ctx.Log.Info("/run/source/", "guid", guid, "response", "not found")
+				ctx.Log.Info(
+					"/run/source/",
+					map[string]interface{}{
+						"guid":     guid,
+						"response": "not found",
+					},
+				)
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			ctx.Log.Info("/run/source/", "guid", guid, "response", "internal server error", "err", err)
+			ctx.Log.Info(
+				"/run/source/",
+				map[string]interface{}{
+					"guid":     guid,
+					"response": "internal server error",
+					"err":      err,
+				},
+			)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -901,14 +1087,27 @@ func registerFrontendHandlers(
 
 		info, err := f.Stat()
 		if err != nil {
-			ctx.Log.Info("/run/source/", "guid", guid, "response", "internal server error", "err", err)
+			ctx.Log.Info(
+				"/run/source/",
+				map[string]interface{}{
+					"guid":     guid,
+					"response": "internal server error",
+					"err":      err,
+				},
+			)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 
-		ctx.Log.Info("/run/source/", "guid", guid, "response", "ok")
+		ctx.Log.Info(
+			"/run/source/",
+			map[string]interface{}{
+				"guid":     guid,
+				"response": "ok",
+			},
+		)
 		w.WriteHeader(http.StatusOK)
 		io.Copy(w, f)
 	})
@@ -919,20 +1118,37 @@ func registerFrontendHandlers(
 
 		var request runGradeResource
 		if err := decoder.Decode(&request); err != nil {
-			ctx.Log.Error("Error receiving resource request", "err", err)
+			ctx.Log.Error(
+				"Error receiving resource request",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		if request.RunID == 0 {
-			ctx.Log.Info("/run/resource/", "request", request, "response", "not found", "err", err)
+			ctx.Log.Info(
+				"/run/resource/",
+				map[string]interface{}{
+					"request":  request,
+					"response": "not found",
+					"err":      err,
+				},
+			)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		if request.Filename == "" || strings.HasPrefix(request.Filename, ".") ||
 			strings.Contains(request.Filename, "/") {
-			ctx.Log.Error("Invalid filename", "filename", request.Filename)
+			ctx.Log.Error(
+				"Invalid filename",
+				map[string]interface{}{
+					"filename": request.Filename,
+				},
+			)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -944,11 +1160,25 @@ func registerFrontendHandlers(
 		f, err := os.Open(filePath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				ctx.Log.Info("/run/resource/", "request", request, "response", "not found", "err", err)
+				ctx.Log.Info(
+					"/run/resource/",
+					map[string]interface{}{
+						"request":  request,
+						"response": "not found",
+						"err":      err,
+					},
+				)
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			ctx.Log.Info("/run/resource/", "request", request, "response", "internal server error", "err", err)
+			ctx.Log.Info(
+				"/run/resource/",
+				map[string]interface{}{
+					"request":  request,
+					"response": "internal server error",
+					"err":      err,
+				},
+			)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -956,14 +1186,27 @@ func registerFrontendHandlers(
 
 		info, err := f.Stat()
 		if err != nil {
-			ctx.Log.Info("/run/resource/", "request", request, "response", "internal server error", "err", err)
+			ctx.Log.Info(
+				"/run/resource/",
+				map[string]interface{}{
+					"request":  request,
+					"response": "internal server error",
+					"err":      err,
+				},
+			)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 
-		ctx.Log.Info("/run/resource/", "request", request, "response", "ok")
+		ctx.Log.Info(
+			"/run/resource/",
+			map[string]interface{}{
+				"request":  request,
+				"response": "ok",
+			},
+		)
 		w.WriteHeader(http.StatusOK)
 		io.Copy(w, f)
 	})
@@ -974,20 +1217,35 @@ func registerFrontendHandlers(
 
 		var message broadcaster.Message
 		if err := decoder.Decode(&message); err != nil {
-			ctx.Log.Error("Error receiving broadcast request", "err", err)
+			ctx.Log.Error(
+				"Error receiving broadcast request",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		ctx.Log.Debug("/broadcast/", "message", message)
+		ctx.Log.Debug(
+			"/broadcast/",
+			map[string]interface{}{
+				"message": message,
+			},
+		)
 		if err := broadcast(ctx, client, &message); err != nil {
-			ctx.Log.Error("Error sending broadcast message", "err", err)
+			ctx.Log.Error(
+				"Error sending broadcast message",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 		}
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})
 
 	mux.HandleFunc("/reload-config/", func(w http.ResponseWriter, r *http.Request) {
-		ctx.Log.Info("/reload-config/")
+		ctx.Log.Info("/reload-config/", nil)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})

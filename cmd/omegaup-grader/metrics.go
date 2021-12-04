@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -211,10 +212,15 @@ func setupMetrics(ctx *grader.Context) {
 	metricsMux.Handle("/metrics", promhttp.Handler())
 	go func() {
 		addr := fmt.Sprintf(":%d", ctx.Config.Metrics.Port)
-		ctx.Log.Error(
-			"http listen and serve",
-			"err", http.ListenAndServe(addr, metricsMux),
-		)
+		err := http.ListenAndServe(addr, metricsMux)
+		if !errors.Is(err, http.ErrServerClosed) {
+			ctx.Log.Error(
+				"http listen and serve",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
+		}
 	}()
 	go func() {
 		gaugesUpdate()

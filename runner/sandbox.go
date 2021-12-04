@@ -13,7 +13,7 @@ import (
 	"strings"
 	"syscall"
 
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"github.com/pkg/errors"
 )
@@ -164,7 +164,12 @@ func (o *OmegajailSandbox) Compile(
 			fmt.Sprintf("%s/%s.runtimeconfig.json", chdir, target),
 		)
 		if err != nil {
-			ctx.Log.Error("Failed to symlink runtimeconfig", "err", err)
+			ctx.Log.Error(
+				"Failed to symlink runtimeconfig",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 		}
 	}
 
@@ -330,7 +335,13 @@ func (o *OmegajailSandbox) Run(
 
 	preloader, err := newInputPreloader(inputFile)
 	if err != nil {
-		ctx.Log.Error("Failed to preload input", "file", inputFile, "err", err)
+		ctx.Log.Error(
+			"Failed to preload input",
+			map[string]interface{}{
+				"file": inputFile,
+				"err":  err,
+			},
+		)
 	} else if preloader != nil {
 		// preloader might be nil, even with no error.
 		preloader.release()
@@ -351,12 +362,22 @@ func (o *OmegajailSandbox) Run(
 func invokeOmegajail(ctx *common.Context, omegajailRoot string, omegajailParams []string, errorFile string) {
 	omegajailFullParams := []string{path.Join(omegajailRoot, "bin/omegajail")}
 	omegajailFullParams = append(omegajailFullParams, omegajailParams...)
-	ctx.Log.Debug("invoking", "params", omegajailFullParams)
+	ctx.Log.Debug(
+		"invoking",
+		map[string]interface{}{
+			"params": omegajailFullParams,
+		},
+	)
 	cmd := exec.Command(omegajailFullParams[0], omegajailParams...)
 	omegajailErrorFile := errorFile + ".omegajail"
 	omegajailErrorFd, err := os.Create(omegajailErrorFile)
 	if err != nil {
-		ctx.Log.Error("Failed to redirect omegajail stderr", "err", err)
+		ctx.Log.Error(
+			"Failed to redirect omegajail stderr",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 	} else {
 		defer os.Remove(omegajailErrorFile)
 		cmd.Stderr = omegajailErrorFd
@@ -364,13 +385,20 @@ func invokeOmegajail(ctx *common.Context, omegajailRoot string, omegajailParams 
 	if err := cmd.Run(); err != nil {
 		ctx.Log.Error(
 			"Omegajail execution failed",
-			"err", err,
+			map[string]interface{}{
+				"err": err,
+			},
 		)
 	}
 	if omegajailErrorFd != nil {
 		omegajailErrorFd.Close()
 		if err := appendFile(errorFile, omegajailErrorFile); err != nil {
-			ctx.Log.Error("Failed to append omegajail stderr", "err", err)
+			ctx.Log.Error(
+				"Failed to append omegajail stderr",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 		}
 	}
 }
@@ -442,7 +470,12 @@ func parseMetaFile(
 			stringSyscall := fmt.Sprintf("SYSCALL %s", tokens[1])
 			meta.Syscall = &stringSyscall
 		default:
-			ctx.Log.Warn("Unknown field in .meta file", "tokens", tokens)
+			ctx.Log.Warn(
+				"Unknown field in .meta file",
+				map[string]interface{}{
+					"tokens": tokens,
+				},
+			)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -460,7 +493,12 @@ func parseMetaFile(
 		case "SIGXFSZ":
 			meta.Verdict = "OLE"
 		default:
-			ctx.Log.Error("Received odd signal", "signal", *meta.Signal)
+			ctx.Log.Error(
+				"Received odd signal",
+				map[string]interface{}{
+					"signal": *meta.Signal,
+				},
+			)
 			meta.Verdict = "RTE"
 		}
 	} else if meta.ExitStatus == 0 || allowNonZeroExitCode {
@@ -494,7 +532,12 @@ func isJavaMLE(ctx *common.Context, errorFilePath *string) bool {
 
 	f, err := os.Open(*errorFilePath)
 	if err != nil {
-		ctx.Log.Error("Failed to open stderr", "err", err)
+		ctx.Log.Error(
+			"Failed to open stderr",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return false
 	}
 	defer f.Close()

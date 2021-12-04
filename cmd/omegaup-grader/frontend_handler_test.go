@@ -11,7 +11,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"compress/bzip2"
 	"encoding/base64"
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"io"
 	"math/big"
@@ -196,7 +196,7 @@ func RunHostBenchmark(
 	ioLock.Lock()
 	defer ioLock.Unlock()
 
-	ctx.Log.Info("Running benchmark")
+	ctx.Log.Info("Running benchmark", nil)
 
 	benchmarkResults := make(BenchmarkResults)
 	for idx, benchmarkCase := range cases {

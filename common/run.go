@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"math/big"
 	"math/rand"
 	"sync/atomic"

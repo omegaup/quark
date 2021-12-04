@@ -20,12 +20,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/grader"
+
 	"github.com/coreos/go-systemd/v22/daemon"
 	_ "github.com/go-sql-driver/mysql"
 	git "github.com/libgit2/git2go/v33"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/grader"
 )
 
 var (
@@ -222,10 +223,17 @@ func main() {
 		if err := ephemeralRunManager.Initialize(); err != nil {
 			ctx.Log.Error(
 				"Failed to fully initalize the ephemeral run manager",
-				"err", err,
+				map[string]interface{}{
+					"err": err,
+				},
 			)
 		} else {
-			ctx.Log.Info("Ephemeral run manager ready", "manager", ephemeralRunManager)
+			ctx.Log.Info(
+				"Ephemeral run manager ready",
+				map[string]interface{}{
+					"manager": ephemeralRunManager,
+				},
+			)
 		}
 	}()
 
@@ -291,14 +299,16 @@ func main() {
 
 	ctx.Log.Info(
 		"omegaUp grader ready",
-		"version", ProgramVersion,
+		map[string]interface{}{
+			"version": ProgramVersion,
+		},
 	)
 	daemon.SdNotify(false, "READY=1")
 
 	<-stopChan
 
 	daemon.SdNotify(false, "STOPPING=1")
-	ctx.Log.Info("Shutting down server...")
+	ctx.Log.Info("Shutting down server...", nil)
 	cancelCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	for _, s := range shutdowners {
 		s.Shutdown(cancelCtx)
@@ -309,5 +319,5 @@ func main() {
 	close(newRuns)
 
 	ctx.Close()
-	ctx.Log.Info("Server gracefully stopped.")
+	ctx.Log.Info("Server gracefully stopped.", nil)
 }

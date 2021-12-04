@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"github.com/pkg/errors"
@@ -145,8 +145,10 @@ func (mgr *EphemeralRunManager) Initialize() error {
 			if err = os.RemoveAll(entryPath); err != nil {
 				mgr.ctx.Log.Error(
 					"Failed to remove directory during initialization",
-					"entry", entryPath,
-					"err", err,
+					map[string]interface{}{
+						"entry": entryPath,
+						"err":   err,
+					},
 				)
 			}
 			continue
@@ -158,8 +160,10 @@ func (mgr *EphemeralRunManager) Initialize() error {
 		}); err != nil {
 			mgr.ctx.Log.Error(
 				"Failed to add entry to manager",
-				"entry", entryPath,
-				"err", err,
+				map[string]interface{}{
+					"entry": entryPath,
+					"err":   err,
+				},
 			)
 			if firstErr == nil {
 				firstErr = err
@@ -256,7 +260,9 @@ func (mgr *EphemeralRunManager) add(entry *ephemeralRunEntry) error {
 
 		mgr.ctx.Log.Info(
 			"Evicting a run",
-			"entry", evictedEntry,
+			map[string]interface{}{
+				"entry": evictedEntry,
+			},
 		)
 	}
 
@@ -357,10 +363,15 @@ func (runCtx *RunContext) Debug() error {
 // any resources associated with the RunContext.
 func (runCtx *RunContext) Close() {
 	if atomic.SwapInt32(&runCtx.closedFlag, 1) != 0 {
-		runCtx.Log.Warn("Attempting to close an already closed run")
+		runCtx.Log.Warn("Attempting to close an already closed run", nil)
 		return
 	}
-	runCtx.Log.Info("Marking run as done", "context", runCtx)
+	runCtx.Log.Info(
+		"Marking run as done",
+		map[string]interface{}{
+			"context": runCtx,
+		},
+	)
 	defer func() {
 		runCtx.queueManager.AddEvent(&QueueEvent{
 			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
@@ -383,7 +394,12 @@ func (runCtx *RunContext) Close() {
 		runCtx.inputRef = nil
 	}
 	if err := os.MkdirAll(runCtx.RunInfo.GradeDir, 0755); err != nil {
-		runCtx.Log.Error("Unable to create grade dir", "err", err)
+		runCtx.Log.Error(
+			"Unable to create grade dir",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return
 	}
 
@@ -391,17 +407,32 @@ func (runCtx *RunContext) Close() {
 	{
 		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "details.json"))
 		if err != nil {
-			runCtx.Log.Error("Unable to create details.json file", "err", err)
+			runCtx.Log.Error(
+				"Unable to create details.json file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		defer fd.Close()
 		prettyPrinted, err := json.MarshalIndent(&runCtx.RunInfo.Result, "", "  ")
 		if err != nil {
-			runCtx.Log.Error("Unable to marshal results file", "err", err)
+			runCtx.Log.Error(
+				"Unable to marshal results file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		if _, err := fd.Write(prettyPrinted); err != nil {
-			runCtx.Log.Error("Unable to write results file", "err", err)
+			runCtx.Log.Error(
+				"Unable to write results file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 	}
@@ -410,18 +441,33 @@ func (runCtx *RunContext) Close() {
 	{
 		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "logs.txt.gz"))
 		if err != nil {
-			runCtx.Log.Error("Unable to create log file", "err", err)
+			runCtx.Log.Error(
+				"Unable to create log file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		defer fd.Close()
 		gz := gzip.NewWriter(fd)
 		if _, err := gz.Write(runCtx.LogBuffer()); err != nil {
 			gz.Close()
-			runCtx.Log.Error("Unable to write log file", "err", err)
+			runCtx.Log.Error(
+				"Unable to write log file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		if err := gz.Close(); err != nil {
-			runCtx.Log.Error("Unable to finalize log file", "err", err)
+			runCtx.Log.Error(
+				"Unable to finalize log file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 	}
@@ -430,18 +476,33 @@ func (runCtx *RunContext) Close() {
 	{
 		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "tracing.json.gz"))
 		if err != nil {
-			runCtx.Log.Error("Unable to create tracing file", "err", err)
+			runCtx.Log.Error(
+				"Unable to create tracing file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		defer fd.Close()
 		gz := gzip.NewWriter(fd)
 		if _, err := gz.Write(runCtx.TraceBuffer()); err != nil {
 			gz.Close()
-			runCtx.Log.Error("Unable to upload traces", "err", err)
+			runCtx.Log.Error(
+				"Unable to upload traces",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		if err := gz.Close(); err != nil {
-			runCtx.Log.Error("Unable to finalize traces", "err", err)
+			runCtx.Log.Error(
+				"Unable to finalize traces",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 	}
@@ -461,7 +522,7 @@ func (runCtx *RunContext) Requeue(lastAttempt bool) bool {
 			Priority: runCtx.RunInfo.Priority,
 			Type:     QueueEventTypeAbandoned,
 		})
-		runCtx.Log.Error("run errored out too many times. giving up")
+		runCtx.Log.Error("run errored out too many times. giving up", nil)
 		runCtx.Close()
 		return false
 	}
@@ -481,7 +542,7 @@ func (runCtx *RunContext) Requeue(lastAttempt bool) bool {
 			Priority: runCtx.RunInfo.Priority,
 			Type:     QueueEventTypeAbandoned,
 		})
-		runCtx.Log.Error("The high-priority queue is full. giving up")
+		runCtx.Log.Error("The high-priority queue is full. giving up", nil)
 		runCtx.Close()
 		return false
 	}
@@ -544,7 +605,7 @@ func (queue *Queue) AddRun(
 ) error {
 	runCtx := &RunContext{
 		RunInfo:  runInfo,
-		Context:  ctx.DebugContext("id", runInfo.ID),
+		Context:  ctx.DebugContext(map[string]interface{}{"id": runInfo.ID}),
 		inputRef: inputRef,
 
 		attemptsLeft: ctx.Config.Grader.MaxGradeRetries,
@@ -582,7 +643,7 @@ func (queue *Queue) AddWaitableRun(
 ) (*RunWaitHandle, error) {
 	runCtx := &RunContext{
 		RunInfo:  runInfo,
-		Context:  ctx.DebugContext("id", runInfo.ID),
+		Context:  ctx.DebugContext(map[string]interface{}{"id": runInfo.ID}),
 		inputRef: inputRef,
 
 		attemptsLeft: ctx.Config.Grader.MaxGradeRetries,
@@ -738,7 +799,12 @@ func (monitor *InflightMonitor) timeout(
 	runCtx *RunContext,
 	timeout chan<- struct{},
 ) {
-	runCtx.Log.Error("run timed out. retrying", "context", runCtx)
+	runCtx.Log.Warn(
+		"run timed out. retrying",
+		map[string]interface{}{
+			"context": runCtx,
+		},
+	)
 	runCtx.Requeue(false)
 	timeout <- struct{}{}
 }

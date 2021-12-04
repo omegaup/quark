@@ -2,7 +2,7 @@ package runner
 
 import (
 	"fmt"
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"io"
 	"math"

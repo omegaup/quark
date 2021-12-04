@@ -144,7 +144,12 @@ func (b *Broadcaster) Run() {
 
 				default:
 					b.metrics.IncrementChannelDropCount()
-					b.ctx.Log.Error("Dropped message on subscriber", "subscriber", s)
+					b.ctx.Log.Error(
+						"Dropped message on subscriber",
+						map[string]interface{}{
+							"subscriber": s,
+						},
+					)
 					b.remove(s)
 				}
 			}
@@ -174,7 +179,7 @@ func (b *Broadcaster) Broadcast(message *Message) bool {
 	default:
 		queuedMessage.Processed()
 		b.metrics.IncrementChannelDropCount()
-		b.ctx.Log.Error("Dropped broadcast message")
+		b.ctx.Log.Error("Dropped broadcast message", nil)
 		return false
 	}
 }
@@ -187,7 +192,12 @@ func (b *Broadcaster) Subscribe(subscriber *Subscriber) bool {
 
 	default:
 		b.metrics.IncrementChannelDropCount()
-		b.ctx.Log.Error("Dropped subscribe request", "subscriber", subscriber)
+		b.ctx.Log.Error(
+			"Dropped subscribe request",
+			map[string]interface{}{
+				"subscriber": subscriber,
+			},
+		)
 		return false
 	}
 }
@@ -200,7 +210,12 @@ func (b *Broadcaster) Unsubscribe(subscriber *Subscriber) bool {
 
 	default:
 		b.metrics.IncrementChannelDropCount()
-		b.ctx.Log.Error("Dropped unsubscribe request", "subscriber", subscriber)
+		b.ctx.Log.Error(
+			"Dropped unsubscribe request",
+			map[string]interface{}{
+				"subscriber": subscriber,
+			},
+		)
 		return false
 	}
 }
@@ -268,7 +283,12 @@ func NewSubscriber(
 
 	response, err := client.Do(request)
 	if err != nil {
-		ctx.Log.Error("Error", "err", err)
+		ctx.Log.Error(
+			"Error",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return nil, err
 	}
 	defer response.Body.Close()
@@ -278,8 +298,10 @@ func NewSubscriber(
 	io.Copy(&buf, response.Body)
 	ctx.Log.Debug(
 		"ValidateFilterResponse",
-		"status", response.Status,
-		"data", buf.String(),
+		map[string]interface{}{
+			"status": response.Status,
+			"data":   buf.String(),
+		},
 	)
 	decoder := json.NewDecoder(bytes.NewReader(buf.Bytes()))
 	if err := decoder.Decode(&msg); err != nil || response.StatusCode != http.StatusOK {
@@ -338,17 +360,21 @@ func (s *Subscriber) Run() {
 		ticker.Stop()
 		s.ctx.Log.Info(
 			"Subscriber gone",
-			"transport", s.transport,
-			"user", s.user,
-			"filters", s.filters,
+			map[string]interface{}{
+				"transport": s.transport,
+				"user":      s.user,
+				"filters":   s.filters,
+			},
 		)
 	}()
 
 	s.ctx.Log.Info(
 		"New subscriber",
-		"transport", s.transport,
-		"user", s.user,
-		"filters", s.filters,
+		map[string]interface{}{
+			"transport": s.transport,
+			"user":      s.user,
+			"filters":   s.filters,
+		},
 	)
 	for {
 		select {
@@ -361,13 +387,23 @@ func (s *Subscriber) Run() {
 				return
 			}
 			if err := s.transport.Send(message); err != nil {
-				s.ctx.Log.Error("Error sending message", "err", err)
+				s.ctx.Log.Error(
+					"Error sending message",
+					map[string]interface{}{
+						"err": err,
+					},
+				)
 				return
 			}
 
 		case <-ticker.C:
 			if err := s.transport.Ping(); err != nil {
-				s.ctx.Log.Error("Write error", "err", err)
+				s.ctx.Log.Error(
+					"Write error",
+					map[string]interface{}{
+						"err": err,
+					},
+				)
 				return
 			}
 		}

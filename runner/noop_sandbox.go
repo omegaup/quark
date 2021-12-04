@@ -24,7 +24,7 @@ func (*NoopSandbox) Compile(
 	chdir, outputFile, errorFile, metaFile, target string,
 	extraFlags []string,
 ) (*RunMetadata, error) {
-	ctx.Log.Info("Running with the no-op Sandbox")
+	ctx.Log.Info("Running with the no-op Sandbox", nil)
 	for _, filename := range []string{outputFile, errorFile, metaFile} {
 		f, err := os.Create(filename)
 		if err != nil {

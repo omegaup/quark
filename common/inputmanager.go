@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -285,21 +285,40 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, erro
 			}
 			// This operation can take a while.
 			if err := input.Verify(); err != nil {
-				mgr.ctx.Log.Warn("Hash verification failed. Regenerating",
-					"path", input.Hash(), "err", err)
+				mgr.ctx.Log.Warn(
+					"Hash verification failed. Regenerating",
+					map[string]interface{}{
+						"path": input.Hash(),
+						"err":  err,
+					},
+				)
 				input.Delete()
 
 				if err := input.Persist(); err != nil {
 					mgr.ctx.Log.Error(
 						"Error creating archive",
-						"hash", input.Hash(),
-						"err", err,
+						map[string]interface{}{
+							"hash": input.Hash(),
+							"err":  err,
+						},
 					)
 					return nil, err
 				}
-				mgr.ctx.Log.Info("Generated input", "hash", input.Hash(), "size", input.Size())
+				mgr.ctx.Log.Info(
+					"Generated input",
+					map[string]interface{}{
+						"hash": input.Hash(),
+						"size": input.Size(),
+					},
+				)
 			} else {
-				mgr.ctx.Log.Debug("Reusing input", "hash", input.Hash(), "size", input.Size())
+				mgr.ctx.Log.Debug(
+					"Reusing input",
+					map[string]interface{}{
+						"hash": input.Hash(),
+						"size": input.Size(),
+					},
+				)
 			}
 			return input, nil
 		},
@@ -350,15 +369,24 @@ func (mgr *InputManager) PreloadInputs(
 			inputRef, err := mgr.Add(hash, factory)
 			if err != nil {
 				os.RemoveAll(path.Join(dirname, info.Name()))
-				mgr.ctx.Log.Error("Cached input corrupted", "hash", hash)
+				mgr.ctx.Log.Error(
+					"Cached input corrupted",
+					map[string]interface{}{
+						"hash": hash,
+					},
+				)
 			} else {
 				inputRef.Release()
 			}
 			ioLock.Unlock()
 		}
 	}
-	mgr.ctx.Log.Info("Finished preloading cached inputs",
-		"cache_size", mgr.Size())
+	mgr.ctx.Log.Info(
+		"Finished preloading cached inputs",
+		map[string]interface{}{
+			"cache_size": mgr.Size(),
+		},
+	)
 	return nil
 }
 

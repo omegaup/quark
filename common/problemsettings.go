@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/pkg/errors"
 )
 

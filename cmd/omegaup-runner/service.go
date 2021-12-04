@@ -29,9 +29,19 @@ func benchmarkLoop(ctx *common.Context, wg *sync.WaitGroup) {
 			&ioLock,
 		)
 		if err != nil {
-			ctx.Log.Error("Failed to run benchmark", "err", err)
+			ctx.Log.Error(
+				"Failed to run benchmark",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 		} else {
-			ctx.Log.Info("Benchmark successful", "results", results)
+			ctx.Log.Info(
+				"Benchmark successful",
+				map[string]interface{}{
+					"results": results,
+				},
+			)
 		}
 		gaugesUpdate(results)
 
@@ -56,7 +66,12 @@ func runnerLoop(ctx *common.Context, wg *sync.WaitGroup, client *http.Client, ba
 				sleepTime = 1
 				continue
 			}
-			ctx.Log.Error("error grading run", "err", err)
+			ctx.Log.Error(
+				"error grading run",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			// Randomized exponential backoff.
 			select {
 			case <-ctx.Context.Done():
@@ -177,7 +192,7 @@ func processRun(
 		return errors.Errorf("non-2xx error code returned: %d", resp.StatusCode)
 	}
 
-	ctx := parentCtx.DebugContext()
+	ctx := parentCtx.DebugContext(nil)
 	syncID, err := strconv.ParseUint(resp.Header.Get("Sync-ID"), 10, 64)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse the Sync-ID header")
@@ -246,7 +261,12 @@ func gradeAndUploadResults(
 	result, err := gradeRun(ctx, client, run, multipartWriter)
 	if err != nil {
 		// Still try to send the details
-		ctx.Log.Error("Error grading run", "err", err)
+		ctx.Log.Error(
+			"Error grading run",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		result = runner.NewRunResult("JE", run.MaxScore)
 	}
 
@@ -257,12 +277,22 @@ func gradeAndUploadResults(
 	// Send results.
 	resultWriter, err := multipartWriter.CreateFormFile("file", "details.json")
 	if err != nil {
-		ctx.Log.Error("Error sending details.json", "err", err)
+		ctx.Log.Error(
+			"Error sending details.json",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return err
 	}
 	encoder := json.NewEncoder(resultWriter)
 	if err := encoder.Encode(result); err != nil {
-		ctx.Log.Error("Error encoding details.json", "err", err)
+		ctx.Log.Error(
+			"Error encoding details.json",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return err
 	}
 
@@ -271,11 +301,21 @@ func gradeAndUploadResults(
 	if logsBuffer != nil {
 		logsWriter, err := multipartWriter.CreateFormFile("file", "logs.txt")
 		if err != nil {
-			ctx.Log.Error("Error creating logs.txt", "err", err)
+			ctx.Log.Error(
+				"Error creating logs.txt",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return err
 		}
 		if _, err = logsWriter.Write(logsBuffer); err != nil {
-			ctx.Log.Error("Error sending logs.txt", "err", err)
+			ctx.Log.Error(
+				"Error sending logs.txt",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 		}
 	}
 
@@ -284,11 +324,21 @@ func gradeAndUploadResults(
 	if traceBuffer != nil {
 		tracingWriter, err := multipartWriter.CreateFormFile("file", "tracing.json")
 		if err != nil {
-			ctx.Log.Error("Error creating tracing.json", "err", err)
+			ctx.Log.Error(
+				"Error creating tracing.json",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return err
 		}
 		if _, err = tracingWriter.Write(traceBuffer); err != nil {
-			ctx.Log.Error("Error sending tracing.json", "err", err)
+			ctx.Log.Error(
+				"Error sending tracing.json",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return err
 		}
 	}

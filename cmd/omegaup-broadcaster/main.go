@@ -4,14 +4,10 @@ import (
 	"container/heap"
 	"context"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"flag"
 	"fmt"
-	"github.com/coreos/go-systemd/v22/daemon"
-	"github.com/gorilla/websocket"
-	"github.com/omegaup/quark/broadcaster"
-	"github.com/omegaup/quark/common"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"math"
 	"net/http"
 	_ "net/http/pprof"
@@ -23,6 +19,13 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/omegaup/quark/broadcaster"
+	"github.com/omegaup/quark/common"
+
+	"github.com/coreos/go-systemd/v22/daemon"
+	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -109,7 +112,12 @@ func updateScoreboardForContest(
 	updateScoreboardURL *url.URL,
 	contestAlias string,
 ) {
-	ctx.Log.Info("Requesting scoreboard update", "contest", contestAlias)
+	ctx.Log.Info(
+		"Requesting scoreboard update",
+		map[string]interface{}{
+			"contest": contestAlias,
+		},
+	)
 	resp, err := client.PostForm(
 		updateScoreboardURL.String(),
 		url.Values{
@@ -120,8 +128,10 @@ func updateScoreboardForContest(
 	if err != nil {
 		ctx.Log.Error(
 			"Error requesting scoreboard update",
-			"contest", contestAlias,
-			"err", err,
+			map[string]interface{}{
+				"contest": contestAlias,
+				"err":     err,
+			},
 		)
 		return
 	}
@@ -130,8 +140,10 @@ func updateScoreboardForContest(
 	if resp.StatusCode != 200 {
 		ctx.Log.Error(
 			"Failed to request scoreboard update",
-			"contest", contestAlias,
-			"status code", resp.StatusCode,
+			map[string]interface{}{
+				"contest":     contestAlias,
+				"status code": resp.StatusCode,
+			},
 		)
 	}
 }
@@ -225,10 +237,15 @@ func main() {
 	metricsMux.Handle("/metrics", promhttp.Handler())
 	go func() {
 		addr := fmt.Sprintf(":%d", ctx.Config.Metrics.Port)
-		ctx.Log.Error(
-			"http listen and serve",
-			"err", http.ListenAndServe(addr, metricsMux),
-		)
+		err := http.ListenAndServe(addr, metricsMux)
+		if !errors.Is(err, http.ErrServerClosed) {
+			ctx.Log.Error(
+				"http listen and serve",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
+		}
 	}()
 
 	http.HandleFunc("/deauthenticate/", func(w http.ResponseWriter, r *http.Request) {
@@ -253,13 +270,23 @@ func main() {
 		var message broadcaster.Message
 		decoder := json.NewDecoder(r.Body)
 		if err := decoder.Decode(&message); err != nil {
-			ctx.Log.Error("Error decoding broadcast message", "err", err)
+			ctx.Log.Error(
+				"Error decoding broadcast message",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		ctx.Log.Debug("/broadcast/", "message", message)
+		ctx.Log.Debug(
+			"/broadcast/",
+			map[string]interface{}{
+				"message": message,
+			},
+		)
 		if !b.Broadcast(&message) {
-			ctx.Log.Error("Error sending message, queue too large")
+			ctx.Log.Error("Error sending message, queue too large", nil)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
@@ -288,7 +315,12 @@ func main() {
 		} else {
 			conn, err := upgrader.Upgrade(w, r, nil)
 			if err != nil {
-				ctx.Log.Error("Failed to upgrade connection", "err", err)
+				ctx.Log.Error(
+					"Failed to upgrade connection",
+					map[string]interface{}{
+						"err": err,
+					},
+				)
 				return
 			}
 			defer conn.Close()
@@ -311,7 +343,12 @@ func main() {
 			transport,
 		)
 		if err != nil {
-			ctx.Log.Error("Failed to create subscriber", "err", err)
+			ctx.Log.Error(
+				"Failed to create subscriber",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			if upstream, ok := err.(*broadcaster.UpstreamError); ok {
 				w.WriteHeader(upstream.HTTPStatusCode)
 				w.Write(upstream.Contents)
@@ -362,16 +399,18 @@ func main() {
 
 	ctx.Log.Info(
 		"omegaUp broadcaster ready",
-		"version", ProgramVersion,
-		"broadcaster port", ctx.Config.Broadcaster.Port,
-		"events port", ctx.Config.Broadcaster.EventsPort,
+		map[string]interface{}{
+			"version":          ProgramVersion,
+			"broadcaster port": ctx.Config.Broadcaster.Port,
+			"events port":      ctx.Config.Broadcaster.EventsPort,
+		},
 	)
 	daemon.SdNotify(false, "READY=1")
 
 	<-stopChan
 
 	daemon.SdNotify(false, "STOPPING=1")
-	ctx.Log.Info("Shutting down server...")
+	ctx.Log.Info("Shutting down server...", nil)
 	cancelCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, server := range servers {
@@ -381,5 +420,5 @@ func main() {
 	cancel()
 	wg.Wait()
 
-	ctx.Log.Info("Server gracefully stopped.")
+	ctx.Log.Info("Server gracefully stopped.", nil)
 }
