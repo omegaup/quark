@@ -79,7 +79,6 @@ func loadContext() error {
 	defer f.Close()
 	config, err := common.NewConfig(f)
 	if isOneShotMode() {
-		config.Logging.File = "stderr"
 		config.Tracing.Enabled = false
 		if *verbose {
 			config.Logging.Level = "debug"

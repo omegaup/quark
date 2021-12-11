@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	nrtracing "github.com/omegaup/go-base/tracing/newrelic"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 
@@ -27,6 +28,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	git "github.com/libgit2/git2go/v33"
 	_ "github.com/mattn/go-sqlite3"
+	newrelic "github.com/newrelic/go-agent/v3/newrelic"
 )
 
 var (
@@ -186,6 +188,21 @@ func main() {
 	ctx := graderContext()
 	expvar.Publish("config", &ctx.Config)
 
+	var app *newrelic.Application
+	if ctx.Config.NewRelic.License != "" {
+		var err error
+		app, err = newrelic.NewApplication(
+			newrelic.ConfigAppName(ctx.Config.NewRelic.AppName),
+			newrelic.ConfigLicense(ctx.Config.NewRelic.License),
+			newrelic.ConfigLogger(ctx.Log),
+			newrelic.ConfigDistributedTracerEnabled(true),
+		)
+		if err != nil {
+			panic(err)
+		}
+	}
+	tracing := nrtracing.New(app)
+
 	expvar.Publish("codemanager", expvar.Func(func() interface{} {
 		return graderContext().InputManager
 	}))
@@ -242,10 +259,10 @@ func main() {
 	var wg sync.WaitGroup
 	{
 		mux := http.NewServeMux()
-		registerEphemeralHandlers(ctx, mux, ephemeralRunManager)
+		registerEphemeralHandlers(ctx, mux, ephemeralRunManager, tracing)
 		shutdowners = append(
 			shutdowners,
-			registerCIHandlers(ctx, mux, ephemeralRunManager),
+			registerCIHandlers(ctx, mux, ephemeralRunManager, tracing),
 		)
 		shutdowners = append(
 			shutdowners,
@@ -260,7 +277,7 @@ func main() {
 	}
 	{
 		mux := http.NewServeMux()
-		registerRunnerHandlers(ctx, mux, db, *insecure)
+		registerRunnerHandlers(ctx, mux, db, *insecure, tracing)
 		shutdowners = append(
 			shutdowners,
 			common.RunServer(

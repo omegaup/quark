@@ -141,7 +141,6 @@ func newRunnerContext(t *testing.T) (*common.Context, error) {
 		return nil, err
 	}
 	config := common.DefaultConfig()
-	config.Logging.File = "stderr"
 	if testing.Verbose() {
 		config.Logging.Level = "debug"
 	}

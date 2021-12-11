@@ -31,7 +31,6 @@ func main() {
 		}
 		defer os.RemoveAll(*runtimePath)
 	}
-	config.Logging.File = "stderr"
 	if *verbose {
 		config.Logging.Level = "debug"
 	}

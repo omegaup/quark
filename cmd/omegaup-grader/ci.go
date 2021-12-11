@@ -12,7 +12,9 @@ import (
 	"time"
 
 	git "github.com/libgit2/git2go/v33"
+
 	base "github.com/omegaup/go-base/v3"
+	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner/ci"
@@ -37,7 +39,9 @@ type ciHandler struct {
 }
 
 func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.ctx.Log.Info(
+	ctx := h.ctx.Wrap(r.Context())
+
+	ctx.Log.Info(
 		"CI request",
 		map[string]interface{}{
 			"path": r.URL.Path,
@@ -63,7 +67,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reportPath := path.Join(
-		h.ctx.Config.Grader.RuntimePath,
+		ctx.Config.Grader.RuntimePath,
 		"ci",
 		report.Problem,
 		report.CommitHash[:2],
@@ -75,7 +79,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		st, err := fd.Stat()
 		if err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Failed to stat the file",
 				map[string]interface{}{
 					"filename": reportPath,
@@ -95,11 +99,11 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Do the barest minimum checks before fully committing to making this CI
 	// run.
 	repository, err := git.OpenRepository(grader.GetRepositoryPath(
-		h.ctx.Config.Grader.RuntimePath,
+		ctx.Config.Grader.RuntimePath,
 		report.Problem,
 	))
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"failed to open repository",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -112,7 +116,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer repository.Free()
 	commitID, err := git.NewOid(report.CommitHash)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"failed to parse commit",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -125,7 +129,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	commit, err := repository.LookupCommit(commitID)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"failed to lookup commit",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -138,10 +142,10 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer commit.Free()
 
-	h.ctx.Metrics.CounterAdd("grader_ci_jobs_total", 1)
+	ctx.Metrics.CounterAdd("grader_ci_jobs_total", 1)
 
 	if err := os.MkdirAll(path.Dir(reportPath), 0755); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to create the report directory",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -158,7 +162,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		0644,
 	)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to create the running stamp",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -171,7 +175,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	stamp.Close()
 
 	if err := report.Write(reportPath); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to create the report file",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -188,7 +192,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	if err = encoder.Encode(report); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to write report",
 			map[string]interface{}{
 				"err": err,
@@ -204,6 +208,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ciHandler) runTest(
+	ctx *grader.Context,
 	testConfig *ci.TestConfig,
 	runs *grader.Queue,
 	report *ci.Report,
@@ -211,8 +216,8 @@ func (h *ciHandler) runTest(
 ) error {
 	testConfig.Test.StartTime = time.Now()
 
-	h.ctx.Metrics.CounterAdd("grader_ephemeral_runs_total", 1)
-	h.ctx.Log.Debug(
+	ctx.Metrics.CounterAdd("grader_ephemeral_runs_total", 1)
+	ctx.Log.Debug(
 		"Adding new run",
 		map[string]interface{}{
 			"run": &grader.EphemeralRunRequest{
@@ -228,11 +233,11 @@ func (h *ciHandler) runTest(
 	}
 	inputFactory, err := common.NewLiteralInputFactory(
 		testConfig.Input,
-		h.ctx.Config.Grader.RuntimePath,
+		ctx.Config.Grader.RuntimePath,
 		common.LiteralPersistGrader,
 	)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Error creating input factory",
 			map[string]interface{}{
 				"err": err,
@@ -249,7 +254,7 @@ func (h *ciHandler) runTest(
 	runInfo.Priority = grader.QueuePriorityEphemeral
 	testConfig.Test.EphemeralToken, err = h.ephemeralRunManager.SetEphemeral(runInfo)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Error making run ephemeral",
 			map[string]interface{}{
 				"err": err,
@@ -264,7 +269,7 @@ func (h *ciHandler) runTest(
 			return
 		}
 		if err := os.RemoveAll(runInfo.GradeDir); err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Error cleaning up after run",
 				map[string]interface{}{
 					"err": err,
@@ -273,9 +278,9 @@ func (h *ciHandler) runTest(
 		}
 	}(&committed)
 
-	inputRef, err := h.ctx.InputManager.Add(inputFactory.Hash(), inputFactory)
+	inputRef, err := ctx.InputManager.Add(inputFactory.Hash(), inputFactory)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Error adding input",
 			map[string]interface{}{
 				"err": err,
@@ -283,9 +288,9 @@ func (h *ciHandler) runTest(
 		)
 		return err
 	}
-	runWaitHandle, err := runs.AddWaitableRun(&h.ctx.Context, runInfo, inputRef)
+	runWaitHandle, err := runs.AddWaitableRun(&ctx.Context, runInfo, inputRef)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to add run",
 			map[string]interface{}{
 				"err": err,
@@ -294,7 +299,7 @@ func (h *ciHandler) runTest(
 		return err
 	}
 
-	h.ctx.Log.Info(
+	ctx.Log.Info(
 		"enqueued run",
 		map[string]interface{}{
 			"run": runInfo.Run,
@@ -306,7 +311,7 @@ func (h *ciHandler) runTest(
 	case <-runWaitHandle.Running():
 		testConfig.Test.State = ci.StateRunning
 		if err := report.Write(reportPath); err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Failed to write the report file",
 				map[string]interface{}{
 					"filename": reportPath,
@@ -328,7 +333,7 @@ func (h *ciHandler) runTest(
 	testConfig.Test.SetResult(&runInfo.Result)
 
 	if err := report.Write(reportPath); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to write the report file",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -339,7 +344,7 @@ func (h *ciHandler) runTest(
 
 	// Finally commit the run to the manager.
 	if err = saveEphemeralRunRequest(
-		h.ctx,
+		ctx,
 		runInfo,
 		&grader.EphemeralRunRequest{
 			Source:   testConfig.Solution.Source,
@@ -347,7 +352,7 @@ func (h *ciHandler) runTest(
 			Input:    testConfig.Input,
 		},
 	); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to commit the original request",
 			map[string]interface{}{
 				"err": err,
@@ -358,7 +363,7 @@ func (h *ciHandler) runTest(
 	}
 	h.ephemeralRunManager.Commit(runInfo)
 	committed = true
-	h.ctx.Log.Info(
+	ctx.Log.Info(
 		"Finished running ephemeral run",
 		map[string]interface{}{
 			"token": testConfig.Test.EphemeralToken,
@@ -368,8 +373,13 @@ func (h *ciHandler) runTest(
 	return nil
 }
 
-func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs *grader.Queue) {
-	h.ctx.Log.Info(
+func (h *ciHandler) processCIRequest(
+	report *ci.Report,
+	reportPath string,
+	runs *grader.Queue,
+) {
+	ctx := h.ctx.Wrap(context.TODO())
+	ctx.Log.Info(
 		"running request",
 		map[string]interface{}{
 			"report": report,
@@ -377,13 +387,13 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 	)
 	problemFiles, err := common.NewProblemFilesFromGit(
 		grader.GetRepositoryPath(
-			h.ctx.Config.Grader.RuntimePath,
+			ctx.Config.Grader.RuntimePath,
 			report.Problem,
 		),
 		report.CommitHash,
 	)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to validate commit",
 			map[string]interface{}{
 				"err": err,
@@ -398,7 +408,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 			report.Duration = &duration
 		}
 		if err := report.Write(reportPath); err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Failed to write the report file",
 				map[string]interface{}{
 					"filename": reportPath,
@@ -410,7 +420,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 	}
 	ciRunConfig, err := ci.NewRunConfig(problemFiles, false)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to validate commit",
 			map[string]interface{}{
 				"err": err,
@@ -429,7 +439,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 			report.Duration = &duration
 		}
 		if err := report.Write(reportPath); err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Failed to write the report file",
 				map[string]interface{}{
 					"filename": reportPath,
@@ -443,7 +453,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 		report.Tests = append(report.Tests, testConfig.Test)
 	}
 	if err := report.Write(reportPath); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to write the report file",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -454,8 +464,8 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 
 	report.State = ci.StateRunning
 	for _, testConfig := range ciRunConfig.TestConfigs {
-		if err := h.runTest(testConfig, runs, report, reportPath); err != nil {
-			h.ctx.Log.Error(
+		if err := h.runTest(ctx, testConfig, runs, report, reportPath); err != nil {
+			ctx.Log.Error(
 				"Failed to perform ephemeral run",
 				map[string]interface{}{
 					"err": err,
@@ -474,14 +484,14 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 		duration := base.Duration(report.FinishTime.Sub(report.StartTime))
 		report.Duration = &duration
 	}
-	h.ctx.Log.Info(
+	ctx.Log.Info(
 		"running request",
 		map[string]interface{}{
 			"report": report,
 		},
 	)
 	if err := report.Write(reportPath); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to write the report file",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -490,7 +500,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 		)
 	}
 
-	h.ctx.Log.Info(
+	ctx.Log.Info(
 		"finished running request",
 		map[string]interface{}{
 			"report": report,
@@ -498,7 +508,7 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 	)
 
 	if err := os.Remove(path.Join(path.Dir(reportPath), ci.RunningStampFilename)); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to remove the running stamp",
 			map[string]interface{}{
 				"filename": reportPath,
@@ -514,29 +524,30 @@ func (h *ciHandler) processCIRequest(report *ci.Report, reportPath string, runs 
 }
 
 func (h *ciHandler) run() {
-	runs, err := h.ctx.QueueManager.Get(grader.DefaultQueueName)
+	ctx := h.ctx.Wrap(context.TODO())
+	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
 
-	ciRoot := path.Join(h.ctx.Config.Grader.RuntimePath, "ci")
-	h.ctx.Log.Info("Reloading CI runs...", nil)
+	ciRoot := path.Join(ctx.Config.Grader.RuntimePath, "ci")
+	ctx.Log.Info("Reloading CI runs...", nil)
 	if err := h.lruCache.ReloadRuns(ciRoot); err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Reloading CI runs failed",
 			map[string]interface{}{
 				"err": err,
 			},
 		)
 	}
-	h.ctx.Log.Info(
+	ctx.Log.Info(
 		"Finished preloading CI runs",
 		map[string]interface{}{
 			"cache_size": h.lruCache.Size(),
 		},
 	)
 
-	h.ctx.Log.Info("CI run manager ready", nil)
+	ctx.Log.Info("CI run manager ready", nil)
 	for {
 		select {
 		case <-h.stopChan:
@@ -564,6 +575,7 @@ func registerCIHandlers(
 	ctx *grader.Context,
 	mux *http.ServeMux,
 	ephemeralRunManager *grader.EphemeralRunManager,
+	tracing tracing.Provider,
 ) shutdowner {
 	ciHandler := &ciHandler{
 		ephemeralRunManager: ephemeralRunManager,
@@ -573,7 +585,7 @@ func registerCIHandlers(
 		reportChan:          make(chan *reportWithPath, 128),
 		doneChan:            make(chan struct{}),
 	}
-	mux.Handle("/ci/", ciHandler)
+	mux.Handle(tracing.WrapHandle("/ci/", ciHandler))
 	go ciHandler.run()
 	return ciHandler
 }

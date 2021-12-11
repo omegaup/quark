@@ -3,10 +3,6 @@ package main
 import (
 	"compress/gzip"
 	"encoding/json"
-	base "github.com/omegaup/go-base/v3"
-	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/grader"
-	"github.com/omegaup/quark/runner"
 	"io"
 	"math/big"
 	"mime/multipart"
@@ -14,6 +10,12 @@ import (
 	"os"
 	"path"
 	"strings"
+
+	base "github.com/omegaup/go-base/v3"
+	"github.com/omegaup/go-base/v3/tracing"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/grader"
+	"github.com/omegaup/quark/runner"
 )
 
 var (
@@ -402,10 +404,11 @@ func registerEphemeralHandlers(
 	ctx *grader.Context,
 	mux *http.ServeMux,
 	ephemeralRunManager *grader.EphemeralRunManager,
+	tracing tracing.Provider,
 ) {
 	ephemeralRunHandler := &ephemeralRunHandler{
 		ephemeralRunManager: ephemeralRunManager,
 		ctx:                 ctx,
 	}
-	mux.Handle("/ephemeral/run/", ephemeralRunHandler)
+	mux.Handle(tracing.WrapHandle("/ephemeral/run/", ephemeralRunHandler))
 }
