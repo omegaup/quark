@@ -37,7 +37,13 @@ func readReport(
 		}
 		resp.Body.Close()
 
-		ctx.Log.Info("Getting results...", "report", report, "round", i+1)
+		ctx.Log.Info(
+			"Getting results...",
+			map[string]interface{}{
+				"report": report,
+				"round":  i + 1,
+			},
+		)
 
 		if len(report.Tests) > 0 {
 			found := false
@@ -92,7 +98,7 @@ func TestCI(t *testing.T) {
 	readReport(t, ctx, ts.Client(), requestURL.String(), &report, []ci.State{})
 
 	for range report.Tests {
-		ctx.Log.Info("Gonna request a run")
+		ctx.Log.Info("Gonna request a run", nil)
 		RunnerRequestRun(t, ctx, ts)
 	}
 

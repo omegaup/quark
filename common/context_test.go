@@ -19,11 +19,11 @@ func newTestingContext() *Context {
 func TestDebugContext(t *testing.T) {
 	ctx := newTestingContext()
 	defer ctx.Close()
-	dbg := ctx.DebugContext()
+	dbg := ctx.DebugContext(nil)
 	// This should not be added to the Buffer.
-	ctx.Log.Error("Critical error")
+	ctx.Log.Error("Critical error", nil)
 	// This should be.
-	dbg.Log.Debug("Debug statement")
+	dbg.Log.Debug("Debug statement", nil)
 
 	logStr := string(dbg.LogBuffer())
 	if strings.Index(logStr, "Critical error") != -1 {

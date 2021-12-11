@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"github.com/vincent-petithory/dataurl"
 )
@@ -308,8 +308,10 @@ func mergeVerdict(
 		// whole run is marked as TLE.
 		ctx.Log.Warn(
 			"parent took too long. marking as TLE",
-			"meta", chosenMetadata,
-			"parent", parentMetadata,
+			map[string]interface{}{
+				"meta":   chosenMetadata,
+				"parent": parentMetadata,
+			},
 		)
 		chosenMetadata.Verdict = "TLE"
 		return chosenMetadata
@@ -319,16 +321,20 @@ func mergeVerdict(
 		// The child died because of the parent's fault.
 		ctx.Log.Warn(
 			"child process crashed due to the parent's fault",
-			"meta", chosenMetadata,
-			"parent", parentMetadata,
+			map[string]interface{}{
+				"meta":   chosenMetadata,
+				"parent": parentMetadata,
+			},
 		)
 		if parentMetadata.Verdict == "OLE" {
 			// This should only happen if the child caused the parent to print out
 			// too much stuff.
 			ctx.Log.Warn(
 				"child caused parent to OLE",
-				"meta", chosenMetadata,
-				"parent", parentMetadata,
+				map[string]interface{}{
+					"meta":   chosenMetadata,
+					"parent": parentMetadata,
+				},
 			)
 			chosenMetadata.Verdict = "OLE"
 			return chosenMetadata
@@ -340,8 +346,10 @@ func mergeVerdict(
 	if chosenMetadata.Verdict == "OK" {
 		ctx.Log.Warn(
 			"child process finished correctly, but parent did not",
-			"meta", chosenMetadata,
-			"parent", parentMetadata,
+			map[string]interface{}{
+				"meta":   chosenMetadata,
+				"parent": parentMetadata,
+			},
 		)
 		if parentMetadata.Verdict == "OLE" {
 			// This should only happen if the child caused the parent to print out
@@ -387,13 +395,23 @@ func parseOutputOnlyFile(
 	result := make(map[string]outputOnlyFile)
 	if err != nil {
 		// |data| is not a dataurl. Try just returning the data as an Entry.
-		ctx.Log.Info("data is not a dataurl. Generating Main.out", "err", err)
+		ctx.Log.Info(
+			"data is not a dataurl. Generating Main.out",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		result["Main.out"] = outputOnlyFile{data, false}
 		return result, nil
 	}
 	z, err := zip.NewReader(bytes.NewReader(dataURL.Data), int64(len(dataURL.Data)))
 	if err != nil {
-		ctx.Log.Warn("error reading zip", "err", err)
+		ctx.Log.Warn(
+			"error reading zip",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return result, err
 	}
 
@@ -408,7 +426,9 @@ func parseOutputOnlyFile(
 		if !strings.HasSuffix(f.FileHeader.Name, ".out") {
 			ctx.Log.Info(
 				"Output-only compressed file has invalid name. Skipping",
-				"name", f.FileHeader.Name,
+				map[string]interface{}{
+					"name": f.FileHeader.Name,
+				},
 			)
 			continue
 		}
@@ -421,15 +441,19 @@ func parseOutputOnlyFile(
 		if _, ok := expectedFileNames[fileName]; !ok {
 			ctx.Log.Info(
 				"Output-only compressed file not expected. Skipping",
-				"name", f.FileHeader.Name,
+				map[string]interface{}{
+					"name": f.FileHeader.Name,
+				},
 			)
 			continue
 		}
 		if f.FileHeader.UncompressedSize64 > uint64(settings.Limits.OutputLimit) {
 			ctx.Log.Info(
 				"Output-only compressed file is too large. Generating empty file",
-				"name", f.FileHeader.Name,
-				"size", f.FileHeader.UncompressedSize64,
+				map[string]interface{}{
+					"name": f.FileHeader.Name,
+					"size": f.FileHeader.UncompressedSize64,
+				},
 			)
 			result[fileName] = outputOnlyFile{"", true}
 			continue
@@ -438,8 +462,10 @@ func parseOutputOnlyFile(
 		if err != nil {
 			ctx.Log.Info(
 				"Error opening file",
-				"name", f.FileHeader.Name,
-				"err", err,
+				map[string]interface{}{
+					"name": f.FileHeader.Name,
+					"err":  err,
+				},
 			)
 			continue
 		}
@@ -449,8 +475,10 @@ func parseOutputOnlyFile(
 		if err != nil {
 			ctx.Log.Info(
 				"Error reading file",
-				"name", f.FileHeader.Name,
-				"err", err,
+				map[string]interface{}{
+					"name": f.FileHeader.Name,
+					"err":  err,
+				},
 			)
 			continue
 		}
@@ -553,7 +581,12 @@ func Grade(
 		defer os.RemoveAll(runRoot)
 	}
 
-	ctx.Log.Info("Running", "run", run)
+	ctx.Log.Info(
+		"Running",
+		map[string]interface{}{
+			"run": run,
+		},
+	)
 
 	var binaries []*binary
 	var outputOnlyFiles map[string]outputOnlyFile
@@ -576,7 +609,12 @@ func Grade(
 
 	interactive := settings.Interactive
 	if interactive != nil {
-		ctx.Log.Info("libinteractive", "version", interactive.LibinteractiveVersion)
+		ctx.Log.Info(
+			"libinteractive",
+			map[string]interface{}{
+				"version": interactive.LibinteractiveVersion,
+			},
+		)
 		lang := interactive.ParentLang
 		target := targetName(run.Language, interactive.Main)
 
@@ -873,7 +911,13 @@ func Grade(
 		}
 
 		if err != nil || compileMeta.Verdict != "OK" {
-			ctx.Log.Error("Compile error", "err", err, "compileMeta", compileMeta)
+			ctx.Log.Error(
+				"Compile error",
+				map[string]interface{}{
+					"err":         err,
+					"compileMeta": compileMeta,
+				},
+			)
 			runResult.Verdict = "CE"
 			compileErrorFile := "compile.err"
 			if b.language == "pas" || b.language == "cs" {
@@ -905,9 +949,11 @@ func Grade(
 			if runResult.WallTime > settings.Limits.OverallWallTimeLimit.Seconds() {
 				ctx.Log.Debug(
 					"Not even running since the wall time limit has been exceeded",
-					"case", caseData.Name,
-					"wall time", runResult.WallTime,
-					"limit", settings.Limits.OverallWallTimeLimit.Seconds(),
+					map[string]interface{}{
+						"case":      caseData.Name,
+						"wall time": runResult.WallTime,
+						"limit":     settings.Limits.OverallWallTimeLimit.Seconds(),
+					},
 				)
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
@@ -922,9 +968,11 @@ func Grade(
 					if err := ioutil.WriteFile(outPath, []byte(file.contents), 0644); err != nil {
 						ctx.Log.Error(
 							"failed to write output file contents",
-							"case", caseData.Name,
-							"path", outPath,
-							"err", err,
+							map[string]interface{}{
+								"case": caseData.Name,
+								"path": outPath,
+								"err":  err,
+							},
 						)
 					}
 					runMeta = &RunMetadata{
@@ -936,23 +984,29 @@ func Grade(
 					if err := ioutil.WriteFile(metaPath, []byte("status:0"), 0644); err != nil {
 						ctx.Log.Error(
 							"failed to write meta file",
-							"case", caseData.Name,
-							"path", metaPath,
-							"err", err,
+							map[string]interface{}{
+								"case": caseData.Name,
+								"path": metaPath,
+								"err":  err,
+							},
 						)
 					}
 				} else {
 					ctx.Log.Error(
 						"missing an output file",
-						"case", caseData.Name,
-						"path", outPath,
+						map[string]interface{}{
+							"case": caseData.Name,
+							"path": outPath,
+						},
 					)
 					if err := ioutil.WriteFile(outPath, []byte{}, 0644); err != nil {
 						ctx.Log.Error(
 							"failed to write output file",
-							"case", caseData.Name,
-							"path", outPath,
-							"err", err,
+							map[string]interface{}{
+								"case": caseData.Name,
+								"path": outPath,
+								"err":  err,
+							},
 						)
 					}
 					runMeta = &RunMetadata{
@@ -961,9 +1015,11 @@ func Grade(
 					if err := ioutil.WriteFile(metaPath, []byte("status:1"), 0644); err != nil {
 						ctx.Log.Error(
 							"failed to write meta file",
-							"case", caseData.Name,
-							"path", metaPath,
-							"err", err,
+							map[string]interface{}{
+								"case": caseData.Name,
+								"path": metaPath,
+								"err":  err,
+							},
 						)
 					}
 				}
@@ -971,9 +1027,11 @@ func Grade(
 				if err := ioutil.WriteFile(errPath, []byte{}, 0644); err != nil {
 					ctx.Log.Error(
 						"failed to write err file",
-						"case", caseData.Name,
-						"path", metaPath,
-						"err", err,
+						map[string]interface{}{
+							"case": caseData.Name,
+							"path": metaPath,
+							"err":  err,
+						},
 					)
 				}
 				generatedFiles = append(generatedFiles, outName, errName, metaName)
@@ -1033,9 +1091,11 @@ func Grade(
 						if err != nil {
 							ctx.Log.Error(
 								"failed to run",
-								"caseName", caseData.Name,
-								"interface", bin.name,
-								"err", err,
+								map[string]interface{}{
+									"caseName":  caseData.Name,
+									"interface": bin.name,
+									"err":       err,
+								},
 							)
 						}
 						generatedFiles := []string{
@@ -1169,7 +1229,9 @@ func Grade(
 						ctx.Metrics.CounterAdd("runner_validator_errors", 1)
 						ctx.Log.Info(
 							"original file did not exist, using /dev/null",
-							"case name", caseData.Name,
+							map[string]interface{}{
+								"case name": caseData.Name,
+							},
 						)
 						originalOutputFile = "/dev/null"
 					}
@@ -1193,8 +1255,10 @@ func Grade(
 					if err != nil {
 						ctx.Log.Error(
 							"failed to validate",
-							"case name", caseData.Name,
-							"err", err,
+							map[string]interface{}{
+								"case name": caseData.Name,
+								"err":       err,
+							},
 						)
 					}
 					caseResults.IndividualMeta["validator"] = *validateMeta
@@ -1208,8 +1272,10 @@ func Grade(
 						// If the validator did not exit cleanly, assume an empty output.
 						ctx.Log.Info(
 							"validator verdict not OK. Using /dev/null",
-							"case name", caseData.Name,
-							"meta", validateMeta,
+							map[string]interface{}{
+								"case name": caseData.Name,
+								"meta":      validateMeta,
+							},
 						)
 						contestantPath = "/dev/null"
 					} else {
@@ -1222,7 +1288,13 @@ func Grade(
 				}
 				contestantFd, err := os.Open(contestantPath)
 				if err != nil {
-					ctx.Log.Warn("Error opening contestant file", "path", contestantPath, "err", err)
+					ctx.Log.Warn(
+						"Error opening contestant file",
+						map[string]interface{}{
+							"path": contestantPath,
+							"err":  err,
+						},
+					)
 					continue
 				}
 				expectedPath := path.Join(
@@ -1235,7 +1307,13 @@ func Grade(
 				expectedFd, err := os.Open(expectedPath)
 				if err != nil {
 					contestantFd.Close()
-					ctx.Log.Warn("Error opening expected file", "path", expectedPath, "err", err)
+					ctx.Log.Warn(
+						"Error opening expected file",
+						map[string]interface{}{
+							"path": expectedPath,
+							"err":  err,
+						},
+					)
 					continue
 				}
 				runScore, _, err := CalculateScore(
@@ -1248,8 +1326,10 @@ func Grade(
 				if err != nil {
 					ctx.Log.Debug(
 						"error comparing values",
-						"case", caseData.Name,
-						"err", err,
+						map[string]interface{}{
+							"case": caseData.Name,
+							"err":  err,
+						},
 					)
 				}
 				caseResults.Score.Add(caseResults.Score, runScore)
@@ -1317,9 +1397,11 @@ func Grade(
 
 	ctx.Log.Debug(
 		"Finished running",
-		"id", run.AttemptID,
-		"verdict", runResult.Verdict,
-		"score", runResult.Score,
+		map[string]interface{}{
+			"id":      run.AttemptID,
+			"verdict": runResult.Verdict,
+			"score":   runResult.Score,
+		},
 	)
 	uploadEvent := ctx.EventFactory.NewCompleteEvent("upload")
 	defer ctx.EventCollector.Add(uploadEvent)
@@ -1330,7 +1412,12 @@ func Grade(
 		input,
 		generatedFiles,
 	); err != nil {
-		ctx.Log.Error("uploadFiles failed", "err", err)
+		ctx.Log.Error(
+			"uploadFiles failed",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return runResult, err
 	}
 

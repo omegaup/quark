@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/inconshreveable/log15"
-	base "github.com/omegaup/go-base/v2"
 	"io"
 	"os"
 	"time"
+
+	"github.com/omegaup/go-base/logging/log15"
+	base "github.com/omegaup/go-base/v3"
+	"github.com/omegaup/go-base/v3/logging"
 )
 
 // BroadcasterConfig represents the configuration for the Broadcaster.
@@ -220,7 +222,7 @@ func (config *Config) String() string {
 type Context struct {
 	Context         context.Context
 	Config          Config
-	Log             log15.Logger
+	Log             logging.Logger
 	EventCollector  EventCollector
 	EventFactory    *EventFactory
 	Metrics         base.Metrics
@@ -258,24 +260,10 @@ func NewContext(config *Config, role string) (*Context, error) {
 	}
 
 	// Logging
-	if config.Logging.File != "" {
-		var err error
-		ctx.Log, err = base.RotatingLog(
-			ctx.Config.Logging.File,
-			ctx.Config.Logging.Level,
-			config.Logging.JSON,
-		)
-		if err != nil {
-			return nil, err
-		}
-	} else if config.Logging.Level == "debug" {
-		ctx.Log = base.StderrLog(config.Logging.JSON)
-	} else {
-		ctx.Log = log15.New()
-		ctx.Log.SetHandler(base.ErrorCallerStackHandler(
-			log15.LvlInfo,
-			base.StderrHandler(config.Logging.JSON),
-		))
+	var err error
+	ctx.Log, err = log15.New(ctx.Config.Logging.Level, config.Logging.JSON)
+	if err != nil {
+		return nil, err
 	}
 
 	// Tracing
@@ -321,7 +309,7 @@ func NewContextFromReader(reader io.Reader, role string) (*Context, error) {
 // Close releases all resources owned by the context.
 func (ctx *Context) Close() {
 	ctx.EventCollector.Close()
-	if closer, ok := ctx.Log.GetHandler().(io.Closer); ok {
+	if closer, ok := ctx.Log.(io.Closer); ok {
 		closer.Close()
 	}
 }
@@ -329,12 +317,15 @@ func (ctx *Context) Close() {
 // DebugContext returns a new Context with an additional handler with a more
 // verbose filter (using the Debug level) and a Buffer in which all logging
 // statements will be (also) written to.
-func (ctx *Context) DebugContext(logCtx ...interface{}) *Context {
+func (ctx *Context) DebugContext(logCtx map[string]interface{}) *Context {
 	var buffer bytes.Buffer
 	childContext := &Context{
-		Context:         ctx.Context,
-		Config:          ctx.Config,
-		Log:             ctx.Log.New(logCtx...),
+		Context: ctx.Context,
+		Config:  ctx.Config,
+		Log: logging.NewMultiLogger(
+			ctx.Log.New(logCtx),
+			logging.NewInMemoryLogfmtLogger(&buffer),
+		),
 		logBuffer:       &buffer,
 		memoryCollector: NewMemoryEventCollector(),
 		EventFactory:    ctx.EventFactory,
@@ -345,13 +336,6 @@ func (ctx *Context) DebugContext(logCtx ...interface{}) *Context {
 		ctx.EventCollector,
 	)
 	childContext.EventFactory.Register(childContext.memoryCollector)
-	childContext.Log.SetHandler(log15.MultiHandler(
-		base.ErrorCallerStackHandler(
-			log15.LvlDebug,
-			log15.StreamHandler(&buffer, log15.LogfmtFormat()),
-		),
-		ctx.Log.GetHandler(),
-	))
 	return childContext
 }
 

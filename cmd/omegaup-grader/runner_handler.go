@@ -34,7 +34,13 @@ func processRun(
 	// Best-effort deletion of the grade dir.
 	os.RemoveAll(gradeDir)
 	if err := os.MkdirAll(gradeDir, 0755); err != nil {
-		runCtx.Log.Error("Unable to create grade dir", "err", err, "runner", runnerName)
+		runCtx.Log.Error(
+			"Unable to create grade dir",
+			map[string]interface{}{
+				"err":    err,
+				"runner": runnerName,
+			},
+		)
 		return &processRunStatus{http.StatusInternalServerError, false}
 	}
 	runCtx.RunInfo.Result.JudgedBy = runnerName
@@ -43,8 +49,10 @@ func processRun(
 	if err != nil {
 		runCtx.Log.Error(
 			"Error decoding multipart data",
-			"err", err,
-			"runner", runnerName,
+			map[string]interface{}{
+				"err":    err,
+				"runner": runnerName,
+			},
 		)
 		return &processRunStatus{http.StatusBadRequest, true}
 	}
@@ -53,14 +61,22 @@ func processRun(
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			runCtx.Log.Error("Error receiving next file", "err", err, "runner", runnerName)
+			runCtx.Log.Error(
+				"Error receiving next file",
+				map[string]interface{}{
+					"err":    err,
+					"runner": runnerName,
+				},
+			)
 			return &processRunStatus{http.StatusBadRequest, true}
 		}
 		runCtx.Log.Debug(
 			"Processing file",
-			"attempt_id", attemptID,
-			"filename", part.FileName(),
-			"runner", runnerName,
+			map[string]interface{}{
+				"attempt_id": attemptID,
+				"filename":   part.FileName(),
+				"runner":     runnerName,
+			},
 		)
 
 		if part.FileName() == "details.json" {
@@ -68,7 +84,13 @@ func processRun(
 			decoder := json.NewDecoder(part)
 			decoder.UseNumber()
 			if err := decoder.Decode(&result); err != nil {
-				runCtx.Log.Error("Error obtaining result", "err", err, "runner", runnerName)
+				runCtx.Log.Error(
+					"Error obtaining result",
+					map[string]interface{}{
+						"err":    err,
+						"runner": runnerName,
+					},
+				)
 				return &processRunStatus{http.StatusBadRequest, true}
 			}
 			runCtx.RunInfo.Result = result
@@ -76,7 +98,13 @@ func processRun(
 		} else if part.FileName() == "logs.txt" {
 			var buffer bytes.Buffer
 			if _, err := io.Copy(&buffer, part); err != nil {
-				runCtx.Log.Error("Unable to read logs", "err", err, "runner", runnerName)
+				runCtx.Log.Error(
+					"Unable to read logs",
+					map[string]interface{}{
+						"err":    err,
+						"runner": runnerName,
+					},
+				)
 				return &processRunStatus{http.StatusBadRequest, true}
 			}
 			runCtx.AppendLogSection(runnerName, buffer.Bytes())
@@ -86,8 +114,10 @@ func processRun(
 			if err := decoder.Decode(&runnerCollector); err != nil {
 				runCtx.Log.Error(
 					"Unable to decode the tracing events",
-					"err", err,
-					"runner", runnerName,
+					map[string]interface{}{
+						"err":    err,
+						"runner": runnerName,
+					},
 				)
 				return &processRunStatus{http.StatusBadRequest, true}
 			}
@@ -96,8 +126,10 @@ func processRun(
 					if !errors.Is(err, os.ErrClosed) {
 						runCtx.Log.Error(
 							"Unable to add tracing data",
-							"err", err,
-							"runner", runnerName,
+							map[string]interface{}{
+								"err":    err,
+								"runner": runnerName,
+							},
 						)
 					}
 					break
@@ -111,8 +143,10 @@ func processRun(
 				if err != nil {
 					runCtx.Log.Error(
 						"Unable to create results file",
-						"err", err,
-						"runner", runnerName,
+						map[string]interface{}{
+							"err":    err,
+							"runner": runnerName,
+						},
 					)
 					return &processRunStatus{http.StatusInternalServerError, false}
 				}
@@ -124,8 +158,10 @@ func processRun(
 			if _, err := io.Copy(w, part); err != nil {
 				runCtx.Log.Error(
 					"Unable to upload results",
-					"err", err,
-					"runner", runnerName,
+					map[string]interface{}{
+						"err":    err,
+						"runner": runnerName,
+					},
 				)
 				return &processRunStatus{http.StatusBadRequest, true}
 			}
@@ -133,18 +169,22 @@ func processRun(
 	}
 	runCtx.Log.Info(
 		"Finished processing run",
-		"verdict", runCtx.RunInfo.Result.Verdict,
-		"score", runCtx.RunInfo.Result.Score,
-		"runner", runnerName,
-		"runInfo", runCtx.RunInfo,
+		map[string]interface{}{
+			"verdict": runCtx.RunInfo.Result.Verdict,
+			"score":   runCtx.RunInfo.Result.Score,
+			"runner":  runnerName,
+			"runInfo": runCtx.RunInfo,
+		},
 	)
 	if runCtx.RunInfo.Result.Verdict == "JE" {
 		// Retry the run in case it is some transient problem.
 		runCtx.Log.Info(
 			"Judge Error. Re-attempting run.",
-			"verdict", runCtx.RunInfo.Result.Verdict,
-			"runner", runnerName,
-			"runInfo", runCtx.RunInfo,
+			map[string]interface{}{
+				"verdict": runCtx.RunInfo.Result.Verdict,
+				"runner":  runnerName,
+				"runInfo": runCtx.RunInfo,
+			},
 		)
 		return &processRunStatus{http.StatusOK, true}
 	}
@@ -162,7 +202,12 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 		runnerName := peerName(r, insecure)
 		f, err := os.OpenFile("benchmark.txt", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
 		if err != nil {
-			ctx.Log.Error("Failed to open benchmark file", "err", err)
+			ctx.Log.Error(
+				"Failed to open benchmark file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		defer f.Close()
@@ -171,14 +216,25 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 		io.Copy(&buf, r.Body)
 		buf.WriteString("\n")
 		if _, err := io.Copy(f, &buf); err != nil {
-			ctx.Log.Error("Failed to write to benchmark file", "err", err)
+			ctx.Log.Error(
+				"Failed to write to benchmark file",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 		}
 	})
 
 	mux.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		runnerName := peerName(r, insecure)
-		ctx.Log.Debug("requesting run", "proto", r.Proto, "client", runnerName)
+		ctx.Log.Debug(
+			"requesting run",
+			map[string]interface{}{
+				"proto":  r.Proto,
+				"client": runnerName,
+			},
+		)
 
 		runCtx, _, ok := runs.GetRun(
 			runnerName,
@@ -186,11 +242,22 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			w.(http.CloseNotifier).CloseNotify(),
 		)
 		if !ok {
-			ctx.Log.Debug("client gone", "client", runnerName)
+			ctx.Log.Debug(
+				"client gone",
+				map[string]interface{}{
+					"client": runnerName,
+				},
+			)
 			return
 		}
 
-		runCtx.Log.Debug("served run", "run", runCtx, "client", runnerName)
+		runCtx.Log.Debug(
+			"served run",
+			map[string]interface{}{
+				"run":    runCtx,
+				"client": runnerName,
+			},
+		)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		ev := runCtx.EventFactory.NewIssuerClockSyncEvent()
 		w.Header().Set("Sync-ID", strconv.FormatUint(ev.SyncID, 10))
@@ -221,7 +288,12 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			runCtx.Close()
 			return
 		}
-		runCtx.Log.Error("run errored out. retrying", "context", runCtx)
+		runCtx.Log.Error(
+			"run errored out. retrying",
+			map[string]interface{}{
+				"context": runCtx,
+			},
+		)
 		// status is OK only when the runner successfully sent a JE verdict.
 		lastAttempt := result.status == http.StatusOK
 		runCtx.Requeue(lastAttempt)
@@ -253,13 +325,24 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			)
 		}
 		if err != nil {
-			ctx.Log.Error("Input not found", "hash", hash)
+			ctx.Log.Error(
+				"Input not found",
+				map[string]interface{}{
+					"hash": hash,
+				},
+			)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		defer inputRef.Release()
 		if err := inputRef.Input.(common.TransmittableInput).Transmit(w); err != nil {
-			ctx.Log.Error("Error transmitting input", "hash", hash, "err", err)
+			ctx.Log.Error(
+				"Error transmitting input",
+				map[string]interface{}{
+					"hash": hash,
+					"err":  err,
+				},
+			)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})

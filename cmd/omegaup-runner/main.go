@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-systemd/v22/daemon"
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"github.com/omegaup/quark/runner/ci"
@@ -99,7 +99,14 @@ func persistResults(ctx *common.Context, root string, target string) error {
 		root,
 		func(srcPath string, info os.FileInfo, err error) error {
 			if err != nil {
-				ctx.Log.Error("Failed to walk", "dir", root, "path", srcPath, "err", err)
+				ctx.Log.Error(
+					"Failed to walk",
+					map[string]interface{}{
+						"dir":  root,
+						"path": srcPath,
+						"err":  err,
+					},
+				)
 				return err
 			}
 			if !info.Mode().IsRegular() {
@@ -109,37 +116,64 @@ func persistResults(ctx *common.Context, root string, target string) error {
 
 			relDstPath, err := filepath.Rel(root, srcPath)
 			if err != nil {
-				ctx.Log.Error("Failed to relativize path", "dir", root, "path", srcPath, "err", err)
+				ctx.Log.Error(
+					"Failed to relativize path",
+					map[string]interface{}{
+						"dir":  root,
+						"path": srcPath,
+						"err":  err,
+					},
+				)
 				return err
 			}
 			dstPath := path.Join(target, relDstPath)
 			if err := os.MkdirAll(path.Dir(dstPath), 0755); err != nil {
 				ctx.Log.Error(
 					"Failed to create intermediate directory",
-					"dir", root,
-					"path", srcPath,
-					"destination", dstPath,
-					"err", err,
+					map[string]interface{}{
+						"dir":         root,
+						"path":        srcPath,
+						"destination": dstPath,
+						"err":         err,
+					},
 				)
 				return err
 			}
 
 			srcFile, err := os.Open(srcPath)
 			if err != nil {
-				ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+				ctx.Log.Error(
+					"Failed to open source file",
+					map[string]interface{}{
+						"path": srcPath,
+						"err":  err,
+					},
+				)
 				return err
 			}
 			defer srcFile.Close()
 
 			dstFile, err := os.Create(dstPath)
 			if err != nil {
-				ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
+				ctx.Log.Error(
+					"Failed to create target file",
+					map[string]interface{}{
+						"path": dstPath,
+						"err":  err,
+					},
+				)
 				return err
 			}
 			defer dstFile.Close()
 
 			if _, err := io.Copy(dstFile, srcFile); err != nil {
-				ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)
+				ctx.Log.Error(
+					"Failed to copy file",
+					map[string]interface{}{
+						"path": dstPath,
+						"err":  err,
+					},
+				)
 				return err
 			}
 			return nil
@@ -155,50 +189,80 @@ func runOneshotBenchmark(ctx *common.Context, sandbox runner.Sandbox) {
 		&ioLock,
 	)
 	if err != nil {
-		ctx.Log.Error("Failed to run benchmark", "err", err)
+		ctx.Log.Error(
+			"Failed to run benchmark",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return
 	}
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(results); err != nil {
-		ctx.Log.Error("Failed to encode JSON", "err", err)
+		ctx.Log.Error(
+			"Failed to encode JSON",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 	}
 }
 
 func runOneshotRun(ctx *common.Context, sandbox runner.Sandbox) {
 	if *input == "" {
-		ctx.Log.Error("Missing -input parameter")
+		ctx.Log.Error("Missing -input parameter", nil)
 		return
 	}
 	var run common.Run
 	if *request != "" {
 		f, err := os.Open(*request)
 		if err != nil {
-			ctx.Log.Error("Error opening request", "err", err)
+			ctx.Log.Error(
+				"Error opening request",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		defer f.Close()
 
 		if err := json.NewDecoder(f).Decode(&run); err != nil {
-			ctx.Log.Error("Error reading request", "err", err)
+			ctx.Log.Error(
+				"Error reading request",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 	} else if *source != "" {
 		b, err := ioutil.ReadFile(*source)
 		if err != nil {
-			ctx.Log.Error("Error opening source", "err", err)
+			ctx.Log.Error(
+				"Error opening source",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			return
 		}
 		run.Source = string(b)
 		extension := path.Ext(*source)
 		if extension == "" {
-			ctx.Log.Error("Source path does not contain the language as extension", "source", *source)
+			ctx.Log.Error(
+				"Source path does not contain the language as extension",
+				map[string]interface{}{
+					"source": *source,
+				},
+			)
 			return
 		}
 		run.Language = extension[1:]
 		run.MaxScore = base.FloatToRational(100.0)
 	} else {
-		ctx.Log.Error("Missing -request or -source parameters")
+		ctx.Log.Error("Missing -request or -source parameters", nil)
 		return
 	}
 
@@ -212,7 +276,13 @@ func runOneshotRun(ctx *common.Context, sandbox runner.Sandbox) {
 		newOneshotInputFactory(*input),
 	)
 	if err != nil {
-		ctx.Log.Error("Error loading input", "hash", run.InputHash, "err", err)
+		ctx.Log.Error(
+			"Error loading input",
+			map[string]interface{}{
+				"hash": run.InputHash,
+				"err":  err,
+			},
+		)
 		return
 	}
 	defer inputRef.Release()
@@ -229,18 +299,33 @@ func runOneshotRun(ctx *common.Context, sandbox runner.Sandbox) {
 
 	results, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
 	if err != nil {
-		ctx.Log.Error("Error grading run", "err", err)
+		ctx.Log.Error(
+			"Error grading run",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 		return
 	}
 
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(results); err != nil {
-		ctx.Log.Error("Failed to encode JSON", "err", err)
+		ctx.Log.Error(
+			"Failed to encode JSON",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
 	}
 	if *resultsOutputDirectory != "" {
 		if err := persistResults(ctx, runRoot, *resultsOutputDirectory); err != nil {
-			ctx.Log.Error("Failed to persist results", "err", err)
+			ctx.Log.Error(
+				"Failed to persist results",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 		}
 	}
 }
@@ -259,7 +344,7 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 		report.Duration = &duration
 	}()
 	if *input == "" {
-		ctx.Log.Error("Missing -input parameter")
+		ctx.Log.Error("Missing -input parameter", nil)
 		report.State = ci.StateSkipped
 		report.ReportError = &ci.ReportError{Error: errors.New("Missing -input parameter")}
 		return report
@@ -268,8 +353,10 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 		if err := os.MkdirAll(*outputsDirectory, 0755); err != nil {
 			ctx.Log.Error(
 				"Failed to create outputs directory",
-				"dir", *outputsDirectory,
-				"err", err,
+				map[string]interface{}{
+					"dir": *outputsDirectory,
+					"err": err,
+				},
 			)
 			report.State = ci.StateSkipped
 			report.ReportError = &ci.ReportError{
@@ -284,14 +371,26 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 
 	problemFiles, err := common.NewProblemFilesFromFilesystem(*input)
 	if err != nil {
-		ctx.Log.Error("Error loading input", "path", *input, "err", err)
+		ctx.Log.Error(
+			"Error loading input",
+			map[string]interface{}{
+				"path": *input,
+				"err":  err,
+			},
+		)
 		report.State = ci.StateSkipped
 		report.ReportError = &ci.ReportError{Error: err}
 		return report
 	}
 	runConfig, err := ci.NewRunConfig(problemFiles, *outputsDirectory != "")
 	if err != nil {
-		ctx.Log.Error("Error loading run configuration", "path", *input, "err", err)
+		ctx.Log.Error(
+			"Error loading run configuration",
+			map[string]interface{}{
+				"path": *input,
+				"err":  err,
+			},
+		)
 		report.State = ci.StateSkipped
 		report.ReportError = &ci.ReportError{Error: err}
 		return report
@@ -307,7 +406,13 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				common.LiteralPersistRunner,
 			)
 			if err != nil {
-				ctx.Log.Error("Error loading input", "config", runConfig.OutGeneratorConfig, "err", err)
+				ctx.Log.Error(
+					"Error loading input",
+					map[string]interface{}{
+						"config": runConfig.OutGeneratorConfig,
+						"err":    err,
+					},
+				)
 				return err
 			}
 
@@ -328,7 +433,13 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				factory,
 			)
 			if err != nil {
-				ctx.Log.Error("Error loading input", "config", runConfig.OutGeneratorConfig, "err", err)
+				ctx.Log.Error(
+					"Error loading input",
+					map[string]interface{}{
+						"config": runConfig.OutGeneratorConfig,
+						"err":    err,
+					},
+				)
 				return err
 			}
 			defer inputRef.Release()
@@ -342,11 +453,23 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 
 			result, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
 			if err != nil {
-				ctx.Log.Error("Error generating outputs", "config", runConfig.OutGeneratorConfig, "err", err)
+				ctx.Log.Error(
+					"Error generating outputs",
+					map[string]interface{}{
+						"config": runConfig.OutGeneratorConfig,
+						"err":    err,
+					},
+				)
 				return err
 			}
 			if result.Verdict != "AC" && result.Verdict != "PA" && result.Verdict != "WA" {
-				ctx.Log.Error("Error generating outputs", "config", runConfig.OutGeneratorConfig, "err", err)
+				ctx.Log.Error(
+					"Error generating outputs",
+					map[string]interface{}{
+						"config": runConfig.OutGeneratorConfig,
+						"err":    err,
+					},
+				)
 				return errors.Errorf(
 					"expecting a verdict of {AC, PA, WA}; got %s",
 					result.Verdict,
@@ -358,7 +481,13 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 					srcPath := path.Join(runRoot, fmt.Sprintf("%s.out", pathCaseName))
 					outContents, err := ioutil.ReadFile(srcPath)
 					if err != nil {
-						ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+						ctx.Log.Error(
+							"Failed to open source file",
+							map[string]interface{}{
+								"path": srcPath,
+								"err":  err,
+							},
+						)
 						return err
 					}
 
@@ -370,26 +499,50 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 					srcPath := path.Join(runRoot, fmt.Sprintf("%s.out", pathCaseName))
 					srcFile, err := os.Open(srcPath)
 					if err != nil {
-						ctx.Log.Error("Failed to open source file", "path", srcPath, "err", err)
+						ctx.Log.Error(
+							"Failed to open source file",
+							map[string]interface{}{
+								"path": srcPath,
+								"err":  err,
+							},
+						)
 						return err
 					}
 					dstPath := path.Join(*outputsDirectory, fmt.Sprintf("%s.out", pathCaseName))
 					if err := os.MkdirAll(path.Dir(dstPath), 0o755); err != nil {
 						srcFile.Close()
-						ctx.Log.Error("Failed to create target file directory", "path", dstPath, "err", err)
+						ctx.Log.Error(
+							"Failed to create target file directory",
+							map[string]interface{}{
+								"path": dstPath,
+								"err":  err,
+							},
+						)
 						return err
 					}
 					dstFile, err := os.Create(dstPath)
 					if err != nil {
 						srcFile.Close()
-						ctx.Log.Error("Failed to create target file", "path", dstPath, "err", err)
+						ctx.Log.Error(
+							"Failed to create target file",
+							map[string]interface{}{
+								"path": dstPath,
+								"err":  err,
+							},
+						)
 						return err
 					}
 					_, err = io.Copy(dstFile, srcFile)
 					srcFile.Close()
 					dstFile.Close()
 					if err != nil {
-						ctx.Log.Error("Failed to copy file", "path", dstPath, "err", err)
+						ctx.Log.Error(
+							"Failed to copy file",
+							map[string]interface{}{
+								"path": dstPath,
+								"err":  err,
+							},
+						)
 						return err
 					}
 				}
@@ -397,7 +550,13 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 			return nil
 		})()
 		if err != nil {
-			ctx.Log.Error("Error generating .out files", "path", *input, "err", err)
+			ctx.Log.Error(
+				"Error generating .out files",
+				map[string]interface{}{
+					"path": *input,
+					"err":  err,
+				},
+			)
 			report.State = ci.StateSkipped
 			report.ReportError = &ci.ReportError{
 				Error: errors.Wrapf(
@@ -427,7 +586,13 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				common.LiteralPersistRunner,
 			)
 			if err != nil {
-				ctx.Log.Error("Error loading input", "test", testConfig, "err", err)
+				ctx.Log.Error(
+					"Error loading input",
+					map[string]interface{}{
+						"test": testConfig,
+						"err":  err,
+					},
+				)
 				testConfig.Test.State = ci.StateError
 				testConfig.Test.ReportError = &ci.ReportError{Error: err}
 				return
@@ -450,7 +615,13 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				factory,
 			)
 			if err != nil {
-				ctx.Log.Error("Error loading input", "test", testConfig, "err", err)
+				ctx.Log.Error(
+					"Error loading input",
+					map[string]interface{}{
+						"test": testConfig,
+						"err":  err,
+					},
+				)
 				testConfig.Test.State = ci.StateError
 				testConfig.Test.ReportError = &ci.ReportError{Error: err}
 				return
@@ -472,7 +643,12 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 							strconv.FormatUint(run.AttemptID, 10),
 						),
 					); err != nil {
-						ctx.Log.Error("Failed to persist results", "err", err)
+						ctx.Log.Error(
+							"Failed to persist results",
+							map[string]interface{}{
+								"err": err,
+							},
+						)
 					}
 					os.RemoveAll(runRoot)
 				}()
@@ -480,7 +656,13 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 
 			result, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
 			if err != nil {
-				ctx.Log.Error("Error grading run", "test", testConfig, "err", err)
+				ctx.Log.Error(
+					"Error grading run",
+					map[string]interface{}{
+						"test": testConfig,
+						"err":  err,
+					},
+				)
 				testConfig.Test.State = ci.StateError
 				testConfig.Test.ReportError = &ci.ReportError{Error: err}
 				return
@@ -511,7 +693,12 @@ func main() {
 	} else {
 		omegajailRoot, err := filepath.Abs(ctx.Config.Runner.OmegajailRoot)
 		if err != nil {
-			ctx.Log.Error("Failed to get omegajail root", "err", err)
+			ctx.Log.Error(
+				"Failed to get omegajail root",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			os.Exit(1)
 		}
 		sandbox = runner.NewOmegajailSandbox(omegajailRoot)
@@ -520,7 +707,12 @@ func main() {
 	if isOneShotMode() {
 		tmpdir, err := ioutil.TempDir("", "quark-runner-oneshot")
 		if err != nil {
-			ctx.Log.Error("Failed to create temporary directory", "err", err)
+			ctx.Log.Error(
+				"Failed to create temporary directory",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
 			os.Exit(1)
 		}
 		if os.Getenv("PRESERVE") != "" {
@@ -544,7 +736,7 @@ func main() {
 		} else if *oneshot == "ci" {
 			if *resultsOutputDirectory != "" {
 				ctx.Config.Runner.PreserveFiles = true
-				ctx = ctx.DebugContext()
+				ctx = ctx.DebugContext(nil)
 			}
 			if *outputsDirectory != "" {
 				ctx.Config.Runner.PreserveFiles = true
@@ -553,38 +745,68 @@ func main() {
 			encoder := json.NewEncoder(os.Stdout)
 			encoder.SetIndent("", "  ")
 			if err := encoder.Encode(report); err != nil {
-				ctx.Log.Error("Failed to encode JSON", "err", err)
+				ctx.Log.Error(
+					"Failed to encode JSON",
+					map[string]interface{}{
+						"err": err,
+					},
+				)
 			}
 			if *resultsOutputDirectory != "" {
 				{
 					f, err := os.Create(path.Join(*resultsOutputDirectory, "ci.log"))
 					if err != nil {
-						ctx.Log.Error("Failed to create log file", "err", err)
+						ctx.Log.Error(
+							"Failed to create log file",
+							map[string]interface{}{
+								"err": err,
+							},
+						)
 					} else {
 						_, err = f.Write(ctx.LogBuffer())
 						f.Close()
 						if err != nil {
-							ctx.Log.Error("Failed to write log file", "err", err)
+							ctx.Log.Error(
+								"Failed to write log file",
+								map[string]interface{}{
+									"err": err,
+								},
+							)
 						}
 					}
 				}
 				{
 					f, err := os.Create(path.Join(*resultsOutputDirectory, "report.json"))
 					if err != nil {
-						ctx.Log.Error("Failed to create report file", "err", err)
+						ctx.Log.Error(
+							"Failed to create report file",
+							map[string]interface{}{
+								"err": err,
+							},
+						)
 					} else {
 						encoder := json.NewEncoder(f)
 						encoder.SetIndent("", "  ")
 						err = encoder.Encode(report)
 						f.Close()
 						if err != nil {
-							ctx.Log.Error("Failed to write report file", "err", err)
+							ctx.Log.Error(
+								"Failed to write report file",
+								map[string]interface{}{
+									"err": err,
+								},
+							)
 						}
 					}
 				}
 			}
 		} else {
-			ctx.Log.Error("Unknown oneshot mode", "mode", *oneshot)
+			ctx.Log.Error(
+				"Unknown oneshot mode",
+				map[string]interface{}{
+					"mode": *oneshot,
+				},
+			)
 		}
 		return
 	}
@@ -649,18 +871,20 @@ func main() {
 
 	ctx.Log.Info(
 		"omegaUp runner ready",
-		"version", ProgramVersion,
+		map[string]interface{}{
+			"version": ProgramVersion,
+		},
 	)
 	daemon.SdNotify(false, "READY=1")
 
 	<-stopChan
 
 	daemon.SdNotify(false, "STOPPING=1")
-	ctx.Log.Info("Shutting down server...")
+	ctx.Log.Info("Shutting down server...", nil)
 
 	cancel()
 	wg.Wait()
 
 	ctx.Close()
-	ctx.Log.Info("Server gracefully stopped.")
+	ctx.Log.Info("Server gracefully stopped.", nil)
 }

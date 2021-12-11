@@ -15,10 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inconshreveable/log15"
-	base "github.com/omegaup/go-base/v2"
+	base "github.com/omegaup/go-base/v3"
+	"github.com/omegaup/go-base/v3/logging"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
+
 	"github.com/pkg/errors"
 )
 
@@ -695,14 +696,20 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 type sizedEntry struct {
 	path string
 	size base.Byte
-	log  log15.Logger
+	log  logging.Logger
 }
 
 var _ base.SizedEntry = &sizedEntry{}
 
 func (e *sizedEntry) Release() {
 	if err := os.RemoveAll(e.path); err != nil {
-		e.log.Error("Evicting CI run failed", "path", e.path, "err", err)
+		e.log.Error(
+			"Evicting CI run failed",
+			map[string]interface{}{
+				"path": e.path,
+				"err":  err,
+			},
+		)
 	}
 }
 
@@ -727,11 +734,11 @@ func getDirectorySize(root string) (base.Byte, error) {
 // LRUCache is a base.LRUCache specialized for CI runs.
 type LRUCache struct {
 	*base.LRUCache
-	log log15.Logger
+	log logging.Logger
 }
 
 // NewLRUCache returns a new LRUCache with the specified size limit.
-func NewLRUCache(sizeLimit base.Byte, log log15.Logger) *LRUCache {
+func NewLRUCache(sizeLimit base.Byte, log logging.Logger) *LRUCache {
 	return &LRUCache{
 		LRUCache: base.NewLRUCache(sizeLimit),
 		log:      log,
@@ -757,14 +764,18 @@ func (l *LRUCache) AddRun(currentPath string, key string) {
 	if err != nil {
 		l.log.Error(
 			"Error adding path to LRU cache. Removing instead",
-			"path", currentPath,
-			"err", err,
+			map[string]interface{}{
+				"path": currentPath,
+				"err":  err,
+			},
 		)
 		if err := os.RemoveAll(currentPath); err != nil {
 			l.log.Error(
 				"Removing errored run failed",
-				"path", currentPath,
-				"err", err,
+				map[string]interface{}{
+					"path": currentPath,
+					"err":  err,
+				},
 			)
 		}
 		return
@@ -790,7 +801,13 @@ func (l *LRUCache) ReloadRuns(ciRoot string) error {
 			// the grader did not finish a CI run, so we will not be able to
 			// continue it. Remove the whole directory.
 			if err := os.RemoveAll(currentPath); err != nil {
-				l.log.Error("Removing unfinished run failed", "path", currentPath, "err", err)
+				l.log.Error(
+					"Removing unfinished run failed",
+					map[string]interface{}{
+						"path": currentPath,
+						"err":  err,
+					},
+				)
 			}
 			return filepath.SkipDir
 		}
