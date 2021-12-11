@@ -1,12 +1,14 @@
 package grader
 
 import (
-	"github.com/omegaup/quark/common"
+	"context"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/omegaup/quark/common"
 )
 
 // A Context holds the state of the Grader.
@@ -57,7 +59,8 @@ func NewContext(reader io.Reader) (*Context, error) {
 	if err := os.MkdirAll(ctx.Config.Grader.RuntimePath, 0755); err != nil {
 		return nil, err
 	}
-	var context = &Context{
+
+	return &Context{
 		Context: *ctx,
 		QueueManager: NewQueueManager(
 			ctx.Config.Grader.ChannelLength,
@@ -66,12 +69,17 @@ func NewContext(reader io.Reader) (*Context, error) {
 		InflightMonitor:       NewInflightMonitor(),
 		InputManager:          common.NewInputManager(ctx),
 		LibinteractiveVersion: libinteractiveVersion,
-	}
-
-	return context, nil
+	}, nil
 }
 
 // Close releases all resources owned by the context.
-func (context *Context) Close() {
-	context.QueueManager.Close()
+func (ctx *Context) Close() {
+	ctx.QueueManager.Close()
+}
+
+// Wrap returns a new Context with the applied context.
+func (ctx *Context) Wrap(c context.Context) *Context {
+	wrapped := *ctx
+	wrapped.Context = *wrapped.Context.Wrap(c)
+	return &wrapped
 }

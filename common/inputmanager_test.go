@@ -17,7 +17,6 @@ import (
 
 func newTestInputManager(sizeLimit base.Byte) *InputManager {
 	config := DefaultConfig()
-	config.Logging.File = "stderr"
 	config.Tracing.Enabled = false
 	config.InputManager.CacheSize = sizeLimit
 

@@ -106,9 +106,14 @@ type TracingConfig struct {
 
 // LoggingConfig represents the configuration for logging.
 type LoggingConfig struct {
-	File  string
 	Level string
 	JSON  bool
+}
+
+// NewRelicConfig represents the configuration for NewRelic.
+type NewRelicConfig struct {
+	AppName string
+	License string
 }
 
 // MetricsConfig represents the configuration for metrics.
@@ -123,6 +128,7 @@ type Config struct {
 	Grader       GraderConfig
 	Db           DbConfig
 	Logging      LoggingConfig
+	NewRelic     NewRelicConfig
 	Metrics      MetricsConfig
 	Tracing      TracingConfig
 	Runner       RunnerConfig
@@ -153,8 +159,10 @@ var defaultConfig = Config{
 		CacheSize: base.Gibibyte,
 	},
 	Logging: LoggingConfig{
-		File:  "/var/log/omegaup/service.log",
 		Level: "info",
+	},
+	NewRelic: NewRelicConfig{
+		AppName: "quark.omegaup.com",
 	},
 	Metrics: MetricsConfig{
 		Port: 6060,
@@ -312,6 +320,14 @@ func (ctx *Context) Close() {
 	if closer, ok := ctx.Log.(io.Closer); ok {
 		closer.Close()
 	}
+}
+
+// Wrap returns a new Context with the applied context.
+func (ctx *Context) Wrap(c context.Context) *Context {
+	wrapped := *ctx
+	wrapped.Context = c
+	wrapped.Log = wrapped.Log.NewContext(wrapped.Context)
+	return &wrapped
 }
 
 // DebugContext returns a new Context with an additional handler with a more

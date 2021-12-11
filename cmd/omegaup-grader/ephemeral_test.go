@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/omegaup/quark/common"
-	"github.com/omegaup/quark/grader"
-	"github.com/omegaup/quark/runner"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -15,6 +12,11 @@ import (
 	"os"
 	"path"
 	"testing"
+
+	"github.com/omegaup/go-base/v3/tracing"
+	"github.com/omegaup/quark/common"
+	"github.com/omegaup/quark/grader"
+	"github.com/omegaup/quark/runner"
 )
 
 func newGraderContext(t *testing.T) *grader.Context {
@@ -146,8 +148,9 @@ func TestEphemeralGrader(t *testing.T) {
 		t.Fatalf("Failed to fully initalize the ephemeral run manager: %s", err)
 	}
 	mux := http.NewServeMux()
-	registerEphemeralHandlers(ctx, mux, ephemeralRunManager)
-	registerRunnerHandlers(ctx, mux, nil, true)
+	tracing := tracing.NewNoOpProvider()
+	registerEphemeralHandlers(ctx, mux, ephemeralRunManager, tracing)
+	registerRunnerHandlers(ctx, mux, nil, true, tracing)
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 

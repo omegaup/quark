@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner"
@@ -191,13 +192,20 @@ func processRun(
 	return &processRunStatus{http.StatusOK, false}
 }
 
-func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB, insecure bool) {
+func registerRunnerHandlers(
+	ctx *grader.Context,
+	mux *http.ServeMux,
+	db *sql.DB,
+	insecure bool,
+	tracing tracing.Provider,
+) {
 	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
 
-	mux.HandleFunc("/monitoring/benchmark/", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(tracing.WrapHandle("/monitoring/benchmark/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx = ctx.Wrap(r.Context())
 		defer r.Body.Close()
 		runnerName := peerName(r, insecure)
 		f, err := os.OpenFile("benchmark.txt", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
@@ -223,9 +231,10 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 				},
 			)
 		}
-	})
+	})))
 
-	mux.HandleFunc("/run/request/", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(tracing.WrapHandle("/run/request/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx = ctx.Wrap(r.Context())
 		defer r.Body.Close()
 		runnerName := peerName(r, insecure)
 		ctx.Log.Debug(
@@ -264,10 +273,11 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 		encoder := json.NewEncoder(w)
 		encoder.Encode(runCtx.RunInfo.Run)
 		runCtx.EventCollector.Add(ev)
-	})
+	})))
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
-	mux.Handle("/run/", http.TimeoutHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(tracing.WrapHandle("/run/", http.TimeoutHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx = ctx.Wrap(r.Context())
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
@@ -297,10 +307,11 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 		// status is OK only when the runner successfully sent a JE verdict.
 		lastAttempt := result.status == http.StatusOK
 		runCtx.Requeue(lastAttempt)
-	}), time.Duration(5*time.Minute), "Request timed out"))
+	}), time.Duration(5*time.Minute), "Request timed out")))
 
 	inputRe := regexp.MustCompile("/input/(?:([a-zA-Z0-9_-]*)/)?([a-f0-9]{40})/?")
-	mux.HandleFunc("/input/", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(tracing.WrapHandle("/input/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx = ctx.Wrap(r.Context())
 		defer r.Body.Close()
 		res := inputRe.FindStringSubmatch(r.URL.Path)
 		if res == nil {
@@ -345,5 +356,5 @@ func registerRunnerHandlers(ctx *grader.Context, mux *http.ServeMux, db *sql.DB,
 			)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-	})
+	})))
 }
