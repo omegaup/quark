@@ -148,13 +148,13 @@ jobs:
           sudo mv kustomize /usr/local/bin/
 
           git clone --depth=1 https://omegaup-bot:${{ secrets.OMEGAUPBOT_RELEASE_TOKEN }}@github.com/omegaup/prod /tmp/prod
-          TAG=${{ steps.bump-version.outputs.tag }}
-          (cd /tmp/prod/k8s/omegaup/overlays/production/backend &&
+          TAG="${{ steps.bump-version.outputs.tag }}"
+          (cd /tmp/prod/k8s/omegaup/overlays/sandbox/backend &&
            git config --local user.name "omegaup-bot" && \
            git config --local user.email "omegaup-bot@users.noreply.github.com" && \
            kustomize edit set image \
-             omegaup/backend:${TAG} \
-             omegaup/runner:${TAG} \
+             "omegaup/backend:${TAG}" \
+             "omegaup/runner:${TAG}"
            sed -i "s/app.kubernetes.io\/version: .*/app.kubernetes.io\/version: ${TAG}/" grader-deployment.yaml broadcaster-deployment.yaml runner-deployment.yaml &&
            git commit -am "backend sandbox release ${TAG}" &&
            git push)
