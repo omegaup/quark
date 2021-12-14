@@ -80,6 +80,7 @@ type ephemeralRunHandler struct {
 }
 
 func (h *ephemeralRunHandler) validateRequest(
+	ctx *grader.Context,
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 ) error {
 	if ephemeralRunRequest.Input.Limits == nil {
@@ -87,34 +88,35 @@ func (h *ephemeralRunHandler) validateRequest(
 	}
 	// Silently apply some caps.
 	ephemeralRunRequest.Input.Limits.TimeLimit = base.MinDuration(
-		h.ctx.Config.Grader.Ephemeral.CaseTimeLimit,
+		ctx.Config.Grader.Ephemeral.CaseTimeLimit,
 		ephemeralRunRequest.Input.Limits.TimeLimit,
 	)
 	ephemeralRunRequest.Input.Limits.OverallWallTimeLimit = base.MinDuration(
-		h.ctx.Config.Grader.Ephemeral.OverallWallTimeLimit,
+		ctx.Config.Grader.Ephemeral.OverallWallTimeLimit,
 		ephemeralRunRequest.Input.Limits.OverallWallTimeLimit,
 	)
 	ephemeralRunRequest.Input.Limits.MemoryLimit = base.MinBytes(
-		h.ctx.Config.Grader.Ephemeral.MemoryLimit,
+		ctx.Config.Grader.Ephemeral.MemoryLimit,
 		ephemeralRunRequest.Input.Limits.MemoryLimit,
 	)
 	return nil
 }
 
 func (h *ephemeralRunHandler) addAndWaitForRun(
+	ctx *grader.Context,
 	w http.ResponseWriter,
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 	runs *grader.Queue,
 ) error {
-	h.ctx.Metrics.CounterAdd("grader_ephemeral_runs_total", 1)
-	h.ctx.Log.Debug(
+	ctx.Metrics.CounterAdd("grader_ephemeral_runs_total", 1)
+	ctx.Log.Debug(
 		"Adding new run",
 		map[string]interface{}{
 			"run": ephemeralRunRequest,
 		},
 	)
-	if err := h.validateRequest(ephemeralRunRequest); err != nil {
-		h.ctx.Log.Error(
+	if err := h.validateRequest(ctx, ephemeralRunRequest); err != nil {
+		ctx.Log.Error(
 			"Invalid request",
 			map[string]interface{}{
 				"err": err,
@@ -129,12 +131,12 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 	}
 	inputFactory, err := common.NewLiteralInputFactory(
 		ephemeralRunRequest.Input,
-		h.ctx.Config.Grader.RuntimePath,
+		ctx.Config.Grader.RuntimePath,
 		common.LiteralPersistGrader,
 	)
 	if err != nil {
 		inputFactoryErr := err
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Error creating input factory",
 			map[string]interface{}{
 				"err": inputFactoryErr,
@@ -147,7 +149,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		w.WriteHeader(http.StatusOK)
 		resultWriter, err := multipartWriter.CreateFormFile("details.json", "details.json")
 		if err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Error sending details.json",
 				map[string]interface{}{
 					"err": err,
@@ -159,7 +161,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		fakeResult := runner.NewRunResult("CE", maxScore)
 		fakeResult.CompileError = &errorString
 		if err = json.NewEncoder(resultWriter).Encode(fakeResult); err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Error sending json",
 				map[string]interface{}{
 					"err": err,
@@ -177,7 +179,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 	runInfo.Priority = grader.QueuePriorityEphemeral
 	ephemeralToken, err := h.ephemeralRunManager.SetEphemeral(runInfo)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Error making run ephemeral",
 			map[string]interface{}{
 				"err": err,
@@ -192,7 +194,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 			return
 		}
 		if err := os.RemoveAll(runInfo.GradeDir); err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Error cleaning up after run",
 				map[string]interface{}{
 					"err": err,
@@ -201,9 +203,9 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		}
 	}(&committed)
 
-	inputRef, err := h.ctx.InputManager.Add(inputFactory.Hash(), inputFactory)
+	inputRef, err := ctx.InputManager.Add(inputFactory.Hash(), inputFactory)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Error adding input",
 			map[string]interface{}{
 				"err": err,
@@ -212,9 +214,9 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
-	runWaitHandle, err := runs.AddWaitableRun(&h.ctx.Context, runInfo, inputRef)
+	runWaitHandle, err := runs.AddWaitableRun(&ctx.Context, runInfo, inputRef)
 	if err != nil {
-		h.ctx.Log.Error(
+		ctx.Log.Error(
 			"Failed to add run context",
 			map[string]interface{}{
 				"err": err,
@@ -239,7 +241,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		flusher.Flush()
 	}
 
-	h.ctx.Log.Info(
+	ctx.Log.Info(
 		"enqueued run",
 		map[string]interface{}{
 			"run": runInfo.Run,
@@ -270,7 +272,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 	for _, filename := range filenames {
 		fd, err := os.Open(path.Join(runInfo.GradeDir, filename))
 		if err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Error opening file",
 				map[string]interface{}{
 					"filename": filename,
@@ -281,7 +283,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		}
 		resultWriter, err := multipartWriter.CreateFormFile(filename, filename)
 		if err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Error sending file",
 				map[string]interface{}{
 					"filename": filename,
@@ -291,7 +293,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 			continue
 		}
 		if _, err = io.Copy(resultWriter, fd); err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Error sending file",
 				map[string]interface{}{
 					"filename": filename,
@@ -303,12 +305,12 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 	}
 
 	// Finally commit the run to the manager.
-	if err = saveEphemeralRunRequest(h.ctx, runInfo, ephemeralRunRequest); err != nil {
+	if err = saveEphemeralRunRequest(ctx, runInfo, ephemeralRunRequest); err != nil {
 		return err
 	}
 	h.ephemeralRunManager.Commit(runInfo)
 	committed = true
-	h.ctx.Log.Info(
+	ctx.Log.Info(
 		"Finished running ephemeral run",
 		map[string]interface{}{
 			"token": ephemeralToken,
@@ -319,7 +321,8 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 }
 
 func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.ctx.Log.Info(
+	ctx := h.ctx.Wrap(r.Context())
+	ctx.Log.Info(
 		"ephemeral run request",
 		map[string]interface{}{
 			"path": r.URL.Path,
@@ -337,9 +340,9 @@ func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		runs, err := h.ctx.QueueManager.Get(grader.DefaultQueueName)
+		runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 		if err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Failed to get default queue",
 				map[string]interface{}{
 					"err": err,
@@ -350,7 +353,7 @@ func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		}
 		var ephemeralRunRequest grader.EphemeralRunRequest
 		if err = json.NewDecoder(r.Body).Decode(&ephemeralRunRequest); err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Error decoding run request",
 				map[string]interface{}{
 					"err": err,
@@ -359,9 +362,9 @@ func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		err = h.addAndWaitForRun(w, &ephemeralRunRequest, runs)
+		err = h.addAndWaitForRun(ctx, w, &ephemeralRunRequest, runs)
 		if err != nil {
-			h.ctx.Log.Error(
+			ctx.Log.Error(
 				"Failed to perform ephemeral run",
 				map[string]interface{}{
 					"err": err,
