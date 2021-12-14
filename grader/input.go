@@ -42,6 +42,9 @@ func IsProblemSlow(
 	problemName string,
 	inputHash string,
 ) (bool, error) {
+	if !strings.HasSuffix(gitserverURL, "/") {
+		gitserverURL += "/"
+	}
 	cacheKey := fmt.Sprintf("%s:%s", problemName, inputHash)
 	entry, err := slowProblemCache.Get(cacheKey, func(key string) (base.SizedEntry, error) {
 		client := &http.Client{
