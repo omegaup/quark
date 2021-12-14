@@ -552,30 +552,6 @@ func gradeDir(ctx *grader.Context, runID int64) string {
 	)
 }
 
-func newRunInfo(
-	ctx *grader.Context,
-	runInfo *grader.RunInfo,
-) (*grader.RunInfo, error) {
-	runInfo.GradeDir = gradeDir(ctx, runInfo.ID)
-	gitProblemInfo, err := grader.GetProblemInformation(grader.GetRepositoryPath(
-		ctx.Config.Grader.V1.RuntimePath,
-		runInfo.Run.ProblemName,
-	))
-	if err != nil {
-		return nil, err
-	}
-
-	runInfo.Result.MaxScore = runInfo.Run.MaxScore
-
-	if gitProblemInfo.Settings.Slow {
-		runInfo.Priority = grader.QueuePriorityLow
-	} else {
-		runInfo.Priority = grader.QueuePriorityNormal
-	}
-
-	return runInfo, nil
-}
-
 func newRunInfoFromID(
 	ctx *grader.Context,
 	db *sql.DB,
@@ -637,7 +613,26 @@ func newRunInfoFromID(
 	} else {
 		runInfo.Run.MaxScore = big.NewRat(1, 1)
 	}
-	return newRunInfo(ctx, runInfo)
+
+	runInfo.Result.MaxScore = runInfo.Run.MaxScore
+	runInfo.GradeDir = gradeDir(ctx, runInfo.ID)
+
+	slow, err := grader.IsProblemSlow(
+		ctx.Config.Grader.GitserverURL,
+		ctx.Config.Grader.GitserverAuthorization,
+		runInfo.Run.ProblemName,
+		runInfo.Run.InputHash,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if slow {
+		runInfo.Priority = grader.QueuePriorityLow
+	} else {
+		runInfo.Priority = grader.QueuePriorityNormal
+	}
+
+	return runInfo, nil
 }
 
 func readSource(ctx *grader.Context, runInfo *grader.RunInfo) error {

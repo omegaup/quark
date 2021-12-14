@@ -1,10 +1,11 @@
 package grader
 
 import (
+	"context"
 	"encoding/base64"
-	"github.com/omegaup/quark/common"
 	"io/ioutil"
 	"math/big"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path"
@@ -13,6 +14,9 @@ import (
 	"sync"
 	"testing"
 	"unicode"
+
+	"github.com/omegaup/githttp/v2"
+	"github.com/omegaup/quark/common"
 )
 
 func TestPreloadInputs(t *testing.T) {
@@ -165,6 +169,27 @@ func TestTransmitInput(t *testing.T) {
 		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
 	}
 
+	handler := githttp.NewGitServer(githttp.GitServerOpts{
+		RootPath:     path.Join(ctx.Config.Grader.RuntimePath, "problems.git"),
+		EnableBrowse: true,
+		Protocol: githttp.NewGitProtocol(githttp.GitProtocolOpts{
+			AuthCallback: func(
+				ctx context.Context,
+				w http.ResponseWriter,
+				r *http.Request,
+				repositoryName string,
+				operation githttp.GitOperation,
+			) (githttp.AuthorizationLevel, string) {
+				return githttp.AuthorizationAllowed, "omegaup:grader"
+			},
+			Log: ctx.Log,
+		}),
+		Log: ctx.Log,
+	})
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+	ctx.Config.Grader.GitserverURL = ts.URL
+
 	inputRef, err := ctx.InputManager.Add(
 		headCommit,
 		NewInputFactory("test", &ctx.Config),
@@ -183,12 +208,13 @@ func TestTransmitInput(t *testing.T) {
 		t.Fatalf("Failed to transmit input: %q", err)
 	}
 	headers := w.Header()
+	ctx.Log.Info("path", map[string]interface{}{"path": ctx.Config.Grader.RuntimePath})
 
 	headerentries := []struct {
 		name, value string
 	}{
 		{"Content-Type", "application/x-gzip"},
-		{"Content-Sha1", "d80feecc2f19607c592bdb6a1d05aa5a234b8498"},
+		{"Content-Sha1", "72494cb9748d0a34d598505e5a740ce02c906def"},
 	}
 	for _, het := range headerentries {
 		if !reflect.DeepEqual(headers[het.name], []string{het.value}) {
