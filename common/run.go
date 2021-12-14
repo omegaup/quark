@@ -26,6 +26,7 @@ type Run struct {
 	Source      string   `json:"source"`
 	Language    string   `json:"language"`
 	ProblemName string   `json:"problem"`
+	Commit      string   `json:"commit"`
 	InputHash   string   `json:"input_hash"`
 	MaxScore    *big.Rat `json:"max_score"`
 	Debug       bool     `json:"debug"`

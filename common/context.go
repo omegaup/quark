@@ -64,15 +64,17 @@ type GraderCIConfig struct {
 
 // GraderConfig represents the configuration for the Grader.
 type GraderConfig struct {
-	ChannelLength   int
-	Port            uint16
-	RuntimePath     string
-	MaxGradeRetries int
-	BroadcasterURL  string
-	V1              V1Config
-	Ephemeral       GraderEphemeralConfig
-	CI              GraderCIConfig
-	WriteGradeFiles bool // TODO(lhchavez): Remove once migration is done.
+	ChannelLength          int
+	Port                   uint16
+	RuntimePath            string
+	MaxGradeRetries        int
+	BroadcasterURL         string
+	GitserverURL           string
+	GitserverAuthorization string
+	V1                     V1Config
+	Ephemeral              GraderEphemeralConfig
+	CI                     GraderCIConfig
+	WriteGradeFiles        bool // TODO(lhchavez): Remove once migration is done.
 }
 
 // TLSConfig represents the configuration for TLS.
@@ -168,11 +170,13 @@ var defaultConfig = Config{
 		Port: 6060,
 	},
 	Grader: GraderConfig{
-		BroadcasterURL:  "https://omegaup.com:32672/broadcast/",
-		ChannelLength:   1024,
-		Port:            11302,
-		RuntimePath:     "/var/lib/omegaup/",
-		MaxGradeRetries: 3,
+		BroadcasterURL:         "https://omegaup.com:32672/broadcast/",
+		GitserverURL:           "https://gitserver.omegaup.com/",
+		GitserverAuthorization: "",
+		ChannelLength:          1024,
+		Port:                   11302,
+		RuntimePath:            "/var/lib/omegaup/",
+		MaxGradeRetries:        3,
 		V1: V1Config{
 			Enabled:          false,
 			Port:             21680,
