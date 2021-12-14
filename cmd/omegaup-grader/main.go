@@ -301,7 +301,7 @@ func main() {
 	newRuns <- struct{}{}
 	{
 		mux := http.DefaultServeMux
-		registerFrontendHandlers(graderContext(), mux, newRuns, db)
+		registerFrontendHandlers(graderContext(), mux, newRuns, db, tracing)
 		shutdowners = append(
 			shutdowners,
 			common.RunServer(
