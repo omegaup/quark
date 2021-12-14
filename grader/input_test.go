@@ -159,6 +159,63 @@ func TestPreloadInputs(t *testing.T) {
 	}
 }
 
+func TestIsProblemSlow(t *testing.T) {
+	ctx, err := newGraderContext(t)
+	if err != nil {
+		t.Fatalf("GraderContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
+
+	handler := githttp.NewGitServer(githttp.GitServerOpts{
+		RootPath:     path.Join(ctx.Config.Grader.RuntimePath, "problems.git"),
+		EnableBrowse: true,
+		Protocol: githttp.NewGitProtocol(githttp.GitProtocolOpts{
+			AuthCallback: func(
+				ctx context.Context,
+				w http.ResponseWriter,
+				r *http.Request,
+				repositoryName string,
+				operation githttp.GitOperation,
+			) (githttp.AuthorizationLevel, string) {
+				return githttp.AuthorizationAllowed, "omegaup:grader"
+			},
+			Log: ctx.Log,
+		}),
+		Log: ctx.Log,
+	})
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+	ctx.Config.Grader.GitserverURL = ts.URL
+
+	inputRef, err := ctx.InputManager.Add(
+		headCommit,
+		NewInputFactory("test", &ctx.Config),
+	)
+	if err != nil {
+		t.Fatalf("Failed to get the input: %q", err)
+	}
+	defer inputRef.Release()
+	if err := inputRef.Input.Verify(); err != nil {
+		t.Fatalf("Failed to verify the input: %q", err)
+	}
+
+	slow, err := IsProblemSlow(
+		ctx.Config.Grader.GitserverURL,
+		ctx.Config.Grader.GitserverAuthorization,
+		"test",
+		inputRef.Input.Hash(),
+	)
+	if err != nil {
+		t.Fatalf("Failed to get slowness of problem: %v", err)
+	}
+	if slow {
+		t.Fatalf("Unexpected slowness")
+	}
+}
+
 func TestTransmitInput(t *testing.T) {
 	ctx, err := newGraderContext(t)
 	if err != nil {

@@ -214,6 +214,10 @@ github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQ
 github.com/olekukonko/tablewriter v0.0.0-20170122224234-a0225b3f23b5/go.mod h1:vsDQFd/mU46D+Z4whnwzcISnGGzXWMclvtLoiIKAKIo=
 github.com/omegaup/githttp/v2 v2.4.6 h1:Jsw3UQvKwIqlkNE3+/AlJjw86k/qQm2cpN8t7dZaMio=
 github.com/omegaup/githttp/v2 v2.4.6/go.mod h1:TQ9YAhkWccbhyLQ6HAYElCgO8qpYqhNlhCnCbOGCMP0=
+github.com/omegaup/githttp/v2 v2.4.7 h1:1eG3FFpY+r0O5dTkR46Tl2sokpFI2LRHWbUC3CJAWo8=
+github.com/omegaup/githttp/v2 v2.4.7/go.mod h1:QlwsNOHX9T1U6ORMcRrf/wBCe/DTDaR18XTFHqIkdx8=
+github.com/omegaup/githttp/v2 v2.4.8 h1:fVF4uB+WE5QSHfNjn5faUfA+CeixDu5F2AWcKzgBU0I=
+github.com/omegaup/githttp/v2 v2.4.8/go.mod h1:QlwsNOHX9T1U6ORMcRrf/wBCe/DTDaR18XTFHqIkdx8=
 github.com/omegaup/go-base/logging/log15 v0.0.0-20211211212159-014332e01547 h1:+SBWLdt2W+OwgpSmpa7AQyfUP7e/vMRtZpxINbYObaY=
 github.com/omegaup/go-base/logging/log15 v0.0.0-20211211212159-014332e01547/go.mod h1:adWq3jVZVRlre+15uby0M/AQiAFdpQPYnXiKK90KD4Q=
 github.com/omegaup/go-base/tracing/newrelic v0.0.0-20211211212159-014332e01547 h1:4xRiCayV7L85BMdfEIpW+jJJd6TvphVP/QVh+Mp6rUw=
@@ -221,6 +225,8 @@ github.com/omegaup/go-base/tracing/newrelic v0.0.0-20211211212159-014332e01547/g
 github.com/omegaup/go-base/v3 v3.0.0/go.mod h1:mJFH+bckd4aAXcpXDBFN6Et5p3sxYsHCxK8pUDp0YlM=
 github.com/omegaup/go-base/v3 v3.2.0 h1:exzk5NudNpJVn8chvvznFpI5gDZh45+ZVJE1PaWnVWQ=
 github.com/omegaup/go-base/v3 v3.2.0/go.mod h1:mJFH+bckd4aAXcpXDBFN6Et5p3sxYsHCxK8pUDp0YlM=
+github.com/omegaup/go-base/v3 v3.2.1 h1:m6OqWLAu4yr4oUwyhCFj2R187YSyDM6r06xGMY9Xt/w=
+github.com/omegaup/go-base/v3 v3.2.1/go.mod h1:mJFH+bckd4aAXcpXDBFN6Et5p3sxYsHCxK8pUDp0YlM=
 github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/ginkgo v1.7.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/gomega v1.4.3/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
