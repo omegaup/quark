@@ -4,7 +4,12 @@ import (
 	"github.com/omegaup/quark/common"
 	"math/big"
 	"os"
+	"sync/atomic"
 	"testing"
+)
+
+var (
+	runID int64 = 1
 )
 
 func addRun(
@@ -36,10 +41,13 @@ func addRun(
 
 	originalLength := len(queue.runs[priority])
 
+	artifactManager := NewArtifactManager(nil)
 	runInfo := NewRunInfo()
+	runInfo.ID = atomic.AddInt64(&runID, 1)
 	runInfo.Priority = priority
 	runInfo.Run.InputHash = inputRef.Input.Hash()
 	runInfo.Run.Source = "print 3"
+	runInfo.Artifacts = artifactManager.Grader(&ctx.Context, runInfo.ID)
 	if err := queue.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
 		t.Fatalf("AddRunContext failed with %q", err)
 	}

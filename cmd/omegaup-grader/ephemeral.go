@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"io"
@@ -33,26 +34,10 @@ func saveEphemeralRunRequest(
 	runInfo *grader.RunInfo,
 	ephemeralRunRequest *grader.EphemeralRunRequest,
 ) error {
-	f, err := os.OpenFile(
-		path.Join(runInfo.GradeDir, "request.json.gz"),
-		os.O_CREATE|os.O_WRONLY,
-		0644,
-	)
+	var requestBuffer bytes.Buffer
+	zw := gzip.NewWriter(&requestBuffer)
+	err := json.NewEncoder(zw).Encode(ephemeralRunRequest)
 	if err != nil {
-		ctx.Log.Error(
-			"Error opening request.json.gz file for writing",
-			map[string]interface{}{
-				"err": err,
-			},
-		)
-		return err
-	}
-	defer f.Close()
-
-	// Not doing `defer zw.Close()`, because it can fail and we want to make this
-	// operation fail altogether if it does.
-	zw := gzip.NewWriter(f)
-	if err = json.NewEncoder(zw).Encode(ephemeralRunRequest); err != nil {
 		zw.Close()
 		ctx.Log.Error(
 			"Error marshaling json",
@@ -62,9 +47,20 @@ func saveEphemeralRunRequest(
 		)
 		return err
 	}
-	if err = zw.Close(); err != nil {
+	err = zw.Close()
+	if err != nil {
 		ctx.Log.Error(
 			"Error closing gzip stream",
+			map[string]interface{}{
+				"err": err,
+			},
+		)
+		return err
+	}
+	err = runInfo.Artifacts.Put(&ctx.Context, "request.json.gz", &requestBuffer)
+	if err != nil {
+		ctx.Log.Error(
+			"Error writing request.json.gz",
 			map[string]interface{}{
 				"err": err,
 			},
@@ -193,7 +189,8 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 		if *committed {
 			return
 		}
-		if err := os.RemoveAll(runInfo.GradeDir); err != nil {
+		err = runInfo.Artifacts.Clean()
+		if err != nil {
 			ctx.Log.Error(
 				"Error cleaning up after run",
 				map[string]interface{}{
@@ -270,7 +267,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 	// Run was successful, send all the files as part of the payload.
 	filenames := []string{"logs.txt.gz", "files.zip", "details.json"}
 	for _, filename := range filenames {
-		fd, err := os.Open(path.Join(runInfo.GradeDir, filename))
+		fd, err := runInfo.Artifacts.Get(&ctx.Context, filename)
 		if err != nil {
 			ctx.Log.Error(
 				"Error opening file",
@@ -281,6 +278,7 @@ func (h *ephemeralRunHandler) addAndWaitForRun(
 			)
 			continue
 		}
+		defer fd.Close()
 		resultWriter, err := multipartWriter.CreateFormFile(filename, filename)
 		if err != nil {
 			ctx.Log.Error(

@@ -7,11 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"path"
 	"regexp"
 	"strconv"
 	"time"
@@ -31,19 +29,8 @@ func processRun(
 	runnerName := peerName(r, insecure)
 	// TODO: make this a per-attempt directory so we can only commit directories
 	// that will be not retried.
-	gradeDir := runCtx.RunInfo.GradeDir
 	// Best-effort deletion of the grade dir.
-	os.RemoveAll(gradeDir)
-	if err := os.MkdirAll(gradeDir, 0755); err != nil {
-		runCtx.Log.Error(
-			"Unable to create grade dir",
-			map[string]interface{}{
-				"err":    err,
-				"runner": runnerName,
-			},
-		)
-		return &processRunStatus{http.StatusInternalServerError, false}
-	}
+	runCtx.RunInfo.Artifacts.Clean()
 	runCtx.RunInfo.Result.JudgedBy = runnerName
 
 	multipartReader, err := r.MultipartReader()
@@ -137,26 +124,8 @@ func processRun(
 				}
 			}
 		} else {
-			filePath := path.Join(gradeDir, part.FileName())
-			var w io.Writer
-			if runCtx.Config.Grader.WriteGradeFiles {
-				fd, err := os.Create(filePath)
-				if err != nil {
-					runCtx.Log.Error(
-						"Unable to create results file",
-						map[string]interface{}{
-							"err":    err,
-							"runner": runnerName,
-						},
-					)
-					return &processRunStatus{http.StatusInternalServerError, false}
-				}
-				defer fd.Close()
-				w = fd
-			} else {
-				w = ioutil.Discard
-			}
-			if _, err := io.Copy(w, part); err != nil {
+			err = runCtx.RunInfo.Artifacts.Put(runCtx.Context, part.FileName(), part)
+			if err != nil {
 				runCtx.Log.Error(
 					"Unable to upload results",
 					map[string]interface{}{
