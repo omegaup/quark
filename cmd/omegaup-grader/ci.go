@@ -268,7 +268,8 @@ func (h *ciHandler) runTest(
 		if *committed {
 			return
 		}
-		if err := os.RemoveAll(runInfo.GradeDir); err != nil {
+		err = runInfo.Artifacts.Clean()
+		if err != nil {
 			ctx.Log.Error(
 				"Error cleaning up after run",
 				map[string]interface{}{

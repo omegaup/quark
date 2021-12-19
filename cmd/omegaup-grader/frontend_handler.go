@@ -466,7 +466,7 @@ func runQueueLoop(
 					)
 					continue
 				}
-				runInfo, err := newRunInfoFromID(ctx, db, dbRun.runID)
+				runInfo, err := newRunInfoFromID(ctx, db, dbRun.runID, artifacts)
 				if err != nil {
 					ctx.Log.Error(
 						"Error getting run information",
@@ -559,6 +559,7 @@ func newRunInfoFromID(
 	ctx *grader.Context,
 	db *sql.DB,
 	runID int64,
+	artifacts *grader.ArtifactManager,
 ) (*grader.RunInfo, error) {
 	runInfo := grader.NewRunInfo()
 	runInfo.ID = runID
@@ -618,7 +619,7 @@ func newRunInfoFromID(
 	}
 
 	runInfo.Result.MaxScore = runInfo.Run.MaxScore
-	runInfo.GradeDir = gradeDir(ctx, runInfo.ID)
+	runInfo.Artifacts = artifacts.Grader(&ctx.Context, runInfo.ID)
 
 	slow, err := grader.IsProblemSlow(
 		ctx.Config.Grader.GitserverURL,
@@ -858,7 +859,7 @@ func registerFrontendHandlers(
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		runInfo, err := newRunInfoFromID(ctx, db, int64(runID))
+		runInfo, err := newRunInfoFromID(ctx, db, int64(runID), artifacts)
 		if err != nil {
 			ctx.Log.Error(
 				"/run/new/",

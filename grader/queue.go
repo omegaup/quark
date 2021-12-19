@@ -1,11 +1,11 @@
 package grader
 
 import (
+	"bytes"
 	"compress/gzip"
 	"container/list"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"math/rand"
 	"os"
@@ -202,23 +202,28 @@ func (mgr *EphemeralRunManager) tempDir() (name string, err error) {
 // SetEphemeral makes a RunContext ephemeral. It does this by setting its
 // runtime path to be in the ephemeral subdirectory.
 func (mgr *EphemeralRunManager) SetEphemeral(runInfo *RunInfo) (string, error) {
-	var err error
-	if runInfo.GradeDir, err = mgr.tempDir(); err != nil {
+	artifacts, err := newEphemeralLocalGrader(&mgr.ctx.Context)
+	if err != nil {
 		return "", err
 	}
-	return path.Base(runInfo.GradeDir), nil
+	runInfo.Artifacts = artifacts
+	return artifacts.token, nil
 }
 
 // Commit adds the files produced by the Run into the FIFO cache,
 // potentially evicting older runs in the process.
 func (mgr *EphemeralRunManager) Commit(runInfo *RunInfo) error {
-	size, err := directorySize(runInfo.GradeDir)
+	artifacts, ok := runInfo.Artifacts.(*localGraderArtifacts)
+	if !ok {
+		return fmt.Errorf("run not an ephemeral run")
+	}
+	size, err := directorySize(artifacts.gradeDir)
 	if err != nil {
 		return err
 	}
 
 	return mgr.add(&ephemeralRunEntry{
-		path: runInfo.GradeDir,
+		path: artifacts.gradeDir,
 		size: size,
 	})
 }
@@ -282,7 +287,7 @@ type RunInfo struct {
 	Problemset   *int64
 	Run          *common.Run
 	Result       runner.RunResult
-	GradeDir     string
+	Artifacts    Artifacts
 	Priority     QueuePriority
 	PenaltyType  string
 	PartialScore bool
@@ -351,10 +356,11 @@ func NewRunInfo() *RunInfo {
 // logging and in C/C++ it enables AddressSanitizer. Use with caution, since
 // ASan needs a relaxed sandboxing profile.
 func (runCtx *RunContext) Debug() error {
-	var err error
-	if runCtx.RunInfo.GradeDir, err = ioutil.TempDir("", "grade"); err != nil {
+	artifacts, err := newDebugLocalGrader()
+	if err != nil {
 		return err
 	}
+	runCtx.RunInfo.Artifacts = artifacts
 	runCtx.RunInfo.Run.Debug = true
 	return nil
 }
@@ -393,29 +399,9 @@ func (runCtx *RunContext) Close() {
 		runCtx.inputRef.Release()
 		runCtx.inputRef = nil
 	}
-	if err := os.MkdirAll(runCtx.RunInfo.GradeDir, 0755); err != nil {
-		runCtx.Log.Error(
-			"Unable to create grade dir",
-			map[string]interface{}{
-				"err": err,
-			},
-		)
-		return
-	}
 
 	// Results
 	{
-		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "details.json"))
-		if err != nil {
-			runCtx.Log.Error(
-				"Unable to create details.json file",
-				map[string]interface{}{
-					"err": err,
-				},
-			)
-			return
-		}
-		defer fd.Close()
 		prettyPrinted, err := json.MarshalIndent(&runCtx.RunInfo.Result, "", "  ")
 		if err != nil {
 			runCtx.Log.Error(
@@ -426,7 +412,8 @@ func (runCtx *RunContext) Close() {
 			)
 			return
 		}
-		if _, err := fd.Write(prettyPrinted); err != nil {
+		err = runCtx.RunInfo.Artifacts.Put(runCtx.Context, "details.json", bytes.NewReader(prettyPrinted))
+		if err != nil {
 			runCtx.Log.Error(
 				"Unable to write results file",
 				map[string]interface{}{
@@ -439,18 +426,8 @@ func (runCtx *RunContext) Close() {
 
 	// Persist logs
 	{
-		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "logs.txt.gz"))
-		if err != nil {
-			runCtx.Log.Error(
-				"Unable to create log file",
-				map[string]interface{}{
-					"err": err,
-				},
-			)
-			return
-		}
-		defer fd.Close()
-		gz := gzip.NewWriter(fd)
+		var logsBuffer bytes.Buffer
+		gz := gzip.NewWriter(&logsBuffer)
 		if _, err := gz.Write(runCtx.LogBuffer()); err != nil {
 			gz.Close()
 			runCtx.Log.Error(
@@ -470,22 +447,22 @@ func (runCtx *RunContext) Close() {
 			)
 			return
 		}
-	}
-
-	// Persist tracing info
-	{
-		fd, err := os.Create(path.Join(runCtx.RunInfo.GradeDir, "tracing.json.gz"))
+		err := runCtx.RunInfo.Artifacts.Put(runCtx.Context, "logs.txt.gz", &logsBuffer)
 		if err != nil {
 			runCtx.Log.Error(
-				"Unable to create tracing file",
+				"Unable to create log file",
 				map[string]interface{}{
 					"err": err,
 				},
 			)
 			return
 		}
-		defer fd.Close()
-		gz := gzip.NewWriter(fd)
+	}
+
+	// Persist tracing info
+	{
+		var tracingBuffer bytes.Buffer
+		gz := gzip.NewWriter(&tracingBuffer)
 		if _, err := gz.Write(runCtx.TraceBuffer()); err != nil {
 			gz.Close()
 			runCtx.Log.Error(
@@ -499,6 +476,16 @@ func (runCtx *RunContext) Close() {
 		if err := gz.Close(); err != nil {
 			runCtx.Log.Error(
 				"Unable to finalize traces",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
+			return
+		}
+		err := runCtx.RunInfo.Artifacts.Put(runCtx.Context, "tracing.json.gz", &tracingBuffer)
+		if err != nil {
+			runCtx.Log.Error(
+				"Unable to create tracing file",
 				map[string]interface{}{
 					"err": err,
 				},

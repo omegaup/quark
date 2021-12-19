@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/rand"
 	"os"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -167,6 +169,65 @@ func NewArtifactManager(s3c *s3.S3) *ArtifactManager {
 	}
 }
 
+// Grader returns a wrapper for the grader artifacts.
+func (a *ArtifactManager) Grader(ctx *common.Context, runID int64) Artifacts {
+	return &graderArtifacts{
+		s3c: a.s3c,
+		gradeDir: path.Join(
+			ctx.Config.Grader.V1.RuntimeGradePath,
+			fmt.Sprintf("%02d/%02d/%d", runID%100, (runID%10000)/100, runID),
+		),
+		bucketPrefix: strconv.FormatInt(runID, 10),
+	}
+}
+
+func ephemeralTempDir(ctx *common.Context) (name string, err error) {
+	ephemeralPath := path.Join(ctx.Config.Grader.RuntimePath, "ephemeral")
+	buf := make([]byte, 10)
+
+	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10000; i++ {
+		rand.Read(buf)
+		try := path.Join(ephemeralPath, fmt.Sprintf("%x", buf))
+		err = os.Mkdir(try, 0700)
+		if os.IsExist(err) {
+			continue
+		}
+		if os.IsNotExist(err) {
+			if _, err := os.Stat(ephemeralPath); os.IsNotExist(err) {
+				return "", err
+			}
+		}
+		if err == nil {
+			name = try
+		}
+		break
+	}
+
+	return
+}
+
+func newEphemeralLocalGrader(ctx *common.Context) (*localGraderArtifacts, error) {
+	dir, err := ephemeralTempDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &localGraderArtifacts{
+		gradeDir: dir,
+		token:    path.Base(dir),
+	}, nil
+}
+
+func newDebugLocalGrader() (*localGraderArtifacts, error) {
+	dir, err := os.MkdirTemp("", "grade")
+	if err != nil {
+		return nil, err
+	}
+	return &localGraderArtifacts{
+		gradeDir: dir,
+	}, nil
+}
+
 // SubmissionsArtifacts is an object that allows interacting with submissions.
 type SubmissionsArtifacts struct {
 	s3c *s3.S3
@@ -212,4 +273,74 @@ func (a *SubmissionsArtifacts) PutSource(ctx *common.Context, guid string, r io.
 		path.Join(ctx.Config.Grader.V1.RuntimePath, submissionKey),
 		r,
 	)
+}
+
+// Artifacts is an interface to interact with grader artifacts.
+type Artifacts interface {
+	// Get returns a io.ReadCloser with the contents of the artifact.
+	Get(ctx *common.Context, filename string) (io.ReadCloser, error)
+	// Put atomically creates an artifact with the contents as specified by the
+	// reader.
+	Put(ctx *common.Context, filename string, r io.Reader) error
+	// Clean cleans the local filesystem's contents. No attempt to clean the S3
+	// artifacts is done.
+	Clean() error
+}
+
+type graderArtifacts struct {
+	s3c          *s3.S3
+	gradeDir     string
+	bucketPrefix string
+}
+
+func (a *graderArtifacts) Get(ctx *common.Context, filename string) (io.ReadCloser, error) {
+	return getArtifact(
+		ctx,
+		a.s3c,
+		"omegaup-runs",
+		path.Join(a.bucketPrefix, filename),
+		path.Join(a.gradeDir, filename),
+	)
+}
+
+func (a *graderArtifacts) Put(ctx *common.Context, filename string, r io.Reader) error {
+	return putArtifact(
+		ctx,
+		a.s3c,
+		"omegaup-runs",
+		path.Join(a.bucketPrefix, filename),
+		path.Join(a.gradeDir, filename),
+		r,
+	)
+}
+
+func (a *graderArtifacts) Clean() error {
+	return os.RemoveAll(a.gradeDir)
+}
+
+type localGraderArtifacts struct {
+	gradeDir string
+	token    string
+}
+
+func (a *localGraderArtifacts) Get(ctx *common.Context, filename string) (io.ReadCloser, error) {
+	return os.Open(path.Join(a.gradeDir, filename))
+}
+
+func (a *localGraderArtifacts) Put(ctx *common.Context, filename string, r io.Reader) error {
+	f, err := newAtomicFile(path.Join(a.gradeDir, filename))
+	if err != nil {
+		return err
+	}
+	defer f.cleanup()
+
+	_, err = io.Copy(f.f, r)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	return f.commit(nil)
+}
+
+func (a *localGraderArtifacts) Clean() error {
+	return os.RemoveAll(a.gradeDir)
 }
