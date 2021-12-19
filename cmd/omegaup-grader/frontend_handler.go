@@ -307,8 +307,9 @@ type dbRun struct {
 func runQueueLoop(
 	ctx *grader.Context,
 	runs *grader.Queue,
-	db *sql.DB,
 	newRuns <-chan struct{},
+	db *sql.DB,
+	artifacts *grader.ArtifactManager,
 ) {
 	ctx.Log.Info("Starting run queue loop", nil)
 	_, err := execWithRetry(
@@ -510,6 +511,7 @@ func runQueueLoop(
 				}
 				if err := injectRun(
 					ctx,
+					artifacts,
 					runs,
 					priority,
 					runInfo,
@@ -636,38 +638,26 @@ func newRunInfoFromID(
 	return runInfo, nil
 }
 
-func readSource(ctx *grader.Context, runInfo *grader.RunInfo) error {
-	contents, err := ioutil.ReadFile(
-		path.Join(
-			ctx.Config.Grader.V1.RuntimePath,
-			"submissions",
-			runInfo.GUID[:2],
-			runInfo.GUID[2:],
-		),
-	)
-	if err != nil {
-		return err
-	}
-	runInfo.Run.Source = string(contents)
-	return nil
-}
-
 func injectRun(
 	ctx *grader.Context,
+	artifacts *grader.ArtifactManager,
 	runs *grader.Queue,
 	priority grader.QueuePriority,
 	runInfo *grader.RunInfo,
 ) error {
-	if err := readSource(ctx, runInfo); err != nil {
+	source, err := artifacts.Submissions.GetSource(&ctx.Context, runInfo.GUID)
+	if err != nil {
 		ctx.Log.Error(
 			"Error getting run source",
 			map[string]interface{}{
 				"err":   err,
 				"runId": runInfo.ID,
+				"guid":  runInfo.GUID,
 			},
 		)
 		return err
 	}
+	runInfo.Run.Source = source
 	if runInfo.Priority == grader.QueuePriorityNormal {
 		runInfo.Priority = priority
 	}
@@ -748,13 +738,14 @@ func registerFrontendHandlers(
 	mux *http.ServeMux,
 	newRuns chan struct{},
 	db *sql.DB,
+	artifacts *grader.ArtifactManager,
 	tracing tracing.Provider,
 ) {
 	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
-	go runQueueLoop(ctx, runs, db, newRuns)
+	go runQueueLoop(ctx, runs, newRuns, db, artifacts)
 
 	transport := &http.Transport{
 		Dial: (&net.Dialer{
@@ -881,56 +872,14 @@ func registerFrontendHandlers(
 			return
 		}
 
-		filePath := path.Join(
-			ctx.Config.Grader.V1.RuntimePath,
-			"submissions",
-			runInfo.GUID[:2],
-			runInfo.GUID[2:],
-		)
-		if err := os.MkdirAll(path.Dir(filePath), 0755); err != nil {
+		err = artifacts.Submissions.PutSource(&ctx.Context, runInfo.GUID, r.Body)
+		if err != nil {
 			ctx.Log.Error(
 				"/run/new/",
 				map[string]interface{}{
 					"runID":    runID,
-					"response": "internal server error",
-					"err":      err,
-				},
-			)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
-		if err != nil {
-			if os.IsExist(err) {
-				ctx.Log.Info(
-					"/run/new/",
-					map[string]interface{}{
-						"guid":     runInfo.GUID,
-						"response": "already exists",
-					},
-				)
-				w.WriteHeader(http.StatusConflict)
-				return
-			}
-			ctx.Log.Info(
-				"/run/new/",
-				map[string]interface{}{
 					"guid":     runInfo.GUID,
 					"response": "internal server error",
-					"err":      err,
-				},
-			)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		defer f.Close()
-
-		if _, err := io.Copy(f, r.Body); err != nil {
-			ctx.Log.Info(
-				"/run/new/",
-				map[string]interface{}{
-					"guid":     runInfo.GUID,
-					"response": "failed to copy submission",
 					"err":      err,
 				},
 			)
@@ -1054,53 +1003,22 @@ func registerFrontendHandlers(
 			return
 		}
 
-		filePath := path.Join(
-			ctx.Config.Grader.V1.RuntimePath,
-			"submissions",
-			guid[:2],
-			guid[2:],
-		)
-		f, err := os.Open(filePath)
+		source, err := artifacts.Submissions.GetSource(&ctx.Context, guid)
 		if err != nil {
-			if os.IsNotExist(err) {
-				ctx.Log.Info(
-					"/run/source/",
-					map[string]interface{}{
-						"guid":     guid,
-						"response": "not found",
-					},
-				)
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
 			ctx.Log.Info(
 				"/run/source/",
 				map[string]interface{}{
 					"guid":     guid,
-					"response": "internal server error",
-					"err":      err,
+					"response": "not found",
 				},
 			)
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		defer f.Close()
+		sourceBytes := []byte(source)
 
-		info, err := f.Stat()
-		if err != nil {
-			ctx.Log.Info(
-				"/run/source/",
-				map[string]interface{}{
-					"guid":     guid,
-					"response": "internal server error",
-					"err":      err,
-				},
-			)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+		w.Header().Set("Content-Length", strconv.Itoa(len(sourceBytes)))
 
 		ctx.Log.Info(
 			"/run/source/",
@@ -1110,7 +1028,7 @@ func registerFrontendHandlers(
 			},
 		)
 		w.WriteHeader(http.StatusOK)
-		io.Copy(w, f)
+		w.Write(sourceBytes)
 	})))
 
 	mux.Handle(tracing.WrapHandle("/run/resource/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
