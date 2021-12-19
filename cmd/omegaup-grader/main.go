@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -24,6 +25,9 @@ import (
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/coreos/go-systemd/v22/daemon"
 	_ "github.com/go-sql-driver/mysql"
 	git "github.com/libgit2/git2go/v33"
@@ -203,6 +207,35 @@ func main() {
 	}
 	tracing := nrtracing.New(app)
 
+	var s3c *s3.S3
+	if ctx.Config.Grader.UseS3 {
+		sess, err := session.NewSession(
+			aws.NewConfig().
+				WithHTTPClient(&http.Client{
+					Timeout: 5 * time.Minute,
+					Transport: &http.Transport{
+						Dial: (&net.Dialer{
+							Timeout:   30 * time.Second,
+							KeepAlive: 30 * time.Second,
+						}).Dial,
+						TLSHandshakeTimeout:   10 * time.Second,
+						ResponseHeaderTimeout: 10 * time.Second,
+						ExpectContinueTimeout: 1 * time.Second,
+					},
+				}).
+				WithLogLevel(aws.LogOff).
+				WithLogger(aws.LoggerFunc(func(args ...interface{}) {
+					ctx.Log.Debug(fmt.Sprintln(args...), nil)
+				})),
+		)
+		if err != nil {
+			ctx.Log.Error("aws session", map[string]interface{}{"error": err})
+			os.Exit(1)
+		}
+		s3c = s3.New(sess)
+	}
+	artifacts := grader.NewArtifactManager(s3c)
+
 	expvar.Publish("codemanager", expvar.Func(func() interface{} {
 		return graderContext().InputManager
 	}))
@@ -301,7 +334,7 @@ func main() {
 	newRuns <- struct{}{}
 	{
 		mux := http.DefaultServeMux
-		registerFrontendHandlers(graderContext(), mux, newRuns, db, tracing)
+		registerFrontendHandlers(graderContext(), mux, newRuns, db, artifacts, tracing)
 		shutdowners = append(
 			shutdowners,
 			common.RunServer(

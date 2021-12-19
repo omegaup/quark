@@ -75,6 +75,7 @@ type GraderConfig struct {
 	Ephemeral              GraderEphemeralConfig
 	CI                     GraderCIConfig
 	WriteGradeFiles        bool // TODO(lhchavez): Remove once migration is done.
+	UseS3                  bool
 }
 
 // TLSConfig represents the configuration for TLS.
@@ -203,6 +204,7 @@ var defaultConfig = Config{
 			CISizeLimit: base.Byte(256) * base.Mebibyte,
 		},
 		WriteGradeFiles: true,
+		UseS3:           false,
 	},
 	Runner: RunnerConfig{
 		RuntimePath:        "/var/lib/omegaup/runner",
