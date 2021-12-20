@@ -74,7 +74,6 @@ type GraderConfig struct {
 	V1                     V1Config
 	Ephemeral              GraderEphemeralConfig
 	CI                     GraderCIConfig
-	WriteGradeFiles        bool // TODO(lhchavez): Remove once migration is done.
 	UseS3                  bool
 }
 
@@ -203,8 +202,7 @@ var defaultConfig = Config{
 		CI: GraderCIConfig{
 			CISizeLimit: base.Byte(256) * base.Mebibyte,
 		},
-		WriteGradeFiles: true,
-		UseS3:           false,
+		UseS3: false,
 	},
 	Runner: RunnerConfig{
 		RuntimePath:        "/var/lib/omegaup/runner",
