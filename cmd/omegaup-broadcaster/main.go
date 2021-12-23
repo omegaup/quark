@@ -303,9 +303,15 @@ func main() {
 	eventsMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		ctx := broadcasterContext()
 
-		authToken := ""
+		var auth broadcaster.Authorization
 		if ouat, _ := r.Cookie("ouat"); ouat != nil {
-			authToken = ouat.Value
+			auth.Cookie = ouat.Value
+		} else if authorization := r.Header.Get("Authorization"); strings.HasPrefix(authorization, "token ") {
+			auth.APIToken = strings.TrimPrefix(authorization, "token ")
+		} else if token, _ := r.Cookie("api_token"); ouat != nil {
+			// WebSockets don't allow to specify additional headers, which means that
+			// we need to also be able to send the API token through cookies.
+			auth.APIToken = token.Value
 		}
 
 		var transport broadcaster.Transport
@@ -338,7 +344,7 @@ func main() {
 				ctx.Config.Broadcaster.FrontendURL,
 				"api/user/validateFilter/",
 			),
-			authToken,
+			auth,
 			strings.Join(r.URL.Query()["filter"], ","),
 			transport,
 		)
