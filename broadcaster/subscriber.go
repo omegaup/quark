@@ -220,10 +220,17 @@ func (b *Broadcaster) Unsubscribe(subscriber *Subscriber) bool {
 	}
 }
 
+// Authorization is a structure that contains the possible authentication
+// mechanisms for the frontend. APIToken takes precedence.
+type Authorization struct {
+	APIToken string
+	Cookie   string
+}
+
 // A Subscriber represents a user that wishes to receive broadcast
 // notifications.
 type Subscriber struct {
-	authToken          string
+	auth               Authorization
 	user               string
 	admin              bool
 	problemAdminMap    map[string]struct{}
@@ -242,13 +249,13 @@ func NewSubscriber(
 	ctx *common.Context,
 	client *http.Client,
 	requestURL *url.URL,
-	authToken string,
+	auth Authorization,
 	filterString string,
 	transport Transport,
 ) (*Subscriber, error) {
 	s := &Subscriber{
 		ctx:                ctx,
-		authToken:          authToken,
+		auth:               auth,
 		problemAdminMap:    make(map[string]struct{}),
 		contestAdminMap:    make(map[string]struct{}),
 		problemsetAdminMap: make(map[int64]struct{}),
@@ -274,10 +281,15 @@ func NewSubscriber(
 	if err != nil {
 		return nil, err
 	}
-	if authToken != "" {
+	if auth.APIToken != "" {
+		request.Header.Set(
+			"Authorization",
+			fmt.Sprintf("token %s", auth.APIToken),
+		)
+	} else if auth.Cookie != "" {
 		request.Header.Set(
 			"Cookie",
-			fmt.Sprintf("ouat=%s", authToken),
+			fmt.Sprintf("ouat=%s", auth.Cookie),
 		)
 	}
 
