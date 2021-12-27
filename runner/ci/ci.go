@@ -459,22 +459,22 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 
 	// Read the cases into config.Input.Cases, as well as test-only invalid cases
 	for _, kindSettings := range []struct {
-		filenameFormatStr   string
+		containingDirectory string
 		caseSettings        []common.GroupSettings
 		caseDataDest        map[string]*common.LiteralCaseSettings
 		generateOutputFiles bool
 	}{
-		{"cases/%s.in", problemSettings.Cases, config.Input.Cases, generateOutputFiles},
-		{"tests/invalid-cases/%s.in", getInvalidCaseSettingsForValidation(files), invalidInputCases, false},
+		{"cases", problemSettings.Cases, config.Input.Cases, generateOutputFiles},
+		{"tests/invalid-cases", getInvalidCaseSettingsForValidation(files), invalidInputCases, false},
 	} {
-		for _, groupSettings := range problemSettings.Cases {
+		for _, groupSettings := range kindSettings.caseSettings {
 			for _, caseSettings := range groupSettings.Cases {
 				literalCaseSettings := &common.LiteralCaseSettings{
 					Weight: caseSettings.Weight,
 				}
 
 				if literalCaseSettings.Input, err = files.GetStringContents(
-					fmt.Sprintf("cases/%s.in", caseSettings.Name),
+					fmt.Sprintf("%s/%s.in", kindSettings.containingDirectory, caseSettings.Name),
 				); err != nil {
 					return nil, errors.Wrapf(
 						err,
@@ -484,7 +484,7 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 					)
 				}
 
-				outFilename := fmt.Sprintf("cases/%s.out", caseSettings.Name)
+				outFilename := fmt.Sprintf("%s/%s.out", kindSettings.containingDirectory, caseSettings.Name)
 				if kindSettings.generateOutputFiles {
 					f, err := files.Open(outFilename)
 					if f != nil {
@@ -633,22 +633,28 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 		}
 
 		for _, params := range []struct {
+			reportType       string
 			cases            map[string]*common.LiteralCaseSettings
-			expectedSolution common.SolutionSettings
+			expectedSolution *common.SolutionSettings
 		}{
 			// Real test cases to validate
-			{config.Input.Cases, common.SolutionSettings{Verdict: "AC"}},
+			{"inputs", config.Input.Cases, nil},
 			// Known invalid test cases
-			{invalidInputCases, common.SolutionSettings{Verdict: "WA"}},
+			{"invalid-inputs", invalidInputCases, &common.SolutionSettings{Verdict: "WA"}},
 		} {
 			params := params
+
+			if params.reportType == "invalid-inputs" && len(params.cases) == 0 {
+				continue
+			}
+
 			testConfig := &TestConfig{
 				Test: &ReportTest{
 					Index:                  len(config.TestConfigs),
-					Type:                   "inputs",
+					Type:                   params.reportType,
 					Filename:               config.TestsSettings.InputsValidator.Filename,
 					InputsValidatorSetting: config.TestsSettings.InputsValidator,
-					SolutionSetting:        &params.expectedSolution,
+					SolutionSetting:        params.expectedSolution,
 				},
 				Solution: SolutionConfig{
 					Source:   CopyStdinToStdoutSource,
