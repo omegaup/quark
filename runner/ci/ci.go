@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -454,40 +455,26 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 	}
 	config.Input.Limits = &problemSettings.Limits
 
-	// Cases
-	for _, groupSettings := range problemSettings.Cases {
-		for _, caseSettings := range groupSettings.Cases {
-			literalCaseSettings := &common.LiteralCaseSettings{
-				Weight: caseSettings.Weight,
-			}
+	invalidInputCases := make(map[string]*common.LiteralCaseSettings)
 
-			if literalCaseSettings.Input, err = files.GetStringContents(
-				fmt.Sprintf("cases/%s.in", caseSettings.Name),
-			); err != nil {
-				return nil, errors.Wrapf(
-					err,
-					"failed to get case information for %s %s",
-					files.String(),
-					caseSettings.Name,
-				)
-			}
+	// Read the cases into config.Input.Cases, as well as test-only invalid cases
+	for _, kindSettings := range []struct {
+		filenameFormatStr   string
+		caseSettings        []common.GroupSettings
+		caseDataDest        map[string]*common.LiteralCaseSettings
+		generateOutputFiles bool
+	}{
+		{"cases/%s.in", problemSettings.Cases, config.Input.Cases, generateOutputFiles},
+		{"tests/invalid-cases/%s.in", getInvalidCaseSettingsForValidation(files), invalidInputCases, false},
+	} {
+		for _, groupSettings := range problemSettings.Cases {
+			for _, caseSettings := range groupSettings.Cases {
+				literalCaseSettings := &common.LiteralCaseSettings{
+					Weight: caseSettings.Weight,
+				}
 
-			outFilename := fmt.Sprintf("cases/%s.out", caseSettings.Name)
-			if generateOutputFiles {
-				f, err := files.Open(outFilename)
-				if f != nil {
-					f.Close()
-				}
-				if !os.IsNotExist(err) {
-					return nil, errors.Errorf(
-						".out generation and existing .out files are not compatible: found %s in %s",
-						outFilename,
-						files.String(),
-					)
-				}
-			} else {
-				if literalCaseSettings.ExpectedOutput, err = files.GetStringContents(
-					outFilename,
+				if literalCaseSettings.Input, err = files.GetStringContents(
+					fmt.Sprintf("cases/%s.in", caseSettings.Name),
 				); err != nil {
 					return nil, errors.Wrapf(
 						err,
@@ -496,9 +483,35 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 						caseSettings.Name,
 					)
 				}
-			}
 
-			config.Input.Cases[caseSettings.Name] = literalCaseSettings
+				outFilename := fmt.Sprintf("cases/%s.out", caseSettings.Name)
+				if kindSettings.generateOutputFiles {
+					f, err := files.Open(outFilename)
+					if f != nil {
+						f.Close()
+					}
+					if !os.IsNotExist(err) {
+						return nil, errors.Errorf(
+							".out generation and existing .out files are not compatible: found %s in %s",
+							outFilename,
+							files.String(),
+						)
+					}
+				} else {
+					if literalCaseSettings.ExpectedOutput, err = files.GetStringContents(
+						outFilename,
+					); err != nil {
+						return nil, errors.Wrapf(
+							err,
+							"failed to get case information for %s %s",
+							files.String(),
+							caseSettings.Name,
+						)
+					}
+				}
+
+				kindSettings.caseDataDest[caseSettings.Name] = literalCaseSettings
+			}
 		}
 	}
 
@@ -618,33 +631,46 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 			}
 			language = common.FileExtensionLanguage(ext[1:])
 		}
-		testConfig := &TestConfig{
-			Test: &ReportTest{
-				Index:                  len(config.TestConfigs),
-				Type:                   "inputs",
-				Filename:               config.TestsSettings.InputsValidator.Filename,
-				InputsValidatorSetting: config.TestsSettings.InputsValidator,
-			},
-			Solution: SolutionConfig{
-				Source:   CopyStdinToStdoutSource,
-				Language: "cpp11",
-			},
-			Input: &common.LiteralInput{
-				Cases: config.Input.Cases,
-				Validator: &common.LiteralValidatorSettings{
-					Name: common.ValidatorNameCustom,
-					CustomValidator: &common.LiteralCustomValidatorSettings{
-						Language: language,
+
+		for _, params := range []struct {
+			cases            map[string]*common.LiteralCaseSettings
+			expectedSolution common.SolutionSettings
+		}{
+			// Real test cases to validate
+			{config.Input.Cases, common.SolutionSettings{Verdict: "AC"}},
+			// Known invalid test cases
+			{invalidInputCases, common.SolutionSettings{Verdict: "WA"}},
+		} {
+			params := params
+			testConfig := &TestConfig{
+				Test: &ReportTest{
+					Index:                  len(config.TestConfigs),
+					Type:                   "inputs",
+					Filename:               config.TestsSettings.InputsValidator.Filename,
+					InputsValidatorSetting: config.TestsSettings.InputsValidator,
+					SolutionSetting:        &params.expectedSolution,
+				},
+				Solution: SolutionConfig{
+					Source:   CopyStdinToStdoutSource,
+					Language: "cpp11",
+				},
+				Input: &common.LiteralInput{
+					Cases: params.cases,
+					Validator: &common.LiteralValidatorSettings{
+						Name: common.ValidatorNameCustom,
+						CustomValidator: &common.LiteralCustomValidatorSettings{
+							Language: language,
+						},
 					},
 				},
-			},
+			}
+			if testConfig.Input.Validator.CustomValidator.Source, err = files.GetStringContents(
+				fmt.Sprintf("tests/%s", config.TestsSettings.InputsValidator.Filename),
+			); err != nil {
+				return nil, err
+			}
+			config.TestConfigs = append(config.TestConfigs, testConfig)
 		}
-		if testConfig.Input.Validator.CustomValidator.Source, err = files.GetStringContents(
-			fmt.Sprintf("tests/%s", config.TestsSettings.InputsValidator.Filename),
-		); err != nil {
-			return nil, err
-		}
-		config.TestConfigs = append(config.TestConfigs, testConfig)
 	}
 
 	// .out generation
@@ -818,4 +844,21 @@ func (l *LRUCache) ReloadRuns(ciRoot string) error {
 		)
 		return filepath.SkipDir
 	})
+}
+
+func getInvalidCaseSettingsForValidation(f common.ProblemFiles) []common.GroupSettings {
+	invalidCasesRegexp := regexp.MustCompile("^tests/invalid-cases/([^/]+)\\.in$")
+	caseWeightMapping := common.NewCaseWeightMapping()
+
+	for _, filename := range f.Files() {
+		casesMatches := invalidCasesRegexp.FindStringSubmatch(filename)
+		if casesMatches == nil {
+			continue
+		}
+		caseName := casesMatches[1]
+
+		caseWeightMapping.AddCaseName(caseName, big.NewRat(1, 1), false)
+	}
+
+	return caseWeightMapping.ToGroupSettings()
 }
