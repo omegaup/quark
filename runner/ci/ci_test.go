@@ -782,6 +782,66 @@ func TestNewRunConfig(t *testing.T) {
 			},
 			"",
 		},
+		{
+			"expected max score",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"cases/0.in":  "1 2",
+					"cases/0.out": "3",
+					"cases/1.in":  "1 2",
+					"cases/1.out": "3",
+					"testplan":    "0 50\n1 50\n",
+					"tests/tests.json": `{
+						"maxScore": 100
+					}`,
+					"settings.json": "{}",
+				},
+				":memory:",
+			),
+			false,
+			&RunConfig{
+				TestsSettings: common.TestsSettings{
+					ExpectedMaxScore: 100,
+				},
+				Input: &common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0": {
+							Input:          "1 2",
+							ExpectedOutput: "3",
+							Weight:         big.NewRat(50, 1),
+						},
+						"1": {
+							Input:          "1 2",
+							ExpectedOutput: "3",
+							Weight:         big.NewRat(50, 1),
+						},
+					},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
+				},
+			},
+			"",
+		},
+		{
+			"expected max score, mismatch",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"cases/0.in":  "1 2",
+					"cases/0.out": "3",
+					"cases/1.in":  "1 2",
+					"cases/1.out": "3",
+					"testplan":    "0 50\n1 49\n",
+					"tests/tests.json": `{
+						"maxScore": 100
+					}`,
+					"settings.json": "{}",
+				},
+				":memory:",
+			),
+			false,
+			nil,
+			"max score doesn't match: expected 100, got 99",
+		},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
