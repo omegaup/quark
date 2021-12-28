@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -28,6 +29,7 @@ import (
 	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/grader"
+	"github.com/omegaup/quark/runner"
 )
 
 const (
@@ -74,6 +76,27 @@ func isRetriable(err error) bool {
 	return errors.As(err, &mErr) && mErr.Number == 1205
 }
 
+func transactionWithRetry(ctx context.Context, db *sql.DB, opts *sql.TxOptions, f func(*sql.Tx) error) (err error) {
+	for tries := 0; tries < sqlMaxRetries; tries++ {
+		var tx *sql.Tx
+		tx, err = db.BeginTx(ctx, opts)
+		if err != nil {
+			break
+		}
+		err = f(tx)
+		if err == nil {
+			err = tx.Commit()
+		}
+		if err != nil {
+			tx.Rollback()
+		}
+		if !isRetriable(err) {
+			break
+		}
+	}
+	return
+}
+
 func execWithRetry(db *sql.DB, query string, args ...interface{}) (result sql.Result, err error) {
 	for tries := 0; tries < sqlMaxRetries; tries++ {
 		result, err = db.Exec(query, args...)
@@ -107,53 +130,92 @@ func queryRowWithRetry(db *sql.DB, query string, args ...interface{}) (row *sql.
 func updateDatabase(
 	ctx *grader.Context,
 	db *sql.DB,
+	status string,
 	run *grader.RunInfo,
 ) error {
-	if run.PenaltyType == "runtime" {
-		_, err := execWithRetry(
-			db,
-			`UPDATE
-				Runs
+	return transactionWithRetry(ctx.Context.Context, db, nil, func(tx *sql.Tx) error {
+		if status != "ready" {
+			_, err := tx.Exec(
+				`
+					UPDATE
+						Runs
+					SET
+						status = ?
+					WHERE
+						run_id = ?;
+					`,
+				status,
+				run.ID,
+			)
+			if err != nil {
+				return err
+			}
+		} else if run.PenaltyType == "runtime" {
+			_, err := tx.Exec(
+				`
+				UPDATE
+					Runs
+				SET
+					status = ?, verdict = ?, runtime = ?, penalty = ?, memory = ?,
+					score = ?, contest_score = ?, judged_by = ?
+				WHERE
+					run_id = ?;
+				`,
+				status,
+				run.Result.Verdict,
+				run.Result.Time*1000,
+				run.Result.Time*1000,
+				run.Result.Memory.Bytes(),
+				base.RationalToFloat(run.Result.Score),
+				base.RationalToFloat(run.Result.ContestScore),
+				run.Result.JudgedBy,
+				run.ID,
+			)
+			if err != nil {
+				return err
+			}
+		} else {
+			_, err := tx.Exec(
+				`
+				UPDATE
+					Runs
+				SET
+					status = ?, verdict = ?, runtime = ?, memory = ?, score = ?,
+					contest_score = ?, judged_by = ?
+				WHERE
+					run_id = ?;
+				`,
+				status,
+				run.Result.Verdict,
+				run.Result.Time*1000,
+				run.Result.Memory.Bytes(),
+				base.RationalToFloat(run.Result.Score),
+				base.RationalToFloat(run.Result.ContestScore),
+				run.Result.JudgedBy,
+				run.ID,
+			)
+			if err != nil {
+				return err
+			}
+		}
+		_, err := tx.Exec(
+			`
+			UPDATE
+				Submissions
 			SET
-				status = 'ready', verdict = ?, runtime = ?, penalty = ?, memory = ?,
-				score = ?, contest_score = ?, judged_by = ?
+				status = ?,
+				verdict = ?
 			WHERE
-				run_id = ?;`,
+				submission_id = ? AND
+				current_run_id = ?;
+			`,
+			status,
 			run.Result.Verdict,
-			run.Result.Time*1000,
-			run.Result.Time*1000,
-			run.Result.Memory.Bytes(),
-			base.RationalToFloat(run.Result.Score),
-			base.RationalToFloat(run.Result.ContestScore),
-			run.Result.JudgedBy,
+			run.SubmissionID,
 			run.ID,
 		)
-		if err != nil {
-			return err
-		}
-	} else {
-		_, err := execWithRetry(
-			db,
-			`UPDATE
-				Runs
-			SET
-				status = 'ready', verdict = ?, runtime = ?, memory = ?, score = ?,
-				contest_score = ?, judged_by = ?
-			WHERE
-				run_id = ?;`,
-			run.Result.Verdict,
-			run.Result.Time*1000,
-			run.Result.Memory.Bytes(),
-			base.RationalToFloat(run.Result.Score),
-			base.RationalToFloat(run.Result.ContestScore),
-			run.Result.JudgedBy,
-			run.ID,
-		)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+		return err
+	})
 }
 
 func broadcastRun(
@@ -275,7 +337,7 @@ func runPostProcessor(
 			ctx.Metrics.CounterAdd("grader_runs_je", 1)
 		}
 		if ctx.Config.Grader.V1.UpdateDatabase {
-			if err := updateDatabase(ctx, db, run); err != nil {
+			if err := updateDatabase(ctx, db, "ready", run); err != nil {
 				ctx.Log.Error(
 					"Error updating the database",
 					map[string]interface{}{
@@ -444,17 +506,17 @@ func runQueueLoop(
 			}
 
 			for _, dbRun := range dbRuns {
-				_, err := execWithRetry(
+				err := updateDatabase(
+					ctx,
 					db,
-					`
-					UPDATE
-						Runs
-					SET
-						status = 'waiting'
-					WHERE
-						run_id = ?;
-					`,
-					dbRun.runID,
+					"waiting",
+					&grader.RunInfo{
+						ID:           dbRun.runID,
+						SubmissionID: dbRun.submissionID,
+						Result: runner.RunResult{
+							Verdict: "JE",
+						},
+					},
 				)
 				if err != nil {
 					ctx.Log.Error(
@@ -475,21 +537,17 @@ func runQueueLoop(
 							"run": dbRun,
 						},
 					)
-					_, err := execWithRetry(
+					err = updateDatabase(
+						ctx,
 						db,
-						`
-						UPDATE
-							Runs
-						SET
-							status = 'ready',
-							verdict = 'JE',
-							score = 0,
-							contest_score = 0,
-							judged_by = ''
-						WHERE
-							run_id = ?;
-						`,
-						dbRun.runID,
+						"ready",
+						&grader.RunInfo{
+							ID:           dbRun.runID,
+							SubmissionID: dbRun.submissionID,
+							Result: runner.RunResult{
+								Verdict: "JE",
+							},
+						},
 					)
 					if err != nil {
 						ctx.Log.Error(
@@ -523,7 +581,7 @@ func runQueueLoop(
 							"err": err,
 						},
 					)
-					err = updateDatabase(ctx, db, runInfo)
+					err = updateDatabase(ctx, db, "ready", runInfo)
 					if err != nil {
 						ctx.Log.Error(
 							"Error marking run as ready",
@@ -572,7 +630,7 @@ func newRunInfoFromID(
 		db,
 		`SELECT
 			s.guid, c.alias, s.problemset_id, c.penalty_type, c.partial_score,
-			s.language, p.alias, pp.points, r.version
+			s.language, p.alias, pp.points, r.version, r.submission_id
 		FROM
 			Runs r
 		INNER JOIN
@@ -595,6 +653,7 @@ func newRunInfoFromID(
 		&runInfo.Run.ProblemName,
 		&contestPoints,
 		&runInfo.Run.InputHash,
+		&runInfo.SubmissionID,
 	)
 	if err != nil {
 		return nil, err
@@ -891,18 +950,7 @@ func registerFrontendHandlers(
 		// This helps close a race where several runs are created and the run loop
 		// grabs the ID of a run whose submission's source has not yet been written
 		// to disk.
-		_, err = execWithRetry(
-			db,
-			`
-			UPDATE
-				Runs
-			SET
-				status = 'new'
-			WHERE
-				run_id = ?;
-			`,
-			runID,
-		)
+		err = updateDatabase(ctx, db, "new", runInfo)
 		if err != nil {
 			ctx.Log.Error(
 				"Failed to mark a run as new",

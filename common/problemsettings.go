@@ -269,8 +269,9 @@ type InputsValidatorSettings struct {
 // TestsSettings represent the tests that are to be run against the problem
 // itself. They are stored in tests/settings.json.
 type TestsSettings struct {
-	Solutions       []SolutionSettings       `json:"solutions"`
-	InputsValidator *InputsValidatorSettings `json:"inputs,omitempty"`
+	Solutions        []SolutionSettings       `json:"solutions"`
+	InputsValidator  *InputsValidatorSettings `json:"inputs,omitempty"`
+	ExpectedMaxScore *base.Rat                `json:"maxScore,omitempty"`
 }
 
 var (
