@@ -282,6 +282,7 @@ func (mgr *EphemeralRunManager) add(entry *ephemeralRunEntry) error {
 // gone.
 type RunInfo struct {
 	ID           int64
+	SubmissionID int64
 	GUID         string
 	Contest      *string
 	Problemset   *int64
