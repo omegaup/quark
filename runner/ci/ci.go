@@ -502,15 +502,16 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 		}
 	}
 
-	if config.TestsSettings.ExpectedMaxScore != 0 {
+	if config.TestsSettings.ExpectedMaxScore != nil {
+		expectedScore := (*big.Rat)(config.TestsSettings.ExpectedMaxScore)
 		totalScore := big.NewRat(0, 1)
 		for _, settings := range config.Input.Cases {
 			totalScore.Add(totalScore, settings.Weight)
 		}
-		if totalScore.Cmp(big.NewRat(config.TestsSettings.ExpectedMaxScore, 1)) != 0 {
+		if totalScore.Cmp(expectedScore) != 0 {
 			return nil, errors.Errorf(
-				"max score doesn't match: expected %d, got %s",
-				config.TestsSettings.ExpectedMaxScore,
+				"max score doesn't match: expected %s, got %s",
+				expectedScore.String(),
 				totalScore.String(),
 			)
 		}

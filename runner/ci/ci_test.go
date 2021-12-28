@@ -801,7 +801,7 @@ func TestNewRunConfig(t *testing.T) {
 			false,
 			&RunConfig{
 				TestsSettings: common.TestsSettings{
-					ExpectedMaxScore: 100,
+					ExpectedMaxScore: (*base.Rat)(big.NewRat(100, 1)),
 				},
 				Input: &common.LiteralInput{
 					Cases: map[string]*common.LiteralCaseSettings{
@@ -840,7 +840,7 @@ func TestNewRunConfig(t *testing.T) {
 			),
 			false,
 			nil,
-			"max score doesn't match: expected 100, got 99",
+			"max score doesn't match: expected 100/1, got 99/1",
 		},
 	} {
 		tt := tt

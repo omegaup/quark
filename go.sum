@@ -227,6 +227,8 @@ github.com/omegaup/go-base/tracing/newrelic v0.0.0-20211215145412-f1de9d5c6aee/g
 github.com/omegaup/go-base/v3 v3.2.2/go.mod h1:mJFH+bckd4aAXcpXDBFN6Et5p3sxYsHCxK8pUDp0YlM=
 github.com/omegaup/go-base/v3 v3.2.3 h1:smP6QdOhandfSJBDtsaCh3Rj80fVA1+VkN94YBFCkrg=
 github.com/omegaup/go-base/v3 v3.2.3/go.mod h1:mJFH+bckd4aAXcpXDBFN6Et5p3sxYsHCxK8pUDp0YlM=
+github.com/omegaup/go-base/v3 v3.2.4 h1:9nxqVJ27qgNM13kHX77A6ivkav5h5l4/lxSzqSaa34A=
+github.com/omegaup/go-base/v3 v3.2.4/go.mod h1:mJFH+bckd4aAXcpXDBFN6Et5p3sxYsHCxK8pUDp0YlM=
 github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/ginkgo v1.7.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/gomega v1.4.3/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
