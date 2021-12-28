@@ -13,7 +13,7 @@ require (
 	github.com/omegaup/githttp/v2 v2.4.9
 	github.com/omegaup/go-base/logging/log15 v0.0.0-20211215145412-f1de9d5c6aee
 	github.com/omegaup/go-base/tracing/newrelic v0.0.0-20211215145412-f1de9d5c6aee
-	github.com/omegaup/go-base/v3 v3.2.3
+	github.com/omegaup/go-base/v3 v3.2.4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
 	github.com/shirou/gopsutil v3.20.11+incompatible
