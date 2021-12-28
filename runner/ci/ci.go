@@ -502,6 +502,21 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 		}
 	}
 
+	if config.TestsSettings.ExpectedMaxScore != nil {
+		expectedScore := (*big.Rat)(config.TestsSettings.ExpectedMaxScore)
+		totalScore := big.NewRat(0, 1)
+		for _, settings := range config.Input.Cases {
+			totalScore.Add(totalScore, settings.Weight)
+		}
+		if totalScore.Cmp(expectedScore) != 0 {
+			return nil, errors.Errorf(
+				"max score doesn't match: expected %s, got %s",
+				expectedScore.String(),
+				totalScore.String(),
+			)
+		}
+	}
+
 	// Validator
 	config.Input.Validator = &common.LiteralValidatorSettings{
 		Name:      problemSettings.Validator.Name,
