@@ -71,6 +71,8 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 			guid varchar NOT NULL UNIQUE,
 			language varchar NOT NULL,
 			time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			status VARCHAR NOT NULL DEFAULT 'new',
+			verdict VARCHAR NOT NULL,
 			submit_delay int NOT NULL DEFAULT '0',
 			type varchar DEFAULT 'normal',
 			school_id int DEFAULT NULL
@@ -175,9 +177,9 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 		);
 		INSERT INTO Submissions (
 			submission_id, current_run_id, identity_id, problem_id, guid, language,
-			time
+			time, status, verdict
 		) VALUES (
-			1, 1, 1, 1, "1", "py3", "1970-01-01 00:00:00"
+			1, 1, 1, 1, "1", "py3", "1970-01-01 00:00:00", "new", "JE"
 		);
 		INSERT INTO Runs (
 			run_id, submission_id, version, `+"`commit`"+`, verdict, time
@@ -212,11 +214,24 @@ func TestUpdateDatabase(t *testing.T) {
 		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 0)
 	}
 
+	if err := queryRowWithRetry(
+		db,
+		`SELECT COUNT(*) FROM Submissions WHERE verdict = "AC";`,
+	).Scan(
+		&count,
+	); err != nil {
+		t.Fatalf("Error updating the database: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 0)
+	}
+
 	run := grader.RunInfo{
-		ID:          1,
-		GUID:        "1",
-		Run:         &common.Run{},
-		PenaltyType: "none",
+		ID:           1,
+		SubmissionID: 1,
+		GUID:         "1",
+		Run:          &common.Run{},
+		PenaltyType:  "none",
 		Result: runner.RunResult{
 			Verdict:      "AC",
 			Score:        big.NewRat(1, 1),
@@ -228,13 +243,24 @@ func TestUpdateDatabase(t *testing.T) {
 			JudgedBy:     "Test",
 		},
 	}
-	if err := updateDatabase(ctx, db, &run); err != nil {
+	if err := updateDatabase(ctx, db, "ready", &run); err != nil {
 		t.Fatalf("Error updating the database: %v", err)
 	}
 
 	if err := queryRowWithRetry(
 		db,
 		`SELECT COUNT(*) FROM Runs WHERE verdict = "AC";`,
+	).Scan(
+		&count,
+	); err != nil {
+		t.Fatalf("Error updating the database: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 1)
+	}
+	if err := queryRowWithRetry(
+		db,
+		`SELECT COUNT(*) FROM Submissions WHERE verdict = "AC";`,
 	).Scan(
 		&count,
 	); err != nil {
