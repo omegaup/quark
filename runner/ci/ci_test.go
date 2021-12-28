@@ -419,7 +419,104 @@ func TestNewRunConfig(t *testing.T) {
 					Validator: &common.LiteralValidatorSettings{},
 				},
 			},
-			"\"tests/validator.py\" in \":memory:\": file does not exist",
+			"",
+		},
+		{
+			"input validator with invalid cases",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"tests/tests.json": `{
+						"inputs": {
+							"filename": "validator.py"
+						}
+					}`,
+					"tests/validator.py":        "print(3)",
+					"tests/invalid-cases/0.in":  "input",
+					"tests/invalid-cases/0.out": "output",
+					"settings.json":             "{}",
+				},
+				":memory:",
+			),
+			false,
+			&RunConfig{
+				TestsSettings: common.TestsSettings{
+					InputsValidator: &common.InputsValidatorSettings{Filename: "validator.py"},
+				},
+				TestConfigs: []*TestConfig{
+					{
+						Test: &ReportTest{
+							Index:                  0,
+							Type:                   "inputs",
+							Filename:               "validator.py",
+							InputsValidatorSetting: &common.InputsValidatorSettings{Filename: "validator.py"},
+						},
+						Solution: SolutionConfig{
+							Source:   CopyStdinToStdoutSource,
+							Language: "cpp11",
+						},
+						Input: &common.LiteralInput{
+							Cases: map[string]*common.LiteralCaseSettings{},
+							Validator: &common.LiteralValidatorSettings{
+								Name: common.ValidatorNameCustom,
+								CustomValidator: &common.LiteralCustomValidatorSettings{
+									Source:   "print(3)",
+									Language: "py",
+								},
+							},
+						},
+					},
+					{
+						Test: &ReportTest{
+							Index:                  1,
+							Type:                   "invalid-inputs",
+							Filename:               "validator.py",
+							InputsValidatorSetting: &common.InputsValidatorSettings{Filename: "validator.py"},
+							SolutionSetting:        &common.SolutionSettings{Verdict: "WA"},
+						},
+						Solution: SolutionConfig{
+							Source:   CopyStdinToStdoutSource,
+							Language: "cpp11",
+						},
+						Input: &common.LiteralInput{
+							Cases: map[string]*common.LiteralCaseSettings{
+								"0": {Input: "input", ExpectedOutput: "output", Weight: big.NewRat(1, 1)},
+							},
+							Validator: &common.LiteralValidatorSettings{
+								Name: common.ValidatorNameCustom,
+								CustomValidator: &common.LiteralCustomValidatorSettings{
+									Source:   "print(3)",
+									Language: "py",
+								},
+							},
+						},
+					},
+				},
+				Input: &common.LiteralInput{
+					Cases:     map[string]*common.LiteralCaseSettings{},
+					Limits:    &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{},
+				},
+			},
+			"",
+		},
+		{
+			"input validator with invalid cases, missing output",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"tests/tests.json": `{
+						"inputs": {
+							"filename": "validator.py"
+						}
+					}`,
+					"tests/validator.py":       "print(3)",
+					"tests/invalid-cases/0.in": "input",
+					"settings.json":            "{}",
+				},
+				":memory:",
+			),
+			false,
+			nil,
+			"open \"tests/invalid-cases/0.out\"",
 		},
 		{
 			"output generator, multiple files",
