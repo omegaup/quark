@@ -27,11 +27,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coreos/go-systemd/v22/daemon"
+	nrtracing "github.com/omegaup/go-base/tracing/newrelic"
 	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"github.com/omegaup/quark/runner/ci"
+
+	"github.com/coreos/go-systemd/v22/daemon"
+	"github.com/newrelic/go-agent/v3/newrelic"
 	errors "github.com/pkg/errors"
 	"golang.org/x/net/http2"
 )
@@ -721,6 +724,21 @@ func main() {
 		}
 		ctx.Config.Runner.RuntimePath = tmpdir
 	}
+
+	var app *newrelic.Application
+	if ctx.Config.NewRelic.License != "" {
+		var err error
+		app, err = newrelic.NewApplication(
+			newrelic.ConfigAppName(ctx.Config.NewRelic.AppName),
+			newrelic.ConfigLicense(ctx.Config.NewRelic.License),
+			newrelic.ConfigLogger(ctx.Log),
+			newrelic.ConfigDistributedTracerEnabled(true),
+		)
+		if err != nil {
+			panic(err)
+		}
+	}
+	ctx.Tracing = nrtracing.New(app)
 
 	expvar.Publish("config", &globalContext.Load().(*common.Context).Config)
 	inputManager = common.NewInputManager(ctx)

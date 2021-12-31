@@ -210,6 +210,7 @@ func registerRunnerHandlers(
 		// TODO: Remove this.
 		w.Header().Set("Sync-ID", "0")
 		encoder := json.NewEncoder(w)
+		runCtx.Transaction.InsertDistributedTraceHeaders(w.Header())
 		encoder.Encode(runCtx.RunInfo.Run)
 	})))
 
