@@ -12,8 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
+
 	"github.com/pkg/errors"
 )
 
@@ -193,8 +195,8 @@ func processRun(
 
 	ctx := parentCtx.DebugContext(nil)
 	ctx.Transaction = ctx.Tracing.StartTransaction("run")
+	ctx.Transaction.AcceptDistributedTraceHeaders(tracing.TransportQueue, resp.Header)
 	defer ctx.Transaction.End()
-	// TODO: fill this out.
 
 	decoder := json.NewDecoder(resp.Body)
 	var run common.Run

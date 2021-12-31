@@ -12,8 +12,8 @@ require (
 	github.com/newrelic/go-agent/v3 v3.15.2
 	github.com/omegaup/githttp/v2 v2.4.9
 	github.com/omegaup/go-base/logging/log15 v0.0.0-20211215145412-f1de9d5c6aee
-	github.com/omegaup/go-base/tracing/newrelic v0.0.0-20211215145412-f1de9d5c6aee
-	github.com/omegaup/go-base/v3 v3.2.4
+	github.com/omegaup/go-base/tracing/newrelic v0.0.0-20211231160651-f5d10a226350
+	github.com/omegaup/go-base/v3 v3.3.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
 	github.com/shirou/gopsutil v3.20.11+incompatible
@@ -28,7 +28,7 @@ require (
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
-	github.com/golang/protobuf v1.4.3 // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/inconshreveable/log15 v0.0.0-20201112154412-8562bdadbbac // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
@@ -40,7 +40,7 @@ require (
 	golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9 // indirect
 	golang.org/x/sys v0.0.0-20210927094055-39ccf1dd6fa6 // indirect
 	golang.org/x/text v0.3.6 // indirect
-	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
-	google.golang.org/grpc v1.27.0 // indirect
-	google.golang.org/protobuf v1.25.0 // indirect
+	google.golang.org/genproto v0.0.0-20211223182754-3ac035c7e7cb // indirect
+	google.golang.org/grpc v1.43.0 // indirect
+	google.golang.org/protobuf v1.27.1 // indirect
 )
