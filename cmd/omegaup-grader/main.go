@@ -32,7 +32,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	git "github.com/libgit2/git2go/v33"
 	_ "github.com/mattn/go-sqlite3"
-	newrelic "github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
 var (
@@ -205,7 +205,7 @@ func main() {
 			panic(err)
 		}
 	}
-	tracing := nrtracing.New(app)
+	ctx.Tracing = nrtracing.New(app)
 
 	var s3c *s3.S3
 	if ctx.Config.Grader.UseS3 {
@@ -292,10 +292,10 @@ func main() {
 	var wg sync.WaitGroup
 	{
 		mux := http.NewServeMux()
-		registerEphemeralHandlers(ctx, mux, ephemeralRunManager, tracing)
+		registerEphemeralHandlers(ctx, mux, ephemeralRunManager)
 		shutdowners = append(
 			shutdowners,
-			registerCIHandlers(ctx, mux, ephemeralRunManager, tracing),
+			registerCIHandlers(ctx, mux, ephemeralRunManager),
 		)
 		shutdowners = append(
 			shutdowners,
@@ -310,7 +310,7 @@ func main() {
 	}
 	{
 		mux := http.NewServeMux()
-		registerRunnerHandlers(ctx, mux, db, *insecure, tracing)
+		registerRunnerHandlers(ctx, mux, db, *insecure)
 		shutdowners = append(
 			shutdowners,
 			common.RunServer(
@@ -334,7 +334,7 @@ func main() {
 	newRuns <- struct{}{}
 	{
 		mux := http.DefaultServeMux
-		registerFrontendHandlers(graderContext(), mux, newRuns, db, artifacts, tracing)
+		registerFrontendHandlers(graderContext(), mux, newRuns, db, artifacts)
 		shutdowners = append(
 			shutdowners,
 			common.RunServer(

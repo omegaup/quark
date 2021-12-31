@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner"
@@ -96,33 +94,6 @@ func processRun(
 				return &processRunStatus{http.StatusBadRequest, true}
 			}
 			runCtx.AppendLogSection(runnerName, buffer.Bytes())
-		} else if part.FileName() == "tracing.json" {
-			var runnerCollector common.MemoryEventCollector
-			decoder := json.NewDecoder(part)
-			if err := decoder.Decode(&runnerCollector); err != nil {
-				runCtx.Log.Error(
-					"Unable to decode the tracing events",
-					map[string]interface{}{
-						"err":    err,
-						"runner": runnerName,
-					},
-				)
-				return &processRunStatus{http.StatusBadRequest, true}
-			}
-			for _, e := range runnerCollector.Events {
-				if err := runCtx.EventCollector.Add(e); err != nil {
-					if !errors.Is(err, os.ErrClosed) {
-						runCtx.Log.Error(
-							"Unable to add tracing data",
-							map[string]interface{}{
-								"err":    err,
-								"runner": runnerName,
-							},
-						)
-					}
-					break
-				}
-			}
 		} else {
 			err = runCtx.RunInfo.Artifacts.Put(runCtx.Context, part.FileName(), part)
 			if err != nil {
@@ -166,14 +137,13 @@ func registerRunnerHandlers(
 	mux *http.ServeMux,
 	db *sql.DB,
 	insecure bool,
-	tracing tracing.Provider,
 ) {
 	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
 		panic(err)
 	}
 
-	mux.Handle(tracing.WrapHandle("/monitoring/benchmark/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/monitoring/benchmark/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		defer r.Body.Close()
 		runnerName := peerName(r, insecure)
@@ -202,7 +172,7 @@ func registerRunnerHandlers(
 		}
 	})))
 
-	mux.Handle(tracing.WrapHandle("/run/request/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/run/request/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		defer r.Body.Close()
 		runnerName := peerName(r, insecure)
@@ -237,15 +207,14 @@ func registerRunnerHandlers(
 			},
 		)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
-		ev := runCtx.EventFactory.NewIssuerClockSyncEvent()
-		w.Header().Set("Sync-ID", strconv.FormatUint(ev.SyncID, 10))
+		// TODO: Remove this.
+		w.Header().Set("Sync-ID", "0")
 		encoder := json.NewEncoder(w)
 		encoder.Encode(runCtx.RunInfo.Run)
-		runCtx.EventCollector.Add(ev)
 	})))
 
 	runRe := regexp.MustCompile("/run/([0-9]+)/results/?")
-	mux.Handle(tracing.WrapHandle("/run/", http.TimeoutHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/run/", http.TimeoutHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		defer r.Body.Close()
 		res := runRe.FindStringSubmatch(r.URL.Path)
@@ -279,7 +248,7 @@ func registerRunnerHandlers(
 	}), time.Duration(5*time.Minute), "Request timed out")))
 
 	inputRe := regexp.MustCompile("/input/(?:([a-zA-Z0-9_-]*)/)?([a-f0-9]{40})/?")
-	mux.Handle(tracing.WrapHandle("/input/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/input/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		defer r.Body.Close()
 		res := inputRe.FindStringSubmatch(r.URL.Path)

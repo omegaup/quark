@@ -25,7 +25,6 @@ func newGraderContext(t *testing.T) (*Context, error) {
 		fmt.Sprintf(
 			"{"+
 				"\"Logging\": {\"File\": \"stderr\"}, "+
-				"\"Tracing\": {\"Enabled\": false}, "+
 				"\"InputManager\": {\"CacheSize\": 1024}, "+
 				"\"Grader\": {"+
 				"  \"RuntimePath\": %q, "+

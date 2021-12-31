@@ -873,15 +873,12 @@ func Grade(
 
 	generatedFiles := make([]string, 0)
 
-	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventBegin))
+	compileSegment := ctx.Transaction.StartSegment("compile")
 	for _, b := range binaries {
 		binRoot := path.Join(runRoot, b.name)
 		binPath := path.Join(binRoot, "bin")
 
-		singleCompileEvent := ctx.EventFactory.NewCompleteEvent(
-			b.name,
-			common.Arg{Name: "language", Value: b.language},
-		)
+		singleCompileSegment := ctx.Transaction.StartSegment(fmt.Sprintf("%s (%s)", b.name, b.language))
 		lang := b.language
 		if b.binaryType == binaryValidator && lang == "cpp" {
 			// Let's not make problemsetters be forced to use old languages.
@@ -898,7 +895,7 @@ func Grade(
 			b.target,
 			b.extraFlags,
 		)
-		ctx.EventCollector.Add(singleCompileEvent)
+		singleCompileSegment.End()
 		generatedFiles = append(
 			generatedFiles,
 			path.Join(b.name, "compile.out"),
@@ -932,15 +929,15 @@ func Grade(
 				getCompileError(path.Join(binRoot, compileErrorFile)),
 			)
 			runResult.CompileError = &compileError
-			ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventEnd))
+			compileSegment.End()
 			return runResult, err
 		}
 	}
-	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("compile", common.EventEnd))
+	compileSegment.End()
 
 	groupResults := make([]GroupResult, len(settings.Cases))
 	runResult.Verdict = "OK"
-	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("run", common.EventBegin))
+	runSegment := ctx.Transaction.StartSegment("run")
 	for i, group := range settings.Cases {
 		caseResults := make([]CaseResult, len(group.Cases))
 		for j, caseData := range group.Cases {
@@ -1036,7 +1033,7 @@ func Grade(
 				}
 				generatedFiles = append(generatedFiles, outName, errName, metaName)
 			} else {
-				singleRunEvent := ctx.EventFactory.NewCompleteEvent(caseData.Name)
+				singleRunSegment := ctx.Transaction.StartSegment("case " + caseData.Name)
 				metaChan := make(chan intermediateRunResult, regularBinaryCount)
 				for _, bin := range binaries {
 					if bin.binaryType == binaryValidator {
@@ -1057,7 +1054,7 @@ func Grade(
 						if bin.binaryType == binaryProblemsetter {
 							extraParams = append(extraParams, caseData.Name, run.Language)
 						}
-						singleBinary := ctx.EventFactory.NewCompleteEvent(
+						singleBinarySegment := ctx.Transaction.StartSegment(
 							fmt.Sprintf("%s - %s", caseData.Name, bin.name),
 						)
 						runMeta, err := sandbox.Run(
@@ -1112,7 +1109,7 @@ func Grade(
 								fmt.Sprintf("%s.meta", caseData.Name),
 							),
 						}
-						ctx.EventCollector.Add(singleBinary)
+						singleBinarySegment.End()
 						metaChan <- intermediateRunResult{
 							bin.name,
 							runMeta,
@@ -1159,7 +1156,7 @@ func Grade(
 					}
 				}
 				close(metaChan)
-				ctx.EventCollector.Add(singleRunEvent)
+				singleRunSegment.End()
 				chosenMetadata.Verdict = finalVerdict
 				chosenMetadata.Time = totalTime
 				chosenMetadata.WallTime = totalWallTime
@@ -1199,10 +1196,10 @@ func Grade(
 			),
 		}
 	}
-	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("run", common.EventEnd))
+	runSegment.End()
 
 	// Validate outputs.
-	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventBegin))
+	validateSegment := ctx.Transaction.StartSegment("validate")
 	for i, group := range settings.Cases {
 		correct := true
 		groupScore := &big.Rat{}
@@ -1380,7 +1377,7 @@ func Grade(
 			)
 		}
 	}
-	ctx.EventCollector.Add(ctx.EventFactory.NewEvent("validate", common.EventEnd))
+	validateSegment.End()
 
 	runResult.Groups = groupResults
 
@@ -1403,8 +1400,7 @@ func Grade(
 			"score":   runResult.Score,
 		},
 	)
-	uploadEvent := ctx.EventFactory.NewCompleteEvent("upload")
-	defer ctx.EventCollector.Add(uploadEvent)
+	defer ctx.Transaction.StartSegment("upload").End()
 	if err := uploadFiles(
 		ctx,
 		filesWriter,

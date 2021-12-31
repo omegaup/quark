@@ -16,6 +16,7 @@ import (
 	"time"
 
 	base "github.com/omegaup/go-base/v3"
+	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/runner"
 	"github.com/pkg/errors"
@@ -373,6 +374,7 @@ func (runCtx *RunContext) Close() {
 		runCtx.Log.Warn("Attempting to close an already closed run", nil)
 		return
 	}
+	defer runCtx.Context.Transaction.End()
 	runCtx.Log.Info(
 		"Marking run as done",
 		map[string]interface{}{
@@ -452,41 +454,6 @@ func (runCtx *RunContext) Close() {
 		if err != nil {
 			runCtx.Log.Error(
 				"Unable to create log file",
-				map[string]interface{}{
-					"err": err,
-				},
-			)
-			return
-		}
-	}
-
-	// Persist tracing info
-	{
-		var tracingBuffer bytes.Buffer
-		gz := gzip.NewWriter(&tracingBuffer)
-		if _, err := gz.Write(runCtx.TraceBuffer()); err != nil {
-			gz.Close()
-			runCtx.Log.Error(
-				"Unable to upload traces",
-				map[string]interface{}{
-					"err": err,
-				},
-			)
-			return
-		}
-		if err := gz.Close(); err != nil {
-			runCtx.Log.Error(
-				"Unable to finalize traces",
-				map[string]interface{}{
-					"err": err,
-				},
-			)
-			return
-		}
-		err := runCtx.RunInfo.Artifacts.Put(runCtx.Context, "tracing.json.gz", &tracingBuffer)
-		if err != nil {
-			runCtx.Log.Error(
-				"Unable to create tracing file",
 				map[string]interface{}{
 					"err": err,
 				},
@@ -599,6 +566,12 @@ func (queue *Queue) AddRun(
 		attemptsLeft: ctx.Config.Grader.MaxGradeRetries,
 		queueManager: queue.queueManager,
 	}
+	runCtx.Context.Transaction = runCtx.Context.Tracing.StartTransaction(
+		"run",
+		tracing.Arg{Name: "id", Value: runInfo.ID},
+		tracing.Arg{Name: "submission", Value: runInfo.SubmissionID},
+		tracing.Arg{Name: "guid", Value: runInfo.GUID},
+	)
 
 	runCtx.queueManager.AddEvent(&QueueEvent{
 		Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
@@ -641,6 +614,12 @@ func (queue *Queue) AddWaitableRun(
 			ready:   make(chan struct{}),
 		},
 	}
+	runCtx.Context.Transaction = runCtx.Context.Tracing.StartTransaction(
+		"run",
+		tracing.Arg{Name: "id", Value: runInfo.ID},
+		tracing.Arg{Name: "submission", Value: runInfo.SubmissionID},
+		tracing.Arg{Name: "guid", Value: runInfo.GUID},
+	)
 
 	runCtx.queueManager.AddEvent(&QueueEvent{
 		Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),

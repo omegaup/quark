@@ -8,8 +8,8 @@ import (
 
 func newTestingContext() *Context {
 	ctx, err := NewContextFromReader(bytes.NewBufferString(
-		"{\"Logging\": {\"File\": \"stderr\"}, \"Tracing\": {\"Enabled\": false}}",
-	), "common")
+		"{\"Logging\": {\"File\": \"stderr\"}}",
+	))
 	if err != nil {
 		panic(err)
 	}
@@ -31,11 +31,6 @@ func TestDebugContext(t *testing.T) {
 	}
 	if strings.Index(logStr, "Debug statement") == -1 {
 		t.Errorf("\"Debug statement\" not present in LogBuffer: %q", logStr)
-	}
-
-	traceStr := string(dbg.TraceBuffer())
-	if len(traceStr) == 0 {
-		t.Errorf("Tracing string empty")
 	}
 }
 

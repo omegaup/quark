@@ -2,8 +2,5 @@
   "Logging": {
     "File": "",
     "Level": "Debug"
-  },
-  "Tracing": {
-    "Enabled": false
   }
 }

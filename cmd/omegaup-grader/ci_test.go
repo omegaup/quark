@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner/ci"
 )
@@ -83,10 +82,9 @@ func TestCI(t *testing.T) {
 		t.Fatalf("Failed to fully initalize the ephemeral run manager: %s", err)
 	}
 	mux := http.NewServeMux()
-	tracing := tracing.NewNoOpProvider()
-	shutdowner := registerCIHandlers(ctx, mux, ephemeralRunManager, tracing)
+	shutdowner := registerCIHandlers(ctx, mux, ephemeralRunManager)
 	defer shutdowner.Shutdown(context.Background())
-	registerRunnerHandlers(ctx, mux, nil, true, tracing)
+	registerRunnerHandlers(ctx, mux, nil, true)
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
