@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"sync"
 	"time"
 
@@ -193,11 +192,9 @@ func processRun(
 	}
 
 	ctx := parentCtx.DebugContext(nil)
-	syncID, err := strconv.ParseUint(resp.Header.Get("Sync-ID"), 10, 64)
-	if err != nil {
-		return errors.Wrap(err, "failed to parse the Sync-ID header")
-	}
-	ctx.EventCollector.Add(ctx.EventFactory.NewReceiverClockSyncEvent(syncID))
+	ctx.Transaction = ctx.Tracing.StartTransaction("run")
+	defer ctx.Transaction.End()
+	// TODO: fill this out.
 
 	decoder := json.NewDecoder(resp.Body)
 	var run common.Run
@@ -319,30 +316,6 @@ func gradeAndUploadResults(
 		}
 	}
 
-	// Send uncompressed tracing data.
-	traceBuffer := ctx.TraceBuffer()
-	if traceBuffer != nil {
-		tracingWriter, err := multipartWriter.CreateFormFile("file", "tracing.json")
-		if err != nil {
-			ctx.Log.Error(
-				"Error creating tracing.json",
-				map[string]interface{}{
-					"err": err,
-				},
-			)
-			return err
-		}
-		if _, err = tracingWriter.Write(traceBuffer); err != nil {
-			ctx.Log.Error(
-				"Error sending tracing.json",
-				map[string]interface{}{
-					"err": err,
-				},
-			)
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -352,27 +325,15 @@ func gradeRun(
 	run *common.Run,
 	multipartWriter *multipart.Writer,
 ) (*runner.RunResult, error) {
-	ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
-		"grade",
-		common.EventBegin,
-		common.Arg{Name: "id", Value: run.AttemptID},
-		common.Arg{Name: "input", Value: run.InputHash},
-		common.Arg{Name: "language", Value: run.Language},
-	))
-	defer func() {
-		ctx.EventCollector.Add(ctx.EventFactory.NewEvent(
-			"grade",
-			common.EventEnd,
-		))
-	}()
+	defer ctx.Transaction.StartSegment("grade").End()
 
 	// Make sure no other I/O is being made while we grade this run.
-	ioLockEvent := ctx.EventFactory.NewCompleteEvent("I/O lock")
+	ioLockSegment := ctx.Transaction.StartSegment("I/O lock")
 	ioLock.Lock()
 	defer ioLock.Unlock()
-	ctx.EventCollector.Add(ioLockEvent)
+	ioLockSegment.End()
 
-	inputEvent := ctx.EventFactory.NewCompleteEvent("input")
+	inputSegment := ctx.Transaction.StartSegment("input")
 	baseURL, err := url.Parse(ctx.Config.Runner.GraderURL)
 	if err != nil {
 		panic(err)
@@ -385,7 +346,7 @@ func gradeRun(
 		return nil, err
 	}
 	defer inputRef.Release()
-	ctx.EventCollector.Add(inputEvent)
+	inputSegment.End()
 
 	// Send the header as soon as possible to avoid a timeout.
 	filesWriter, err := multipartWriter.CreateFormFile("file", "files.zip")

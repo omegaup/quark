@@ -17,10 +17,9 @@ import (
 
 func newTestInputManager(sizeLimit base.Byte) *InputManager {
 	config := DefaultConfig()
-	config.Tracing.Enabled = false
 	config.InputManager.CacheSize = sizeLimit
 
-	ctx, err := NewContext(&config, "common")
+	ctx, err := NewContext(&config)
 	if err != nil {
 		panic(err)
 	}

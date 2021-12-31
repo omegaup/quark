@@ -14,7 +14,6 @@ import (
 	git "github.com/libgit2/git2go/v33"
 
 	base "github.com/omegaup/go-base/v3"
-	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner/ci"
@@ -576,7 +575,6 @@ func registerCIHandlers(
 	ctx *grader.Context,
 	mux *http.ServeMux,
 	ephemeralRunManager *grader.EphemeralRunManager,
-	tracing tracing.Provider,
 ) shutdowner {
 	ciHandler := &ciHandler{
 		ephemeralRunManager: ephemeralRunManager,
@@ -586,7 +584,7 @@ func registerCIHandlers(
 		reportChan:          make(chan *reportWithPath, 128),
 		doneChan:            make(chan struct{}),
 	}
-	mux.Handle(tracing.WrapHandle("/ci/", ciHandler))
+	mux.Handle(ctx.Tracing.WrapHandle("/ci/", ciHandler))
 	go ciHandler.run()
 	return ciHandler
 }

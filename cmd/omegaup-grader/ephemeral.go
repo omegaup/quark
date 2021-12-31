@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	base "github.com/omegaup/go-base/v3"
-	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner"
@@ -405,11 +404,10 @@ func registerEphemeralHandlers(
 	ctx *grader.Context,
 	mux *http.ServeMux,
 	ephemeralRunManager *grader.EphemeralRunManager,
-	tracing tracing.Provider,
 ) {
 	ephemeralRunHandler := &ephemeralRunHandler{
 		ephemeralRunManager: ephemeralRunManager,
 		ctx:                 ctx,
 	}
-	mux.Handle(tracing.WrapHandle("/ephemeral/run/", ephemeralRunHandler))
+	mux.Handle(ctx.Tracing.WrapHandle("/ephemeral/run/", ephemeralRunHandler))
 }

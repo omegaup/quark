@@ -3,8 +3,6 @@ package runner
 import (
 	"bytes"
 	"fmt"
-	base "github.com/omegaup/go-base/v3"
-	"github.com/omegaup/quark/common"
 	"io/ioutil"
 	"math/big"
 	"os"
@@ -12,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	base "github.com/omegaup/go-base/v3"
+	"github.com/omegaup/quark/common"
 )
 
 type expectedResult struct {
@@ -144,10 +145,9 @@ func newRunnerContext(t *testing.T) (*common.Context, error) {
 	if testing.Verbose() {
 		config.Logging.Level = "debug"
 	}
-	config.Tracing.Enabled = false
 	config.InputManager.CacheSize = 1024
 	config.Runner.RuntimePath = dirname
-	ctx, err := common.NewContext(&config, "runner")
+	ctx, err := common.NewContext(&config)
 	if err != nil {
 		return nil, err
 	}

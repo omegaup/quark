@@ -35,9 +35,8 @@ func main() {
 		config.Logging.Level = "debug"
 	}
 	config.Runner.RuntimePath = *runtimePath
-	config.Tracing.Enabled = false
 
-	ctx, err := common.NewContext(&config, "benchmark")
+	ctx, err := common.NewContext(&config)
 	if err != nil {
 		panic(err)
 	}

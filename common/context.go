@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/omegaup/go-base/logging/log15"
 	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/go-base/v3/logging"
+	"github.com/omegaup/go-base/v3/tracing"
 )
 
 // BroadcasterConfig represents the configuration for the Broadcaster.
@@ -100,12 +100,6 @@ type DbConfig struct {
 	DataSourceName string
 }
 
-// TracingConfig represents the configuration for tracing.
-type TracingConfig struct {
-	Enabled bool
-	File    string
-}
-
 // LoggingConfig represents the configuration for logging.
 type LoggingConfig struct {
 	Level string
@@ -132,7 +126,6 @@ type Config struct {
 	Logging      LoggingConfig
 	NewRelic     NewRelicConfig
 	Metrics      MetricsConfig
-	Tracing      TracingConfig
 	Runner       RunnerConfig
 	TLS          TLSConfig
 }
@@ -216,10 +209,6 @@ var defaultConfig = Config{
 		CertFile: "/etc/omegaup/grader/certificate.pem",
 		KeyFile:  "/etc/omegaup/grader/key.pem",
 	},
-	Tracing: TracingConfig{
-		Enabled: true,
-		File:    "/var/log/omegaup/tracing.json",
-	},
 }
 
 func (config *Config) String() string {
@@ -232,14 +221,13 @@ func (config *Config) String() string {
 
 // A Context holds data associated with a single request.
 type Context struct {
-	Context         context.Context
-	Config          Config
-	Log             logging.Logger
-	EventCollector  EventCollector
-	EventFactory    *EventFactory
-	Metrics         base.Metrics
-	logBuffer       *bytes.Buffer
-	memoryCollector *MemoryEventCollector
+	Context     context.Context
+	Config      Config
+	Log         logging.Logger
+	Metrics     base.Metrics
+	Tracing     tracing.Provider
+	Transaction tracing.Transaction
+	logBuffer   *bytes.Buffer
 }
 
 // DefaultConfig returns a default Config.
@@ -261,14 +249,14 @@ func NewConfig(reader io.Reader) (*Config, error) {
 }
 
 // NewContext creates a new Context from the specified Config. This also
-// creates a Logger. The role is just an arbitrary string that will be used to
-// disambiguate process names in the tracing in case multiple roles run from
-// the same host (e.g. grader and runner in the development VM).
-func NewContext(config *Config, role string) (*Context, error) {
+// creates a Logger.
+func NewContext(config *Config) (*Context, error) {
 	var ctx = Context{
-		Context: context.Background(),
-		Config:  *config,
-		Metrics: &base.NoOpMetrics{},
+		Context:     context.Background(),
+		Config:      *config,
+		Metrics:     &base.NoOpMetrics{},
+		Tracing:     tracing.NewNoOpProvider(),
+		Transaction: tracing.NewNoOpTransaction(),
 	}
 
 	// Logging
@@ -278,49 +266,21 @@ func NewContext(config *Config, role string) (*Context, error) {
 		return nil, err
 	}
 
-	// Tracing
-	if ctx.Config.Tracing.Enabled {
-		tracingFile, err := base.NewRotatingFile(
-			ctx.Config.Tracing.File,
-			0644,
-			func(tracingFile *os.File, isEmpty bool) error {
-				_, err := tracingFile.Write([]byte("[\n"))
-				return err
-			},
-		)
-		if err != nil {
-			return nil, err
-		}
-		ctx.EventCollector = NewWriterEventCollector(tracingFile)
-	} else {
-		ctx.EventCollector = &NullEventCollector{}
-	}
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "main"
-	}
-	ctx.EventFactory = NewEventFactory(
-		fmt.Sprintf("%s (%s)", hostname, role),
-		"main",
-	)
-	ctx.EventFactory.Register(ctx.EventCollector)
-
 	return &ctx, nil
 }
 
 // NewContextFromReader creates a new Context from the specified reader. This
 // also creates a Logger.
-func NewContextFromReader(reader io.Reader, role string) (*Context, error) {
+func NewContextFromReader(reader io.Reader) (*Context, error) {
 	config, err := NewConfig(reader)
 	if err != nil {
 		return nil, err
 	}
-	return NewContext(config, role)
+	return NewContext(config)
 }
 
 // Close releases all resources owned by the context.
 func (ctx *Context) Close() {
-	ctx.EventCollector.Close()
 	if closer, ok := ctx.Log.(io.Closer); ok {
 		closer.Close()
 	}
@@ -346,16 +306,11 @@ func (ctx *Context) DebugContext(logCtx map[string]interface{}) *Context {
 			ctx.Log.New(logCtx),
 			logging.NewInMemoryLogfmtLogger(&buffer),
 		),
-		logBuffer:       &buffer,
-		memoryCollector: NewMemoryEventCollector(),
-		EventFactory:    ctx.EventFactory,
-		Metrics:         ctx.Metrics,
+		logBuffer:   &buffer,
+		Metrics:     ctx.Metrics,
+		Tracing:     ctx.Tracing,
+		Transaction: ctx.Transaction,
 	}
-	childContext.EventCollector = NewMultiEventCollector(
-		childContext.memoryCollector,
-		ctx.EventCollector,
-	)
-	childContext.EventFactory.Register(childContext.memoryCollector)
 	return childContext
 }
 
@@ -373,17 +328,4 @@ func (ctx *Context) LogBuffer() []byte {
 		return nil
 	}
 	return ctx.logBuffer.Bytes()
-}
-
-// TraceBuffer returns a JSON representation of the Trace Event stream for this
-// Context.
-func (ctx *Context) TraceBuffer() []byte {
-	if ctx.memoryCollector == nil {
-		return nil
-	}
-	data, err := json.Marshal(ctx.memoryCollector)
-	if err != nil {
-		return []byte(err.Error())
-	}
-	return data
 }

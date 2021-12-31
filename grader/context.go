@@ -48,7 +48,7 @@ func GetLibinteractiveVersion() (string, error) {
 // NewContext returns a new Context where the configuration is read in a JSON
 // format from the supplied io.Reader.
 func NewContext(reader io.Reader) (*Context, error) {
-	ctx, err := common.NewContextFromReader(reader, "grader")
+	ctx, err := common.NewContextFromReader(reader)
 	if err != nil {
 		return nil, err
 	}

@@ -26,7 +26,6 @@ import (
 	"golang.org/x/net/http2"
 
 	base "github.com/omegaup/go-base/v3"
-	"github.com/omegaup/go-base/v3/tracing"
 	"github.com/omegaup/quark/broadcaster"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner"
@@ -799,7 +798,6 @@ func registerFrontendHandlers(
 	newRuns chan struct{},
 	db *sql.DB,
 	artifacts *grader.ArtifactManager,
-	tracing tracing.Provider,
 ) {
 	runs, err := ctx.QueueManager.Get(grader.DefaultQueueName)
 	if err != nil {
@@ -847,7 +845,7 @@ func registerFrontendHandlers(
 
 	mux.Handle("/metrics", promhttp.Handler())
 
-	mux.Handle(tracing.WrapHandle("/grader/status/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/grader/status/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		runData := ctx.InflightMonitor.GetRunData()
@@ -880,7 +878,7 @@ func registerFrontendHandlers(
 		}
 	})))
 
-	mux.Handle(tracing.WrapHandle("/run/new/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/run/new/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		if r.Method != "POST" {
 			ctx.Log.Error(
@@ -978,7 +976,7 @@ func registerFrontendHandlers(
 		w.WriteHeader(http.StatusOK)
 	})))
 
-	mux.Handle(tracing.WrapHandle("/run/grade/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/run/grade/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
@@ -1012,7 +1010,7 @@ func registerFrontendHandlers(
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})))
 
-	mux.Handle(tracing.WrapHandle("/submission/source/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/submission/source/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		if r.Method != "GET" {
 			ctx.Log.Error(
@@ -1080,7 +1078,7 @@ func registerFrontendHandlers(
 		w.Write(sourceBytes)
 	})))
 
-	mux.Handle(tracing.WrapHandle("/run/resource/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/run/resource/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
@@ -1180,7 +1178,7 @@ func registerFrontendHandlers(
 		io.Copy(w, f)
 	})))
 
-	mux.Handle(tracing.WrapHandle("/broadcast/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/broadcast/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
@@ -1214,7 +1212,7 @@ func registerFrontendHandlers(
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 	})))
 
-	mux.Handle(tracing.WrapHandle("/reload-config/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(ctx.Tracing.WrapHandle("/reload-config/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx = ctx.Wrap(r.Context())
 		ctx.Log.Info("/reload-config/", nil)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")

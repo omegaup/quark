@@ -79,13 +79,12 @@ func loadContext() error {
 	defer f.Close()
 	config, err := common.NewConfig(f)
 	if isOneShotMode() {
-		config.Tracing.Enabled = false
 		if *verbose {
 			config.Logging.Level = "debug"
 		}
 	}
 
-	ctx, err := common.NewContext(config, "runner")
+	ctx, err := common.NewContext(config)
 	if err != nil {
 		return err
 	}
