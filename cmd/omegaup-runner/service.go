@@ -257,7 +257,9 @@ func gradeAndUploadResults(
 		close(finished)
 	}()
 
-	result, err := gradeRun(ctx, client, run, multipartWriter)
+	filesWriter := newFilesZipWriter(multipartWriter)
+	result, err := gradeRun(ctx, client, run, filesWriter)
+	filesWriter.Close()
 	if err != nil {
 		// Still try to send the details
 		ctx.Log.Error(
@@ -321,11 +323,75 @@ func gradeAndUploadResults(
 	return nil
 }
 
+// filesZipWriter is an io.WriteCloser backed by a multipart.Writer that
+// creates files called `.keepalive` every 15 seconds until the first real
+// write is made. This allows the connection to avoid timing out due to nothing
+// being sent for 60s.
+type filesZipWriter struct {
+	multipartWriter *multipart.Writer
+	writeReadyChan  chan<- struct{}
+	tickerDoneChan  <-chan struct{}
+	once            sync.Once
+
+	w    io.Writer
+	wErr error
+}
+
+var _ io.WriteCloser = (*filesZipWriter)(nil)
+
+func newFilesZipWriter(multipartWriter *multipart.Writer) *filesZipWriter {
+	writeReadyChan := make(chan struct{})
+	tickerDoneChan := make(chan struct{})
+	go func() {
+		tick := time.NewTicker(15 * time.Second)
+		for {
+			select {
+			case <-tick.C:
+				multipartWriter.CreateFormFile("file", ".keepalive")
+			case <-writeReadyChan:
+				tick.Stop()
+				close(tickerDoneChan)
+				return
+			}
+		}
+	}()
+	return &filesZipWriter{
+		multipartWriter: multipartWriter,
+		writeReadyChan:  writeReadyChan,
+		tickerDoneChan:  tickerDoneChan,
+	}
+}
+
+// ready marks the writer as ready to start writing to the files.zip file. This
+// will wait for any outstanding write to a `.keepalive` file, and stop trying
+// to create such files.
+func (w *filesZipWriter) ready() {
+	w.once.Do(func() {
+		close(w.writeReadyChan)
+		<-w.tickerDoneChan
+
+		w.w, w.wErr = w.multipartWriter.CreateFormFile("file", "files.zip")
+	})
+}
+
+func (w *filesZipWriter) Write(b []byte) (int, error) {
+	w.ready()
+	if w.wErr != nil {
+		return 0, w.wErr
+	}
+	return w.w.Write(b)
+}
+
+func (w *filesZipWriter) Close() error {
+	w.ready()
+	return w.wErr
+}
+
 func gradeRun(
 	ctx *common.Context,
 	client *http.Client,
 	run *common.Run,
-	multipartWriter *multipart.Writer,
+	filesWriter io.Writer,
 ) (*runner.RunResult, error) {
 	defer ctx.Transaction.StartSegment("grade").End()
 
@@ -349,12 +415,6 @@ func gradeRun(
 	}
 	defer inputRef.Release()
 	inputSegment.End()
-
-	// Send the header as soon as possible to avoid a timeout.
-	filesWriter, err := multipartWriter.CreateFormFile("file", "files.zip")
-	if err != nil {
-		return nil, err
-	}
 
 	return runner.Grade(ctx, filesWriter, run, inputRef.Input, sandbox)
 }

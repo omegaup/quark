@@ -65,7 +65,9 @@ func processRun(
 			},
 		)
 
-		if part.FileName() == "details.json" {
+		if part.FileName() == ".keepalive" {
+			// Do nothing, this is only here to keep the connection alive.
+		} else if part.FileName() == "details.json" {
 			var result runner.RunResult
 			decoder := json.NewDecoder(part)
 			decoder.UseNumber()
