@@ -415,7 +415,6 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 		)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(testsJSONContents))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&config.TestsSettings); err != nil {
 		return nil, errors.Wrapf(
 			err,
