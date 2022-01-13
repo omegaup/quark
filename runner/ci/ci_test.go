@@ -880,6 +880,39 @@ func TestNewRunConfig(t *testing.T) {
 			"",
 		},
 		{
+			"custom validator",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"settings.json": `{
+						"validator": {
+							"name": "custom",
+							"lang": "py"
+						}
+					}`,
+					"tests/tests.json": `{
+					}`,
+					"validator.py": "print(1)",
+				},
+				":memory:",
+			),
+			false,
+			&RunConfig{
+				TestsSettings: common.TestsSettings{},
+				Input: &common.LiteralInput{
+					Cases:  map[string]*common.LiteralCaseSettings{},
+					Limits: &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{
+						Name: "custom",
+						CustomValidator: &common.LiteralCustomValidatorSettings{
+							Source:   "print(1)",
+							Language: "py",
+						},
+					},
+				},
+			},
+			"",
+		},
+		{
 			"group score policy",
 			common.NewProblemFilesFromMap(
 				map[string]string{
