@@ -532,8 +532,9 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 
 	// Validator
 	config.Input.Validator = &common.LiteralValidatorSettings{
-		Name:      problemSettings.Validator.Name,
-		Tolerance: problemSettings.Validator.Tolerance,
+		Name:             problemSettings.Validator.Name,
+		Tolerance:        problemSettings.Validator.Tolerance,
+		GroupScorePolicy: problemSettings.Validator.GroupScorePolicy,
 	}
 	if problemSettings.Validator.Name == common.ValidatorNameCustom {
 		if problemSettings.Validator.Lang == nil {

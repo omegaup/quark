@@ -880,6 +880,66 @@ func TestNewRunConfig(t *testing.T) {
 			"",
 		},
 		{
+			"custom validator",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"settings.json": `{
+						"validator": {
+							"name": "custom",
+							"lang": "py"
+						}
+					}`,
+					"tests/tests.json": `{
+					}`,
+					"validator.py": "print(1)",
+				},
+				":memory:",
+			),
+			false,
+			&RunConfig{
+				TestsSettings: common.TestsSettings{},
+				Input: &common.LiteralInput{
+					Cases:  map[string]*common.LiteralCaseSettings{},
+					Limits: &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{
+						Name: "custom",
+						CustomValidator: &common.LiteralCustomValidatorSettings{
+							Source:   "print(1)",
+							Language: "py",
+						},
+					},
+				},
+			},
+			"",
+		},
+		{
+			"group score policy",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"settings.json": `{
+						"validator": {
+							"GroupScorePolicy": "min"
+						}
+					}`,
+					"tests/tests.json": `{
+					}`,
+				},
+				":memory:",
+			),
+			false,
+			&RunConfig{
+				TestsSettings: common.TestsSettings{},
+				Input: &common.LiteralInput{
+					Cases:  map[string]*common.LiteralCaseSettings{},
+					Limits: &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{
+						GroupScorePolicy: common.GroupScorePolicyMin,
+					},
+				},
+			},
+			"",
+		},
+		{
 			"expected max score",
 			common.NewProblemFilesFromMap(
 				map[string]string{
@@ -889,7 +949,7 @@ func TestNewRunConfig(t *testing.T) {
 					"cases/1.out": "3",
 					"testplan":    "0 50\n1 50\n",
 					"tests/tests.json": `{
-						"maxScore": 100
+						"max_score": 100
 					}`,
 					"settings.json": "{}",
 				},
@@ -929,7 +989,7 @@ func TestNewRunConfig(t *testing.T) {
 					"cases/1.out": "3",
 					"testplan":    "0 50\n1 49\n",
 					"tests/tests.json": `{
-						"maxScore": 100
+						"max_score": 100
 					}`,
 					"settings.json": "{}",
 				},
