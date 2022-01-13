@@ -271,7 +271,7 @@ type InputsValidatorSettings struct {
 type TestsSettings struct {
 	Solutions        []SolutionSettings       `json:"solutions"`
 	InputsValidator  *InputsValidatorSettings `json:"inputs,omitempty"`
-	ExpectedMaxScore *base.Rat                `json:"maxScore,omitempty"`
+	ExpectedMaxScore *base.Rat                `json:"max_score,omitempty"`
 }
 
 var (
