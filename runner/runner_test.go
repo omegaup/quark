@@ -1529,6 +1529,132 @@ func TestLibinteractive(t *testing.T) {
 	}
 }
 
+func TestGradeWithCustomValidatorExpectedOutput(t *testing.T) {
+	wrapper := &omegajailSandboxWrapper{omegajail: getSandbox()}
+
+	if testing.Short() && wrapper.name() == "OmegajailSandbox" {
+		t.Skip("skipping test in short mode.")
+	}
+
+	if !wrapper.supported() {
+		t.Skip(fmt.Sprintf("%s not supported", wrapper.name()))
+	}
+
+	for _, vv := range []struct {
+		ValidatorName   string
+		ValidatorSource string
+		ExpectedVerdict string
+	}{
+		{
+			"expected AC",
+			"import sys;print(1);print('should be ignored',file=sys.stderr)",
+			"AC",
+		},
+		{
+			"expected WA",
+			"import sys;print(0);print('expected',file=sys.stderr)",
+			"WA",
+		},
+		{
+			"unexpected WA",
+			"import sys;print(0);print('something else',file=sys.stderr)",
+			"JE",
+		},
+	} {
+		validatorName := vv.ValidatorName
+		validatorSource := vv.ValidatorSource
+		expectedVerdict := vv.ExpectedVerdict
+
+		t.Run(validatorName, func(t *testing.T) {
+
+			ctx, err := newRunnerContext(t)
+			if err != nil {
+				t.Fatalf("RunnerContext creation failed with %q", err)
+			}
+			defer ctx.Close()
+			if !ctx.Config.Runner.PreserveFiles {
+				defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+			}
+
+			inputManager := common.NewInputManager(ctx)
+			AplusB, err := common.NewLiteralInputFactory(
+				&common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0":   {Input: "1 2", ExpectedOutput: "3", ExpectedValidatorStderr: "expected", Weight: big.NewRat(1, 1)},
+						"1.0": {Input: "1 2", ExpectedOutput: "3", ExpectedValidatorStderr: "expected", Weight: big.NewRat(1, 1)},
+						"1.1": {Input: "2 3", ExpectedOutput: "5", ExpectedValidatorStderr: "expected", Weight: big.NewRat(2, 1)},
+					},
+					Limits: &common.DefaultLimits,
+					Validator: &common.LiteralValidatorSettings{
+						Name: common.ValidatorNameCustom,
+						CustomValidator: &common.LiteralCustomValidatorSettings{
+							Language: "py3",
+							Limits:   &common.DefaultValidatorLimits,
+							Source:   validatorSource,
+						},
+					},
+				},
+				ctx.Config.Runner.RuntimePath,
+				common.LiteralPersistRunner,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create Input: %q", err)
+			}
+			inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
+			if err != nil {
+				t.Fatalf("Failed to open problem: %q", err)
+			}
+			defer inputRef.Release()
+
+			rte := runnerTestCase{
+				"py2",
+				"print sum(map(int, raw_input().strip().split()))",
+				big.NewRat(1, 1),
+				expectedVerdict,
+				big.NewRat(1, 1),
+				expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+				map[string]expectedResult{
+					"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
+					"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
+					"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				},
+			}
+			results, err := Grade(
+				ctx,
+				&bytes.Buffer{},
+				&common.Run{
+					AttemptID: 0,
+					Language:  rte.language,
+					InputHash: inputRef.Input.Hash(),
+					Source:    rte.source,
+					MaxScore:  rte.maxScore,
+				},
+				inputRef.Input,
+				wrapper.sandbox(&rte),
+			)
+			if err != nil {
+				t.Fatalf("Failed to run %v: %q", rte, err)
+			}
+			if results.Verdict != rte.expectedVerdict {
+				t.Errorf(
+					"results.Verdict = %q, expected %q, test %v: %v",
+					results.Verdict,
+					rte.expectedVerdict,
+					0,
+					rte,
+				)
+			}
+			if results.Score.Cmp(rte.expectedScore) != 0 {
+				t.Errorf(
+					"results.Score = %s, expected %s",
+					results.Score.String(),
+					rte.expectedScore.String(),
+				)
+			}
+		})
+	}
+}
+
 func TestWorseVerdict(t *testing.T) {
 	verdictentries := []struct {
 		a, b, expected string
