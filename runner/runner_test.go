@@ -886,7 +886,7 @@ if __name__ == '__main__':
 					"print(3)",
 					big.NewRat(1, 1),
 					"PA",
-					big.NewRat(4, 5),
+					big.NewRat(7, 10),
 					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
 						"0": {
@@ -908,7 +908,7 @@ if __name__ == '__main__':
 					"print(2)",
 					big.NewRat(1, 1),
 					"PA",
-					big.NewRat(8, 15),
+					big.NewRat(7, 15),
 					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
 						"0": {
