@@ -523,8 +523,7 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 						caseSettings.Name,
 					)
 				} else if err == nil && !kindSettings.mustHaveAssociatedFailures {
-					return nil, errors.Wrapf(
-						err,
+					return nil, errors.Errorf(
 						"found unexpected associated failure file for %s %s",
 						files.String(),
 						caseSettings.Name,
