@@ -339,7 +339,7 @@ func NewLiteralInputFactory(
 		(*files)[fmt.Sprintf("cases/%s.in", name)] = []byte(c.Input)
 		(*files)[fmt.Sprintf("cases/%s.out", name)] = []byte(c.ExpectedOutput)
 		if c.ExpectedValidatorStderr != "" {
-			(*files)[fmt.Sprintf("cases/%s.expected-failure", name)] = []byte(c.ExpectedOutput)
+			(*files)[fmt.Sprintf("cases/%s.expected-failure", name)] = []byte(c.ExpectedValidatorStderr)
 		}
 	}
 	settings.Cases = make([]GroupSettings, 0)
