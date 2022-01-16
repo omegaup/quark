@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	base "github.com/omegaup/go-base/v3"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -21,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	base "github.com/omegaup/go-base/v3"
 )
 
 // LiteralPersistMode indicates whether the LiteralInputFactory should persist
@@ -43,9 +44,10 @@ const (
 // LiteralCaseSettings stores the input, expected output, and the weight of a
 // particular test case.
 type LiteralCaseSettings struct {
-	Input          string   `json:"in"`
-	ExpectedOutput string   `json:"out"`
-	Weight         *big.Rat `json:"weight"`
+	Input                   string   `json:"in"`
+	ExpectedOutput          string   `json:"out"`
+	ExpectedValidatorStderr string   `json:"validator_stderr,omitempty"`
+	Weight                  *big.Rat `json:"weight"`
 }
 
 var _ fmt.Stringer = &LiteralCaseSettings{}
@@ -63,13 +65,15 @@ func (c *LiteralCaseSettings) String() string {
 // MarshalJSON implements the json.Marshaler interface.
 func (c *LiteralCaseSettings) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Input          string  `json:"in"`
-		ExpectedOutput string  `json:"out"`
-		Weight         float64 `json:"weight"`
+		Input                   string  `json:"in"`
+		ExpectedOutput          string  `json:"out"`
+		ExpectedValidatorStderr string  `json:"validator_stderr,omitempty"`
+		Weight                  float64 `json:"weight"`
 	}{
-		Input:          c.Input,
-		ExpectedOutput: c.ExpectedOutput,
-		Weight:         base.RationalToFloat(c.Weight),
+		Input:                   c.Input,
+		ExpectedOutput:          c.ExpectedOutput,
+		ExpectedValidatorStderr: c.ExpectedValidatorStderr,
+		Weight:                  base.RationalToFloat(c.Weight),
 	})
 }
 
@@ -80,9 +84,10 @@ func (c *LiteralCaseSettings) UnmarshalJSON(data []byte) error {
 	}
 
 	settings := struct {
-		Input          string   `json:"in"`
-		ExpectedOutput string   `json:"out"`
-		Weight         *float64 `json:"weight"`
+		Input                   string   `json:"in"`
+		ExpectedOutput          string   `json:"out"`
+		ExpectedValidatorStderr string   `json:"validator_stderr,omitempty"`
+		Weight                  *float64 `json:"weight"`
 	}{}
 
 	if err := json.Unmarshal(data, &settings); err != nil {
@@ -91,6 +96,7 @@ func (c *LiteralCaseSettings) UnmarshalJSON(data []byte) error {
 
 	c.Input = settings.Input
 	c.ExpectedOutput = settings.ExpectedOutput
+	c.ExpectedValidatorStderr = settings.ExpectedValidatorStderr
 	if settings.Weight == nil {
 		c.Weight = big.NewRat(1, 1)
 	} else {
@@ -332,6 +338,9 @@ func NewLiteralInputFactory(
 		groups[tokens[0]] = append(groups[tokens[0]], cs)
 		(*files)[fmt.Sprintf("cases/%s.in", name)] = []byte(c.Input)
 		(*files)[fmt.Sprintf("cases/%s.out", name)] = []byte(c.ExpectedOutput)
+		if c.ExpectedValidatorStderr != "" {
+			(*files)[fmt.Sprintf("cases/%s.expected-failure", name)] = []byte(c.ExpectedOutput)
+		}
 	}
 	settings.Cases = make([]GroupSettings, 0)
 	for name, g := range groups {

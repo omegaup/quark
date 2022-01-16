@@ -459,13 +459,14 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 
 	// Read the cases into config.Input.Cases, as well as test-only invalid cases
 	for _, kindSettings := range []struct {
-		containingDirectory string
-		caseSettings        []common.GroupSettings
-		caseDataDest        map[string]*common.LiteralCaseSettings
-		generateOutputFiles bool
+		containingDirectory        string
+		caseSettings               []common.GroupSettings
+		caseDataDest               map[string]*common.LiteralCaseSettings
+		generateOutputFiles        bool
+		mustHaveAssociatedFailures bool
 	}{
-		{"cases", problemSettings.Cases, config.Input.Cases, generateOutputFiles},
-		{"tests/invalid-cases", getInvalidCaseSettingsForValidation(files), invalidInputCases, false},
+		{"cases", problemSettings.Cases, config.Input.Cases, generateOutputFiles, false},
+		{"tests/invalid-cases", getInvalidCaseSettingsForValidation(files), invalidInputCases, false, true},
 	} {
 		for _, groupSettings := range kindSettings.caseSettings {
 			for _, caseSettings := range groupSettings.Cases {
@@ -508,6 +509,26 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 							caseSettings.Name,
 						)
 					}
+				}
+
+				literalCaseSettings.ExpectedValidatorStderr, err = files.GetStringContents(
+					fmt.Sprintf("%s/%s.expected-failure", kindSettings.containingDirectory, caseSettings.Name),
+				)
+
+				if err != nil && kindSettings.mustHaveAssociatedFailures {
+					return nil, errors.Wrapf(
+						err,
+						"couldn't find associated failure message for %s %s",
+						files.String(),
+						caseSettings.Name,
+					)
+				} else if err == nil && !kindSettings.mustHaveAssociatedFailures {
+					return nil, errors.Wrapf(
+						err,
+						"found unexpected associated failure file for %s %s",
+						files.String(),
+						caseSettings.Name,
+					)
 				}
 
 				kindSettings.caseDataDest[caseSettings.Name] = literalCaseSettings

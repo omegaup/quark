@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"math"
 	"math/big"
@@ -1281,6 +1282,46 @@ func Grade(
 							"validator",
 							fmt.Sprintf("%s.out", caseData.Name),
 						)
+					}
+					// Check if we have an expected stderr message from the validator;
+					// fail the case with JE if there's a mismatch.
+					expectedStderrPath := path.Join(
+						input.Path(), "cases", fmt.Sprintf("%s.expected-failure", caseData.Name),
+					)
+					expectedStderr, err := ioutil.ReadFile(expectedStderrPath)
+					if err != nil && !errors.Is(err, fs.ErrNotExist) {
+						ctx.Log.Warn(
+							"Error opening expected file",
+							map[string]interface{}{
+								"path": expectedStderrPath,
+								"err":  err,
+							},
+						)
+						continue
+					}
+					if err != nil {
+						validatorStderrPath := path.Join(runRoot, "validator", fmt.Sprintf("%s.err", caseData.Name))
+						validatorStderr, err := ioutil.ReadFile(validatorStderrPath)
+						if err != nil {
+							ctx.Log.Warn(
+								"Error opening expected file",
+								map[string]interface{}{
+									"path": expectedStderrPath,
+									"err":  err,
+								},
+							)
+							continue
+						}
+						if !strings.Contains(string(validatorStderr), string(expectedStderr)) {
+							ctx.Log.Warn(
+								"Validator stderr did not contain expected string",
+								map[string]interface{}{
+									"case name": caseData.Name,
+									"meta":      validateMeta,
+								},
+							)
+							continue
+						}
 					}
 				}
 				contestantFd, err := os.Open(contestantPath)
