@@ -430,10 +430,11 @@ func TestNewRunConfig(t *testing.T) {
 							"filename": "validator.py"
 						}
 					}`,
-					"tests/validator.py":        "print(3)",
-					"tests/invalid-cases/0.in":  "input",
-					"tests/invalid-cases/0.out": "output",
-					"settings.json":             "{}",
+					"tests/validator.py":                     "print(3)",
+					"tests/invalid-cases/0.in":               "input",
+					"tests/invalid-cases/0.out":              "output",
+					"tests/invalid-cases/0.expected-failure": "stderr",
+					"settings.json":                          "{}",
 				},
 				":memory:",
 			),
@@ -479,7 +480,12 @@ func TestNewRunConfig(t *testing.T) {
 						},
 						Input: &common.LiteralInput{
 							Cases: map[string]*common.LiteralCaseSettings{
-								"0": {Input: "input", ExpectedOutput: "output", Weight: big.NewRat(1, 1)},
+								"0": {
+									Input:                   "input",
+									ExpectedOutput:          "output",
+									ExpectedValidatorStderr: "stderr",
+									Weight:                  big.NewRat(1, 1),
+								},
 							},
 							Validator: &common.LiteralValidatorSettings{
 								Name: common.ValidatorNameCustom,
