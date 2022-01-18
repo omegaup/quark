@@ -1643,14 +1643,14 @@ func TestGradeWithCustomValidatorExpectedOutput(t *testing.T) {
 					"unexpected WA",
 					"import sys;print(0);print('something else',file=sys.stderr)",
 					programOutput{"0", "something else", &RunMetadata{Verdict: "OK"}},
-					"JE",
+					"VE",
 					big.NewRat(0, 1),
 				},
 				{
 					"unexpected PA",
 					"import sys;print(0);print('something else',file=sys.stderr)",
 					programOutput{"0.5", "something else", &RunMetadata{Verdict: "OK"}},
-					"JE",
+					"VE",
 					big.NewRat(0, 1),
 				},
 			} {

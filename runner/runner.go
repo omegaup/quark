@@ -1330,24 +1330,29 @@ func Grade(
 						},
 					)
 				}
-				// Check if we have an expected stderr message from the validator;
-				// fail the case with JE if there's a mismatch.
+				// If the case didn't get a full score, check if we have an expected stderr
+				// message from the validator. Fail the case with VE if there's a mismatch.
 				if runScore.Cmp(big.NewRat(1, 1)) != 0 {
-					expectedStderrPath := path.Join(
-						input.Path(), "cases", fmt.Sprintf("%s.expected-failure", caseData.Name),
-					)
-					expectedStderr, err := ioutil.ReadFile(expectedStderrPath)
-					if err != nil && !errors.Is(err, fs.ErrNotExist) {
-						ctx.Log.Warn(
-							"Error opening expected file",
-							map[string]interface{}{
-								"path": expectedStderrPath,
-								"err":  err,
-							},
+					// Make this block a function to make it easier to bail on errors
+					err := func() error {
+						expectedStderrPath := path.Join(
+							input.Path(), "cases", fmt.Sprintf("%s.expected-failure", caseData.Name),
 						)
-						continue
-					}
-					if err == nil {
+						expectedStderr, err := ioutil.ReadFile(expectedStderrPath)
+						if errors.Is(err, fs.ErrNotExist) {
+							// Nothing to do here
+							return nil
+						}
+						if err != nil {
+							ctx.Log.Warn(
+								"Error opening expected file",
+								map[string]interface{}{
+									"path": expectedStderrPath,
+									"err":  err,
+								},
+							)
+							return err
+						}
 						validatorStderrPath := path.Join(runRoot, "validator", fmt.Sprintf("%s.err", caseData.Name))
 						validatorStderr, err := ioutil.ReadFile(validatorStderrPath)
 						if err != nil {
@@ -1358,7 +1363,7 @@ func Grade(
 									"err":  err,
 								},
 							)
-							continue
+							return err
 						}
 						if !strings.Contains(string(validatorStderr), string(expectedStderr)) {
 							ctx.Log.Warn(
@@ -1367,9 +1372,16 @@ func Grade(
 									"case name": caseData.Name,
 								},
 							)
-							runResult.Verdict = worseVerdict(runResult.Verdict, "JE")
+							caseResults.Verdict = "VE"
+							runResult.Verdict = worseVerdict(runResult.Verdict, "VE")
+							correct = false
 							runScore = big.NewRat(0, 1)
 						}
+						return nil
+					}()
+
+					if err != nil {
+						continue
 					}
 				}
 				caseResults.Score.Add(caseResults.Score, runScore)
@@ -1394,7 +1406,7 @@ func Grade(
 				)
 				if runScore.Cmp(big.NewRat(1, 1)) == 0 {
 					caseResults.Verdict = "AC"
-				} else {
+				} else if caseResults.Verdict != "VE" {
 					runResult.Verdict = worseVerdict(runResult.Verdict, "PA")
 					if runScore.Cmp(&big.Rat{}) == 0 {
 						correct = false

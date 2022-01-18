@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"io/ioutil"
 	"math/big"
 	"os"
@@ -65,6 +66,15 @@ func TestLiteralInputWithExpectedStderr(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("Failed to create Input: %q", err)
+	}
+	for _, caseName := range []string{"0", "1"} {
+		value, ok := (*AplusB.input.files)[fmt.Sprintf("cases/%s.expected-failure", caseName)]
+		if !ok {
+			t.Fatalf("Missing .expected-failure file for case: %s", caseName)
+		}
+		if string(value) != "err" {
+			t.Fatalf("Unexpected contents in .expected-failure file for case: %s", caseName)
+		}
 	}
 	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
 	if err != nil {
