@@ -1675,9 +1675,9 @@ func TestGradeWithCustomValidatorExpectedOutput(t *testing.T) {
 					AplusB, err := common.NewLiteralInputFactory(
 						&common.LiteralInput{
 							Cases: map[string]*common.LiteralCaseSettings{
-								"0":   {Input: "1 2", ExpectedOutput: "3", ExpectedValidatorStderr: "expected", Weight: big.NewRat(1, 1)},
-								"1.0": {Input: "1 2", ExpectedOutput: "3", ExpectedValidatorStderr: "expected", Weight: big.NewRat(1, 1)},
-								"1.1": {Input: "2 3", ExpectedOutput: "5", ExpectedValidatorStderr: "expected", Weight: big.NewRat(2, 1)},
+								"0":   {Input: "1 2", ExpectedOutput: "3", ExpectedValidatorStderr: "expected\n", Weight: big.NewRat(1, 1)},
+								"1.0": {Input: "1 2", ExpectedOutput: "3", ExpectedValidatorStderr: "expected\n", Weight: big.NewRat(1, 1)},
+								"1.1": {Input: "2 3", ExpectedOutput: "5", ExpectedValidatorStderr: "expected\n", Weight: big.NewRat(2, 1)},
 							},
 							Limits: &common.DefaultLimits,
 							Validator: &common.LiteralValidatorSettings{

@@ -1365,7 +1365,8 @@ func Grade(
 							)
 							return err
 						}
-						if !strings.Contains(string(validatorStderr), string(expectedStderr)) {
+						expectedString := strings.TrimSpace(string(expectedStderr))
+						if !strings.Contains(string(validatorStderr), expectedString) {
 							ctx.Log.Warn(
 								"Validator stderr did not contain expected string",
 								map[string]interface{}{
