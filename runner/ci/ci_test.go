@@ -430,10 +430,11 @@ func TestNewRunConfig(t *testing.T) {
 							"filename": "validator.py"
 						}
 					}`,
-					"tests/validator.py":        "print(3)",
-					"tests/invalid-cases/0.in":  "input",
-					"tests/invalid-cases/0.out": "output",
-					"settings.json":             "{}",
+					"tests/validator.py":                     "print(3)",
+					"tests/invalid-cases/0.in":               "input",
+					"tests/invalid-cases/0.out":              "output",
+					"tests/invalid-cases/0.expected-failure": "stderr",
+					"settings.json":                          "{}",
 				},
 				":memory:",
 			),
@@ -479,7 +480,12 @@ func TestNewRunConfig(t *testing.T) {
 						},
 						Input: &common.LiteralInput{
 							Cases: map[string]*common.LiteralCaseSettings{
-								"0": {Input: "input", ExpectedOutput: "output", Weight: big.NewRat(1, 1)},
+								"0": {
+									Input:                   "input",
+									ExpectedOutput:          "output",
+									ExpectedValidatorStderr: "stderr",
+									Weight:                  big.NewRat(1, 1),
+								},
 							},
 							Validator: &common.LiteralValidatorSettings{
 								Name: common.ValidatorNameCustom,
@@ -508,15 +514,36 @@ func TestNewRunConfig(t *testing.T) {
 							"filename": "validator.py"
 						}
 					}`,
-					"tests/validator.py":       "print(3)",
-					"tests/invalid-cases/0.in": "input",
-					"settings.json":            "{}",
+					"tests/validator.py":                     "print(3)",
+					"tests/invalid-cases/0.in":               "input",
+					"tests/invalid-cases/0.expected-failure": "stderr",
+					"settings.json":                          "{}",
 				},
 				":memory:",
 			),
 			false,
 			nil,
 			"open \"tests/invalid-cases/0.out\"",
+		},
+		{
+			"input validator with invalid cases, missing expected stderr",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"tests/tests.json": `{
+						"inputs": {
+							"filename": "validator.py"
+						}
+					}`,
+					"tests/validator.py":        "print(3)",
+					"tests/invalid-cases/0.in":  "input",
+					"tests/invalid-cases/0.out": "output",
+					"settings.json":             "{}",
+				},
+				":memory:",
+			),
+			false,
+			nil,
+			"open \"tests/invalid-cases/0.expected-failure\" in \":memory:\": file does not exist",
 		},
 		{
 			"output generator, multiple files",
@@ -739,6 +766,29 @@ func TestNewRunConfig(t *testing.T) {
 			false,
 			nil,
 			"open \"cases/0.out\"",
+		},
+		{
+			"implicit cases, unexpected failure string",
+			common.NewProblemFilesFromMap(
+				map[string]string{
+					"cases/0.in":               "1 2",
+					"cases/0.out":              "3",
+					"cases/0.expected-failure": "stderr",
+					"tests/tests.json": `{
+						"solutions": [
+							{
+								"filename": "ac.py"
+							}
+						]
+					}`,
+					"tests/ac.py":   "print(3)",
+					"settings.json": "{}",
+				},
+				":memory:",
+			),
+			false,
+			nil,
+			"found unexpected associated failure file for :memory: 0",
 		},
 		{
 			"implicit cases",

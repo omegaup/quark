@@ -2,9 +2,10 @@ package runner
 
 import (
 	"bytes"
-	"github.com/omegaup/quark/common"
 	"os"
 	"testing"
+
+	"github.com/omegaup/quark/common"
 )
 
 func getSandbox() *OmegajailSandbox {

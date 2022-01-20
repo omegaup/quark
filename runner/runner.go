@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"math"
 	"math/big"
@@ -1329,6 +1330,60 @@ func Grade(
 						},
 					)
 				}
+				// If the case didn't get a full score, check if we have an expected stderr
+				// message from the validator. Fail the case with VE if there's a mismatch.
+				if runScore.Cmp(big.NewRat(1, 1)) != 0 {
+					// Make this block a function to make it easier to bail on errors
+					err := func() error {
+						expectedStderrPath := path.Join(
+							input.Path(), "cases", fmt.Sprintf("%s.expected-failure", caseData.Name),
+						)
+						expectedStderr, err := ioutil.ReadFile(expectedStderrPath)
+						if errors.Is(err, fs.ErrNotExist) {
+							// Nothing to do here
+							return nil
+						}
+						if err != nil {
+							ctx.Log.Warn(
+								"Error opening expected file",
+								map[string]interface{}{
+									"path": expectedStderrPath,
+									"err":  err,
+								},
+							)
+							return err
+						}
+						validatorStderrPath := path.Join(runRoot, "validator", fmt.Sprintf("%s.err", caseData.Name))
+						validatorStderr, err := ioutil.ReadFile(validatorStderrPath)
+						if err != nil {
+							ctx.Log.Warn(
+								"Error opening expected file",
+								map[string]interface{}{
+									"path": expectedStderrPath,
+									"err":  err,
+								},
+							)
+							return err
+						}
+						if !strings.Contains(string(validatorStderr), string(expectedStderr)) {
+							ctx.Log.Warn(
+								"Validator stderr did not contain expected string",
+								map[string]interface{}{
+									"case name": caseData.Name,
+								},
+							)
+							caseResults.Verdict = "VE"
+							runResult.Verdict = worseVerdict(runResult.Verdict, "VE")
+							correct = false
+							runScore = big.NewRat(0, 1)
+						}
+						return nil
+					}()
+
+					if err != nil {
+						continue
+					}
+				}
 				caseResults.Score.Add(caseResults.Score, runScore)
 				caseWeight := new(big.Rat).Mul(caseData.Weight, totalWeightFactor)
 				caseResults.ContestScore = new(big.Rat).Mul(
@@ -1351,7 +1406,7 @@ func Grade(
 				)
 				if runScore.Cmp(big.NewRat(1, 1)) == 0 {
 					caseResults.Verdict = "AC"
-				} else {
+				} else if caseResults.Verdict != "VE" {
 					runResult.Verdict = worseVerdict(runResult.Verdict, "PA")
 					if runScore.Cmp(&big.Rat{}) == 0 {
 						correct = false
