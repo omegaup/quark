@@ -589,6 +589,25 @@ func Grade(
 		},
 	)
 
+	generatedFiles := make([]string, 0)
+	defer func() {
+		defer ctx.Transaction.StartSegment("upload").End()
+		if err := uploadFiles(
+			ctx,
+			filesWriter,
+			runRoot,
+			input,
+			generatedFiles,
+		); err != nil {
+			ctx.Log.Error(
+				"uploadFiles failed",
+				map[string]interface{}{
+					"err": err,
+				},
+			)
+		}
+	}()
+
 	var binaries []*binary
 	var outputOnlyFiles map[string]outputOnlyFile
 	runResult.CompileMeta = make(map[string]RunMetadata)
@@ -871,8 +890,6 @@ func Grade(
 			},
 		)
 	}
-
-	generatedFiles := make([]string, 0)
 
 	compileSegment := ctx.Transaction.StartSegment("compile")
 	for _, b := range binaries {
@@ -1456,22 +1473,6 @@ func Grade(
 			"score":   runResult.Score,
 		},
 	)
-	defer ctx.Transaction.StartSegment("upload").End()
-	if err := uploadFiles(
-		ctx,
-		filesWriter,
-		runRoot,
-		input,
-		generatedFiles,
-	); err != nil {
-		ctx.Log.Error(
-			"uploadFiles failed",
-			map[string]interface{}{
-				"err": err,
-			},
-		)
-		return runResult, err
-	}
 
 	return runResult, nil
 }
