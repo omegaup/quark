@@ -15,9 +15,15 @@ import (
 	"github.com/omegaup/quark/common"
 )
 
+type programOutput struct {
+	stdout string
+	stderr string
+	meta   *RunMetadata
+}
+
 type expectedResult struct {
-	output, runError string
-	meta             *RunMetadata
+	runOutput       programOutput
+	validatorOutput programOutput
 }
 
 type runnerTestCase struct {
@@ -62,6 +68,20 @@ func (sandbox *fakeSandbox) Supported() bool {
 	return true
 }
 
+func (sandbox *fakeSandbox) writeToFile(path, contents string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.WriteString(
+		contents,
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (sandbox *fakeSandbox) Compile(
 	ctx *common.Context,
 	lang string,
@@ -69,27 +89,18 @@ func (sandbox *fakeSandbox) Compile(
 	chdir, outputFile, errorFile, metaFile, target string,
 	extraFlags []string,
 ) (*RunMetadata, error) {
-	ef, err := os.Create(errorFile)
-	if err != nil {
-		return nil, err
+	for _, ff := range []struct {
+		path     string
+		contents string
+	}{
+		{outputFile, sandbox.testCase.expectedCompileResults.runOutput.stdout},
+		{errorFile, sandbox.testCase.expectedCompileResults.runOutput.stderr},
+	} {
+		if err := sandbox.writeToFile(ff.path, ff.contents); err != nil {
+			return nil, err
+		}
 	}
-	defer ef.Close()
-	if _, err := ef.WriteString(
-		sandbox.testCase.expectedCompileResults.runError,
-	); err != nil {
-		return nil, err
-	}
-	of, err := os.Create(outputFile)
-	if err != nil {
-		return nil, err
-	}
-	defer of.Close()
-	if _, err := of.WriteString(
-		sandbox.testCase.expectedCompileResults.output,
-	); err != nil {
-		return nil, err
-	}
-	return sandbox.testCase.expectedCompileResults.meta, nil
+	return sandbox.testCase.expectedCompileResults.runOutput.meta, nil
 }
 
 func (sandbox *fakeSandbox) Run(
@@ -105,23 +116,25 @@ func (sandbox *fakeSandbox) Run(
 	if !ok {
 		return nil, fmt.Errorf("case %q not found", caseName)
 	}
-	ef, err := os.Create(errorFile)
-	if err != nil {
-		return nil, err
+	var sandboxOutput *programOutput
+	if strings.HasSuffix(inputFile, ".out") {
+		// we're faking a validator
+		sandboxOutput = &results.validatorOutput
+	} else {
+		sandboxOutput = &results.runOutput
 	}
-	defer ef.Close()
-	if _, err := ef.WriteString(results.runError); err != nil {
-		return nil, err
+	for _, ff := range []struct {
+		path     string
+		contents string
+	}{
+		{outputFile, sandboxOutput.stdout},
+		{errorFile, sandboxOutput.stderr},
+	} {
+		if err := sandbox.writeToFile(ff.path, ff.contents); err != nil {
+			return nil, err
+		}
 	}
-	of, err := os.Create(outputFile)
-	if err != nil {
-		return nil, err
-	}
-	defer of.Close()
-	if _, err := of.WriteString(results.output); err != nil {
-		return nil, err
-	}
-	return results.meta, nil
+	return sandboxOutput.meta, nil
 }
 
 func (wrapper *fakeSandboxWrapper) sandbox(testCase *runnerTestCase) Sandbox {
@@ -217,11 +230,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -230,11 +243,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -245,11 +258,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"RTE",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"", "", &RunMetadata{Verdict: "RTE"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "RTE"}}},
 					},
 				},
 				{
@@ -258,11 +271,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -271,11 +284,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"WA",
 					big.NewRat(0, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"2", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"2", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"2", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"2", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"2", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"2", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -285,12 +298,13 @@ func TestGrade(t *testing.T) {
 					"CE",
 					big.NewRat(0, 1),
 					expectedResult{
-						"",
-						`  File "test.py", line 1
+						runOutput: programOutput{
+							"",
+							`  File "test.py", line 1
 	    if
 		     ^
 				 SyntaxError: invalid syntax`,
-						&RunMetadata{ExitStatus: 1, Verdict: "RTE"},
+							&RunMetadata{ExitStatus: 1, Verdict: "RTE"}},
 					},
 					map[string]expectedResult{},
 				},
@@ -300,11 +314,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -313,11 +327,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -326,11 +340,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -339,11 +353,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -352,11 +366,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -365,11 +379,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -381,11 +395,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(1, 4),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -394,11 +408,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -421,11 +435,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -450,11 +464,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"MLE",
 					big.NewRat(0, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"", "", &RunMetadata{Verdict: "MLE"}},
-						"1.0": {"", "", &RunMetadata{Verdict: "MLE"}},
-						"1.1": {"", "", &RunMetadata{Verdict: "MLE"}},
+						"0":   {runOutput: programOutput{"", "", &RunMetadata{Verdict: "MLE"}}},
+						"1.0": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "MLE"}}},
+						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "MLE"}}},
 					},
 				},
 				{
@@ -475,11 +489,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -509,11 +523,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"MLE",
 					big.NewRat(0, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
-						"1.0": {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
-						"1.1": {"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}},
+						"0":   {runOutput: programOutput{"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}}},
+						"1.0": {runOutput: programOutput{"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}}},
+						"1.1": {runOutput: programOutput{"", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space", &RunMetadata{Verdict: "MLE"}}},
 					},
 				},
 				{
@@ -530,11 +544,11 @@ func TestGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"5", "", &RunMetadata{Verdict: "OK"}},
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -549,9 +563,11 @@ func TestGrade(t *testing.T) {
 					"CE",
 					big.NewRat(0, 1),
 					expectedResult{
-						"",
-						"\nClass `Main` not found. Make sure your class is named `Main` and outside all packages",
-						&RunMetadata{ExitStatus: 1, Verdict: "CE"},
+						runOutput: programOutput{
+							"",
+							"\nClass `Main` not found. Make sure your class is named `Main` and outside all packages",
+							&RunMetadata{ExitStatus: 1, Verdict: "CE"},
+						},
 					},
 					map[string]expectedResult{},
 				},
@@ -672,11 +688,20 @@ if __name__ == '__main__':
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"1", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"1", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"1", "", &RunMetadata{Verdict: "OK"}},
+						"0": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.0": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.1": {
+							runOutput:       programOutput{"5", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
 					},
 				},
 				{
@@ -685,11 +710,20 @@ if __name__ == '__main__':
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(4, 5),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"1", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"1", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"0.6", "", &RunMetadata{Verdict: "OK"}},
+						"0": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.0": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.1": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"0.6", "", &RunMetadata{Verdict: "OK"}},
+						},
 					},
 				},
 				{
@@ -698,11 +732,20 @@ if __name__ == '__main__':
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(8, 15),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"0.4", "", &RunMetadata{Verdict: "OK"}},
+						"0": {
+							runOutput:       programOutput{"2", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.0": {
+							runOutput:       programOutput{"2", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.1": {
+							runOutput:       programOutput{"2", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"0.4", "", &RunMetadata{Verdict: "OK"}},
+						},
 					},
 				},
 			}
@@ -822,11 +865,20 @@ if __name__ == '__main__':
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"1", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"1", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"1", "", &RunMetadata{Verdict: "OK"}},
+						"0": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.0": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.1": {
+							runOutput:       programOutput{"5", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
 					},
 				},
 				{
@@ -835,11 +887,20 @@ if __name__ == '__main__':
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(7, 10),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"1", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"1", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"0.6", "", &RunMetadata{Verdict: "OK"}},
+						"0": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.0": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"1", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.1": {
+							runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"0.6", "", &RunMetadata{Verdict: "OK"}},
+						},
 					},
 				},
 				{
@@ -848,11 +909,20 @@ if __name__ == '__main__':
 					big.NewRat(1, 1),
 					"PA",
 					big.NewRat(7, 15),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
-						"1.0": {"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
-						"1.1": {"0.4", "", &RunMetadata{Verdict: "OK"}},
+						"0": {
+							runOutput:       programOutput{"2", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.0": {
+							runOutput:       programOutput{"2", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"0.6666666666666667", "", &RunMetadata{Verdict: "OK"}},
+						},
+						"1.1": {
+							runOutput:       programOutput{"2", "", &RunMetadata{Verdict: "OK"}},
+							validatorOutput: programOutput{"0.4", "", &RunMetadata{Verdict: "OK"}},
+						},
 					},
 				},
 			}
@@ -953,11 +1023,11 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 			big.NewRat(1, 1),
 			"PA",
 			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -966,11 +1036,11 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 			big.NewRat(1, 1),
 			"PA",
 			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -982,11 +1052,11 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 			big.NewRat(1, 1),
 			"PA",
 			big.NewRat(1, 4),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0":   {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1.1": {"3", "", &RunMetadata{Verdict: "OK"}},
+				"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 	}
@@ -1111,9 +1181,9 @@ func TestKarelGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
+						"0": {runOutput: programOutput{expectedOutput, "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 				{
@@ -1122,9 +1192,9 @@ func TestKarelGrade(t *testing.T) {
 					big.NewRat(1, 1),
 					"AC",
 					big.NewRat(1, 1),
-					expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0": {expectedOutput, "", &RunMetadata{Verdict: "OK"}},
+						"0": {runOutput: programOutput{expectedOutput, "", &RunMetadata{Verdict: "OK"}}},
 					},
 				},
 			}
@@ -1264,12 +1334,14 @@ func TestLibinteractive(t *testing.T) {
 			"CE",
 			big.NewRat(0, 1),
 			expectedResult{
-				"",
-				`  File "test.py", line 1
-	    if
-		     ^
-				 SyntaxError: invalid syntax`,
-				&RunMetadata{ExitStatus: 1, Verdict: "RTE"},
+				runOutput: programOutput{
+					"",
+					`  File "test.py", line 1
+			if
+				^
+					SyntaxError: invalid syntax`,
+					&RunMetadata{ExitStatus: 1, Verdict: "RTE"},
+				},
 			},
 			map[string]expectedResult{},
 		},
@@ -1287,10 +1359,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"WA",
 			big.NewRat(0, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"-1", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"-1", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"-1", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"-1", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1307,10 +1379,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1327,10 +1399,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1347,10 +1419,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1367,10 +1439,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1387,10 +1459,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1407,10 +1479,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1427,10 +1499,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1450,10 +1522,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1462,10 +1534,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1474,10 +1546,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 		{
@@ -1486,10 +1558,10 @@ func TestLibinteractive(t *testing.T) {
 			big.NewRat(1, 1),
 			"AC",
 			big.NewRat(1, 1),
-			expectedResult{"", "", &RunMetadata{Verdict: "OK"}},
+			expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 			map[string]expectedResult{
-				"0": {"3", "", &RunMetadata{Verdict: "OK"}},
-				"1": {"5", "", &RunMetadata{Verdict: "OK"}},
+				"0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+				"1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
 			},
 		},
 	}
@@ -1524,6 +1596,166 @@ func TestLibinteractive(t *testing.T) {
 					results.Score.String(),
 					rte.expectedScore.String(),
 				)
+			}
+		})
+	}
+}
+
+func TestGradeWithCustomValidatorExpectedOutput(t *testing.T) {
+	for wrapperName, wrapper := range map[string]sandboxWrapper{
+		"fake":      &fakeSandboxWrapper{},
+		"omegajail": &omegajailSandboxWrapper{omegajail: getSandbox()},
+	} {
+		wrapperName := wrapperName
+		wrapper := wrapper
+		t.Run(wrapperName, func(t *testing.T) {
+
+			if testing.Short() && wrapper.name() == "OmegajailSandbox" {
+				t.Skip("skipping test in short mode.")
+			}
+
+			if !wrapper.supported() {
+				t.Skip(fmt.Sprintf("%s not supported", wrapper.name()))
+			}
+
+			for _, vv := range []struct {
+				ValidatorName   string
+				ValidatorSource string
+				ExpectedOutput  programOutput
+				ExpectedVerdict string
+				ExpectedScore   *big.Rat
+			}{
+				{
+					"expected AC",
+					"import sys;print(1);print('wat',file=sys.stderr)",
+					programOutput{"1", "wat", &RunMetadata{Verdict: "OK"}},
+					"AC",
+					big.NewRat(1, 1),
+				},
+				{
+					"expected WA",
+					"import sys;print(0);print('expected',file=sys.stderr)",
+					programOutput{"0", "expected", &RunMetadata{Verdict: "OK"}},
+					"WA",
+					big.NewRat(0, 1),
+				},
+				{
+					"unexpected WA",
+					"import sys;print(0);print('something else',file=sys.stderr)",
+					programOutput{"0", "something else", &RunMetadata{Verdict: "OK"}},
+					"VE",
+					big.NewRat(0, 1),
+				},
+				{
+					"unexpected PA",
+					"import sys;print(0);print('something else',file=sys.stderr)",
+					programOutput{"0.5", "something else", &RunMetadata{Verdict: "OK"}},
+					"VE",
+					big.NewRat(0, 1),
+				},
+			} {
+				validatorName := vv.ValidatorName
+				validatorSource := vv.ValidatorSource
+				expectedOutput := vv.ExpectedOutput
+				expectedVerdict := vv.ExpectedVerdict
+				expectedScore := vv.ExpectedScore
+
+				t.Run(validatorName, func(t *testing.T) {
+
+					ctx, err := newRunnerContext(t)
+					if err != nil {
+						t.Fatalf("RunnerContext creation failed with %q", err)
+					}
+					defer ctx.Close()
+					if !ctx.Config.Runner.PreserveFiles {
+						defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+					}
+
+					inputManager := common.NewInputManager(ctx)
+					AplusB, err := common.NewLiteralInputFactory(
+						&common.LiteralInput{
+							Cases: map[string]*common.LiteralCaseSettings{
+								"0":   {Input: "1 2", ExpectedOutput: "3", ExpectedValidatorStderr: "expected\n", Weight: big.NewRat(1, 1)},
+								"1.0": {Input: "1 2", ExpectedOutput: "3", ExpectedValidatorStderr: "expected\n", Weight: big.NewRat(1, 1)},
+								"1.1": {Input: "2 3", ExpectedOutput: "5", ExpectedValidatorStderr: "expected\n", Weight: big.NewRat(2, 1)},
+							},
+							Limits: &common.DefaultLimits,
+							Validator: &common.LiteralValidatorSettings{
+								Name: common.ValidatorNameCustom,
+								CustomValidator: &common.LiteralCustomValidatorSettings{
+									Language: "py3",
+									Limits:   &common.DefaultValidatorLimits,
+									Source:   validatorSource,
+								},
+							},
+						},
+						ctx.Config.Runner.RuntimePath,
+						common.LiteralPersistRunner,
+					)
+					if err != nil {
+						t.Fatalf("Failed to create Input: %q", err)
+					}
+					inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
+					if err != nil {
+						t.Fatalf("Failed to open problem: %q", err)
+					}
+					defer inputRef.Release()
+
+					rte := runnerTestCase{
+						"py2",
+						"print sum(map(int, raw_input().strip().split()))",
+						big.NewRat(1, 1),
+						expectedVerdict,
+						expectedScore,
+						expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+						map[string]expectedResult{
+							"0": {
+								runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+								validatorOutput: expectedOutput,
+							},
+							"1.0": {
+								runOutput:       programOutput{"3", "", &RunMetadata{Verdict: "OK"}},
+								validatorOutput: expectedOutput,
+							},
+							"1.1": {
+								runOutput:       programOutput{"5", "", &RunMetadata{Verdict: "OK"}},
+								validatorOutput: expectedOutput,
+							},
+						},
+					}
+					results, err := Grade(
+						ctx,
+						&bytes.Buffer{},
+						&common.Run{
+							AttemptID: 0,
+							Language:  rte.language,
+							InputHash: inputRef.Input.Hash(),
+							Source:    rte.source,
+							MaxScore:  rte.maxScore,
+						},
+						inputRef.Input,
+						wrapper.sandbox(&rte),
+					)
+					if err != nil {
+						t.Fatalf("Failed to run %v: %q", rte, err)
+					}
+					if results.Verdict != rte.expectedVerdict {
+						t.Errorf(
+							"results.Verdict = %q, expected %q, test %v: %v",
+							results.Verdict,
+							rte.expectedVerdict,
+							0,
+							rte,
+						)
+					}
+					if results.Score.Cmp(rte.expectedScore) != 0 {
+						t.Errorf(
+							"results.Score = %s, expected %s",
+							results.Score.String(),
+							rte.expectedScore.String(),
+						)
+					}
+				})
 			}
 		})
 	}
