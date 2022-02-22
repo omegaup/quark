@@ -211,7 +211,7 @@ func validateInterface(interfaceName string) error {
 // LanguageFileExtension returns the file extension for a particular language.
 func LanguageFileExtension(language string) string {
 	switch language {
-	case "cpp11", "cpp11-gcc", "cpp11-clang", "cpp17-gcc", "cpp17-clang":
+	case "cpp11", "cpp11-gcc", "cpp11-clang", "cpp17-gcc", "cpp17-clang", "cpp20-gcc", "cpp20-clang":
 		return "cpp"
 	case "c", "c11-gcc", "c11-clang":
 		return "c"

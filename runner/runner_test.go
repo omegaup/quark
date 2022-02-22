@@ -361,6 +361,32 @@ func TestGrade(t *testing.T) {
 					},
 				},
 				{
+					"cpp20-gcc",
+					"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+					},
+				},
+				{
+					"cpp20-clang",
+					"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
+					big.NewRat(1, 1),
+					"PA",
+					big.NewRat(1, 4),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+					},
+				},
+				{
 					"rb",
 					"puts 3",
 					big.NewRat(1, 1),
@@ -570,6 +596,109 @@ func TestGrade(t *testing.T) {
 						},
 					},
 					map[string]expectedResult{},
+				},
+				{
+					"kt",
+					`fun main() {
+						val (a, b) = readLine()!!.split(' ').map(String::toInt)
+					  println(a + b)
+					}`,
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
+					},
+				},
+				{
+					"go",
+					`package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+)
+
+func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Split(bufio.ScanWords)
+	var sum int64
+	for scanner.Scan() {
+		v, err := strconv.ParseInt(scanner.Text(), 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		sum += v
+	}
+	fmt.Println(sum)
+}`,
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
+					},
+				},
+				{
+					"rs",
+					`use std::io;
+
+fn main() -> io::Result<()> {
+    let mut line = String::new();
+
+    io::stdin().read_line(&mut line)?;
+    let mut sum: i64 = 0;
+    for s in line.trim().split(" ") {
+        sum += i64::from_str_radix(s, 10).unwrap();
+    }
+    println!("{}", sum);
+
+    Ok(())
+}`,
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
+					},
+				},
+				{
+					"js",
+					`const readline = require("node:readline");
+
+const rl = readline.createInterface({
+  input: process.stdin,
+});
+
+rl.on("line", (input) => {
+  console.log(
+    input
+      .trim()
+      .split(" ")
+      .map((x) => parseInt(x))
+      .reduce((acc, x) => acc + x, 0)
+  );
+});`,
+					big.NewRat(1, 1),
+					"AC",
+					big.NewRat(1, 1),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"5", "", &RunMetadata{Verdict: "OK"}}},
+					},
 				},
 			}
 			for idx, rte := range runtests {
