@@ -15,6 +15,8 @@ import (
 
 	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
+
+	"github.com/kballard/go-shellquote"
 	"github.com/pkg/errors"
 )
 
@@ -365,7 +367,7 @@ func invokeOmegajail(ctx *common.Context, omegajailRoot string, omegajailParams 
 	ctx.Log.Debug(
 		"invoking",
 		map[string]interface{}{
-			"params": omegajailFullParams,
+			"params": shellquote.Join(omegajailFullParams...),
 		},
 	)
 	cmd := exec.Command(omegajailFullParams[0], omegajailParams...)
