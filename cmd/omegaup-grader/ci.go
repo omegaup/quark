@@ -156,13 +156,13 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if err != io.ErrUnexpectedEOF {
 			ctx.Log.Error(
-				"failed to load problem package",
+				"problem package too large",
 				map[string]interface{}{
 					"filename": reportPath,
 					"err":      err,
 				},
 			)
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
 			return
 		}
 
