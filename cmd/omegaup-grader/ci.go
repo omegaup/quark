@@ -11,16 +11,19 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/google/uuid"
 	git "github.com/libgit2/git2go/v33"
 
 	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
+	"github.com/omegaup/quark/runner"
 	"github.com/omegaup/quark/runner/ci"
 )
 
 var (
-	ciURLRegexp = regexp.MustCompile(`^/ci/problem/([a-zA-Z0-9-_]+)/([0-9a-f]{40})/$`)
+	ciGitURLRegexp       = regexp.MustCompile(`^/ci/problem/([a-zA-Z0-9-_]+)/([0-9a-f]{40})/$`)
+	ciEphemeralURLRegexp = regexp.MustCompile(`^/ci/ephemeral/(([0-9a-f-]{36})/)?$`)
 )
 
 type reportWithPath struct {
@@ -47,32 +50,55 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+	report := &ci.Report{
+		StartTime: time.Now(),
+		State:     ci.StateWaiting,
 	}
 
-	match := ciURLRegexp.FindStringSubmatch(r.URL.Path)
-	if match == nil {
+	var subdir, expectedMethod string
+
+	if match := ciGitURLRegexp.FindStringSubmatch(r.URL.Path); match != nil {
+
+		subdir = "problem"
+		report.IsEphemeral = false
+		report.Problem = match[1]
+		report.Hash = match[2]
+		expectedMethod = http.MethodGet
+
+	} else if match := ciEphemeralURLRegexp.FindStringSubmatch(r.URL.Path); match != nil {
+
+		subdir = ""
+		report.IsEphemeral = true
+		report.Problem = "ephemeral"
+
+		if len(match) > 3 {
+			expectedMethod = http.MethodGet
+			report.Hash = match[3]
+		} else {
+			expectedMethod = http.MethodPost
+			report.Hash = uuid.New()
+		}
+
+	} else {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	report := &ci.Report{
-		Problem:    match[1],
-		CommitHash: match[2],
-		StartTime:  time.Now(),
-		State:      ci.StateWaiting,
+	if r.Method != expectedMethod {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 
 	reportPath := path.Join(
 		ctx.Config.Grader.RuntimePath,
 		"ci",
+		subdir,
 		report.Problem,
-		report.CommitHash[:2],
-		report.CommitHash[2:],
+		report.Hash[:2],
+		report.Hash[2:],
 		"report.json.gz",
 	)
+
 	if fd, err := os.Open(reportPath); err == nil {
 		defer fd.Close()
 
@@ -89,6 +115,11 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
 		w.Header().Add("Content-Type", "application/json")
 		w.Header().Add("Content-Encoding", "gzip")
 		http.ServeContent(w, r, reportPath, st.ModTime(), fd)
@@ -97,49 +128,91 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Do the barest minimum checks before fully committing to making this CI
 	// run.
-	repository, err := git.OpenRepository(grader.GetRepositoryPath(
-		ctx.Config.Grader.RuntimePath,
-		report.Problem,
-	))
-	if err != nil {
-		ctx.Log.Error(
-			"failed to open repository",
-			map[string]interface{}{
-				"filename": reportPath,
-				"err":      err,
-			},
-		)
-		w.WriteHeader(http.StatusNotFound)
-		return
+
+	// todo: check with frontend for rate limiting
+
+	if report.IsEphemeral {
+		r.ParseMultipartForm((base.Byte(150) * base.Mebibyte).Bytes())
+		problemTar, header, err := r.FormFile("problem.tar.gz")
+
+		if err != nil {
+			ctx.Log.Error(
+				"failed to load problem package",
+				map[string]interface{}{
+					"filename": reportPath,
+					"err":      err,
+				},
+			)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer problemTar.Close()
+
+		if base.Byte(header.Size) > base.Byte(100)*base.Mebibyte {
+			ctx.Log.Error(
+				"input package too large",
+				map[string]interface{}{
+					"filename": reportPath,
+					"err":      err,
+				},
+			)
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			return
+		}
+		defer problemTar.Close()
+
+		inputFactory := runner.NewRunnerTarInputFactory(
+			&ctx.Config,
+			"<todo hash>",
+			problemTar)
+
+		inputRef, err := ctx.InputManager.Add("<hash>", inputFactory)
+		defer inputRef.Release() // bug
+	} else {
+		repository, err := git.OpenRepository(grader.GetRepositoryPath(
+			ctx.Config.Grader.RuntimePath,
+			report.Problem,
+		))
+		if err != nil {
+			ctx.Log.Error(
+				"failed to open repository",
+				map[string]interface{}{
+					"filename": reportPath,
+					"err":      err,
+				},
+			)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		defer repository.Free()
+		commitID, err := git.NewOid(report.Hash)
+		if err != nil {
+			ctx.Log.Error(
+				"failed to parse commit",
+				map[string]interface{}{
+					"filename": reportPath,
+					"commit":   report.Hash,
+					"err":      err,
+				},
+			)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		commit, err := repository.LookupCommit(commitID)
+		if err != nil {
+			ctx.Log.Error(
+				"failed to lookup commit",
+				map[string]interface{}{
+					"filename": reportPath,
+					"commit":   report.Hash,
+					"err":      err,
+				},
+			)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		defer commit.Free()
 	}
-	defer repository.Free()
-	commitID, err := git.NewOid(report.CommitHash)
-	if err != nil {
-		ctx.Log.Error(
-			"failed to parse commit",
-			map[string]interface{}{
-				"filename": reportPath,
-				"commit":   report.CommitHash,
-				"err":      err,
-			},
-		)
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	commit, err := repository.LookupCommit(commitID)
-	if err != nil {
-		ctx.Log.Error(
-			"failed to lookup commit",
-			map[string]interface{}{
-				"filename": reportPath,
-				"commit":   report.CommitHash,
-				"err":      err,
-			},
-		)
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	defer commit.Free()
 
 	ctx.Metrics.CounterAdd("grader_ci_jobs_total", 1)
 
@@ -204,6 +277,17 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		report: report,
 		path:   reportPath,
 	}
+}
+
+func (h *ciHandler) tmpZipPath(report *ci.Report) string {
+	return
+}
+
+func (h *ciHandler) PrepareGitCIRequest(
+	ctx *grader.Context,
+	report *ci.Report,
+	reportPath string,
+) error {
 }
 
 func (h *ciHandler) runTest(
@@ -385,16 +469,25 @@ func (h *ciHandler) processCIRequest(
 			"report": report,
 		},
 	)
-	problemFiles, err := common.NewProblemFilesFromGit(
-		grader.GetRepositoryPath(
-			ctx.Config.Grader.RuntimePath,
-			report.Problem,
-		),
-		report.CommitHash,
-	)
+
+	var err error
+	var problemFiles common.ProblemFiles
+
+	if report.IsEphemeral {
+		problemFiles, err = common.NewProblemFilesFromZip(nil, nil)
+	} else {
+		problemFiles, err = common.NewProblemFilesFromGit(
+			grader.GetRepositoryPath(
+				ctx.Config.Grader.RuntimePath,
+				report.Problem,
+			),
+			report.Hash,
+		)
+	}
+
 	if err != nil {
 		ctx.Log.Error(
-			"Failed to validate commit",
+			"Failed to validate problem files",
 			map[string]interface{}{
 				"err": err,
 			},
@@ -517,9 +610,10 @@ func (h *ciHandler) processCIRequest(
 		)
 	}
 
+	// todo handle ephemeral
 	h.lruCache.AddRun(
 		path.Dir(reportPath),
-		fmt.Sprintf("%s/%s", report.Problem, report.CommitHash),
+		fmt.Sprintf("%s/%s", report.Problem, report.Hash),
 	)
 }
 
