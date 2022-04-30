@@ -1,9 +1,12 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"os"
@@ -17,7 +20,6 @@ import (
 	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
-	"github.com/omegaup/quark/runner"
 	"github.com/omegaup/quark/runner/ci"
 )
 
@@ -26,9 +28,10 @@ var (
 	ciEphemeralURLRegexp = regexp.MustCompile(`^/ci/ephemeral/(([0-9a-f-]{36})/)?$`)
 )
 
-type reportWithPath struct {
-	report *ci.Report
-	path   string
+type startedCIRequest struct {
+	report       *ci.Report
+	path         string
+	problemFiles *common.ProblemFiles
 }
 
 type ciHandler struct {
@@ -36,7 +39,7 @@ type ciHandler struct {
 	ctx                 *grader.Context
 	lruCache            *ci.LRUCache
 	stopChan            chan struct{}
-	reportChan          chan *reportWithPath
+	requestChan         chan *startedCIRequest
 	doneChan            chan struct{}
 }
 
@@ -55,11 +58,10 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		State:     ci.StateWaiting,
 	}
 
-	var subdir, expectedMethod string
+	var expectedMethod string
 
 	if match := ciGitURLRegexp.FindStringSubmatch(r.URL.Path); match != nil {
 
-		subdir = "problem"
 		report.IsEphemeral = false
 		report.Problem = match[1]
 		report.Hash = match[2]
@@ -67,16 +69,15 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	} else if match := ciEphemeralURLRegexp.FindStringSubmatch(r.URL.Path); match != nil {
 
-		subdir = ""
 		report.IsEphemeral = true
-		report.Problem = "ephemeral"
+		report.Problem = "+ephemeral+"
 
 		if len(match) > 3 {
 			expectedMethod = http.MethodGet
 			report.Hash = match[3]
 		} else {
 			expectedMethod = http.MethodPost
-			report.Hash = uuid.New()
+			report.Hash = uuid.New().String()
 		}
 
 	} else {
@@ -92,7 +93,6 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reportPath := path.Join(
 		ctx.Config.Grader.RuntimePath,
 		"ci",
-		subdir,
 		report.Problem,
 		report.Hash[:2],
 		report.Hash[2:],
@@ -129,11 +129,13 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Do the barest minimum checks before fully committing to making this CI
 	// run.
 
-	// todo: check with frontend for rate limiting
+	// todo(frcepeda): check with frontend for rate limiting
+
+	var problemFiles *common.ProblemFiles
 
 	if report.IsEphemeral {
 		r.ParseMultipartForm((base.Byte(150) * base.Mebibyte).Bytes())
-		problemTar, header, err := r.FormFile("problem.tar.gz")
+		problemZip, _, err := r.FormFile("problem.zip")
 
 		if err != nil {
 			ctx.Log.Error(
@@ -146,28 +148,39 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		defer problemTar.Close()
+		defer problemZip.Close()
 
-		if base.Byte(header.Size) > base.Byte(100)*base.Mebibyte {
+		limit := (base.Byte(100) * base.Mebibyte).Bytes()
+		buf := make([]byte, limit)
+		bufSize, err := io.ReadFull(io.LimitReader(problemZip, limit), buf)
+
+		if err != io.ErrUnexpectedEOF {
 			ctx.Log.Error(
-				"input package too large",
+				"failed to load problem package",
 				map[string]interface{}{
 					"filename": reportPath,
 					"err":      err,
 				},
 			)
-			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		defer problemTar.Close()
 
-		inputFactory := runner.NewRunnerTarInputFactory(
-			&ctx.Config,
-			"<todo hash>",
-			problemTar)
+		zipReader, err := zip.NewReader(bytes.NewReader(buf), int64(bufSize))
+		if err != nil {
+			ctx.Log.Error(
+				"failed to load problem package",
+				map[string]interface{}{
+					"filename": reportPath,
+					"err":      err,
+				},
+			)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
-		inputRef, err := ctx.InputManager.Add("<hash>", inputFactory)
-		defer inputRef.Release() // bug
+		p := common.NewProblemFilesFromZip(zipReader, "<memory>")
+		problemFiles = &p
 	} else {
 		repository, err := git.OpenRepository(grader.GetRepositoryPath(
 			ctx.Config.Grader.RuntimePath,
@@ -273,21 +286,11 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Transfer the run to processCIRequest.
-	h.reportChan <- &reportWithPath{
-		report: report,
-		path:   reportPath,
+	h.requestChan <- &startedCIRequest{
+		report:       report,
+		path:         reportPath,
+		problemFiles: problemFiles,
 	}
-}
-
-func (h *ciHandler) tmpZipPath(report *ci.Report) string {
-	return
-}
-
-func (h *ciHandler) PrepareGitCIRequest(
-	ctx *grader.Context,
-	report *ci.Report,
-	reportPath string,
-) error {
 }
 
 func (h *ciHandler) runTest(
@@ -460,6 +463,7 @@ func (h *ciHandler) runTest(
 func (h *ciHandler) processCIRequest(
 	report *ci.Report,
 	reportPath string,
+	problemFiles *common.ProblemFiles,
 	runs *grader.Queue,
 ) {
 	ctx := h.ctx.Wrap(context.TODO())
@@ -471,18 +475,21 @@ func (h *ciHandler) processCIRequest(
 	)
 
 	var err error
-	var problemFiles common.ProblemFiles
 
 	if report.IsEphemeral {
-		problemFiles, err = common.NewProblemFilesFromZip(nil, nil)
+		if problemFiles == nil {
+			err = fmt.Errorf("Missing problem files for ephemeral run")
+		}
 	} else {
-		problemFiles, err = common.NewProblemFilesFromGit(
+		p, tmpE := common.NewProblemFilesFromGit(
 			grader.GetRepositoryPath(
 				ctx.Config.Grader.RuntimePath,
 				report.Problem,
 			),
 			report.Hash,
 		)
+		problemFiles = &p
+		err = tmpE
 	}
 
 	if err != nil {
@@ -511,7 +518,7 @@ func (h *ciHandler) processCIRequest(
 		}
 		return
 	}
-	ciRunConfig, err := ci.NewRunConfig(problemFiles, false)
+	ciRunConfig, err := ci.NewRunConfig(*problemFiles, false)
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to validate commit",
@@ -542,6 +549,11 @@ func (h *ciHandler) processCIRequest(
 		}
 		return
 	}
+
+	// We can get rid of this reference now: the in-memory data structures will
+	// get persisted to disk (and freed) as the runs are enqueued.
+	problemFiles = nil
+
 	for _, testConfig := range ciRunConfig.TestConfigs {
 		report.Tests = append(report.Tests, testConfig.Test)
 	}
@@ -610,7 +622,6 @@ func (h *ciHandler) processCIRequest(
 		)
 	}
 
-	// todo handle ephemeral
 	h.lruCache.AddRun(
 		path.Dir(reportPath),
 		fmt.Sprintf("%s/%s", report.Problem, report.Hash),
@@ -648,8 +659,8 @@ func (h *ciHandler) run() {
 			close(h.doneChan)
 			return
 
-		case report := <-h.reportChan:
-			h.processCIRequest(report.report, report.path, runs)
+		case request := <-h.requestChan:
+			h.processCIRequest(request.report, request.path, request.problemFiles, runs)
 		}
 	}
 }
@@ -675,7 +686,7 @@ func registerCIHandlers(
 		ctx:                 ctx,
 		lruCache:            ci.NewLRUCache(ctx.Config.Grader.CI.CISizeLimit, ctx.Log),
 		stopChan:            make(chan struct{}),
-		reportChan:          make(chan *reportWithPath, 128),
+		requestChan:         make(chan *startedCIRequest, 128),
 		doneChan:            make(chan struct{}),
 	}
 	mux.Handle(ctx.Tracing.WrapHandle("/ci/", ciHandler))
