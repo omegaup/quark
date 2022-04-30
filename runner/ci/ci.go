@@ -861,7 +861,6 @@ func (l *LRUCache) ReloadRuns(ciRoot string) error {
 			return err
 		}
 		components := strings.Split(rel, string(filepath.Separator))
-		// todo handle ephemeral
 		if len(components) < 3 || !info.IsDir() {
 			return nil
 		}
