@@ -142,17 +142,18 @@ func (g *GroupResult) UnmarshalJSON(data []byte) error {
 
 // A RunResult represents the results of a run.
 type RunResult struct {
-	Verdict      string                 `json:"verdict"`
-	CompileError *string                `json:"compile_error,omitempty"`
-	CompileMeta  map[string]RunMetadata `json:"compile_meta"`
-	Score        *big.Rat               `json:"score"`
-	ContestScore *big.Rat               `json:"contest_score"`
-	MaxScore     *big.Rat               `json:"max_score"`
-	Time         float64                `json:"time"`
-	WallTime     float64                `json:"wall_time"`
-	Memory       base.Byte              `json:"memory"`
-	JudgedBy     string                 `json:"judged_by,omitempty"`
-	Groups       []GroupResult          `json:"groups"`
+	Verdict       string                 `json:"verdict"`
+	CompileError  *string                `json:"compile_error,omitempty"`
+	CompileMeta   map[string]RunMetadata `json:"compile_meta"`
+	Score         *big.Rat               `json:"score"`
+	ContestScore  *big.Rat               `json:"contest_score"`
+	MaxScore      *big.Rat               `json:"max_score"`
+	Time          float64                `json:"time"`
+	WallTime      float64                `json:"wall_time"`
+	Memory        base.Byte              `json:"memory"`
+	OverallOutput base.Byte              `json:"total_output"`
+	JudgedBy      string                 `json:"judged_by,omitempty"`
+	Groups        []GroupResult          `json:"groups"`
 }
 
 // NewRunResult returns a new RunResult.
@@ -395,6 +396,7 @@ func parseOutputOnlyFile(
 ) (map[string]outputOnlyFile, error) {
 	dataURL, err := dataurl.DecodeString(data)
 	result := make(map[string]outputOnlyFile)
+	overallOutput := base.Byte(0)
 	if err != nil {
 		// |data| is not a dataurl. Try just returning the data as an Entry.
 		ctx.Log.Info(
@@ -460,6 +462,18 @@ func parseOutputOnlyFile(
 			result[fileName] = outputOnlyFile{"", true}
 			continue
 		}
+		if overallOutput > settings.Limits.OverallOutputLimit {
+			ctx.Log.Info(
+				"Output-only overall size limit has been exceeded. Generating empty file",
+				map[string]interface{}{
+					"name":           f.FileHeader.Name,
+					"overall output": overallOutput,
+					"limit":          settings.Limits.OverallOutputLimit,
+				},
+			)
+			result[fileName] = outputOnlyFile{"", true}
+			continue
+		}
 		rc, err := f.Open()
 		if err != nil {
 			ctx.Log.Info(
@@ -485,6 +499,7 @@ func parseOutputOnlyFile(
 			continue
 		}
 		result[fileName] = outputOnlyFile{buf.String(), false}
+		overallOutput += base.Byte(buf.Len())
 	}
 	return result, nil
 }
@@ -974,6 +989,18 @@ func Grade(
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
 				}
+			} else if runResult.OverallOutput > settings.Limits.OverallOutputLimit {
+				ctx.Log.Debug(
+					"Not even running since the overall output limit has been exceeded",
+					map[string]interface{}{
+						"case":           caseData.Name,
+						"overall output": runResult.OverallOutput,
+						"limit":          settings.Limits.OverallOutputLimit,
+					},
+				)
+				runMeta = &RunMetadata{
+					Verdict: "OLE",
+				}
 			} else if run.Language == "cat" {
 				outName := fmt.Sprintf("%s.out", caseData.Name)
 				errName := fmt.Sprintf("%s.err", caseData.Name)
@@ -1146,6 +1173,7 @@ func Grade(
 				var totalTime float64
 				var totalWallTime float64
 				var totalMemory base.Byte
+				var totalOutput base.Byte
 				for i := 0; i < regularBinaryCount; i++ {
 					intermediateResult := <-metaChan
 					generatedFiles = append(generatedFiles, intermediateResult.generatedFiles...)
@@ -1171,7 +1199,8 @@ func Grade(
 							totalWallTime,
 							intermediateResult.runMeta.WallTime,
 						)
-						totalMemory += base.MaxBytes(totalMemory, intermediateResult.runMeta.Memory)
+						totalMemory = base.MaxBytes(totalMemory, intermediateResult.runMeta.Memory)
+						totalOutput = base.MaxBytes(totalOutput, intermediateResult.runMeta.OutputSize)
 					}
 				}
 				close(metaChan)
@@ -1180,6 +1209,7 @@ func Grade(
 				chosenMetadata.Time = totalTime
 				chosenMetadata.WallTime = totalWallTime
 				chosenMetadata.Memory = totalMemory
+				chosenMetadata.OutputSize = totalOutput
 
 				runMeta = mergeVerdict(ctx, &chosenMetadata, parentMetadata)
 			}
@@ -1187,6 +1217,7 @@ func Grade(
 			runResult.Time += runMeta.Time
 			runResult.WallTime += runMeta.WallTime
 			runResult.Memory = base.MaxBytes(runResult.Memory, runMeta.Memory)
+			runResult.OverallOutput += runMeta.OutputSize
 
 			// TODO: change CaseResult to split original metadatas and final metadata
 			caseResults[j] = CaseResult{

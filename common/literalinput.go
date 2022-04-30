@@ -143,7 +143,8 @@ var (
 		MemoryLimit:          base.Gibibyte + base.Gibibyte/2,
 		OverallWallTimeLimit: base.Duration(time.Duration(10) * time.Second),
 		ExtraWallTime:        base.Duration(0),
-		OutputLimit:          base.Byte(2) * base.Mebibyte,
+		OutputLimit:          base.Byte(100) * base.Mebibyte,
+		OverallOutputLimit:   base.Byte(100) * base.Mebibyte,
 	}
 
 	DefaultLiteralValidatorSettings = LiteralValidatorSettings{
@@ -305,6 +306,10 @@ func NewLiteralInputFactory(
 		settings.Limits.OutputLimit = base.MinBytes(
 			input.Limits.OutputLimit,
 			DefaultLiteralLimitSettings.OutputLimit,
+		)
+		settings.Limits.OverallOutputLimit = base.MinBytes(
+			input.Limits.OverallOutputLimit,
+			DefaultLiteralLimitSettings.OverallOutputLimit,
 		)
 	} else {
 		settings.Limits = DefaultLiteralLimitSettings

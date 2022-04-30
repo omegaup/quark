@@ -79,19 +79,21 @@ type RunMetadata struct {
 	SystemTime float64   `json:"sys_time"`
 	WallTime   float64   `json:"wall_time"`
 	Memory     base.Byte `json:"memory"`
+	OutputSize base.Byte `json:"output_size"`
 	Signal     *string   `json:"signal,omitempty"`
 	Syscall    *string   `json:"syscall,omitempty"`
 }
 
 func (m *RunMetadata) String() string {
 	metadata := fmt.Sprintf(
-		"{Verdict: %s, ExitStatus: %d, Time: %.3fs, SystemTime: %.3fs, WallTime: %.3fs, Memory: %.3fMiB",
+		"{Verdict: %s, ExitStatus: %d, Time: %.3fs, SystemTime: %.3fs, WallTime: %.3fs, Memory: %.3fMiB, OutputSize: %.3fMiB",
 		m.Verdict,
 		m.ExitStatus,
 		m.Time,
 		m.SystemTime,
 		m.WallTime,
 		m.Memory.Mebibytes(),
+		m.OutputSize.Mebibytes(),
 	)
 	if m.Signal != nil {
 		metadata += fmt.Sprintf(", Signal: %s", *m.Signal)
@@ -220,7 +222,7 @@ func (o *OmegajailSandbox) Compile(
 		}, err
 	}
 	defer metaFd.Close()
-	metadata, err := parseMetaFile(ctx, nil, lang, metaFd, nil, false)
+	metadata, err := parseMetaFile(ctx, nil, lang, metaFd, &outputFile, nil, false)
 
 	if lang == "java" && metadata.Verdict == "OK" {
 		classPath := path.Join(chdir, fmt.Sprintf("%s.class", target))
@@ -358,7 +360,7 @@ func (o *OmegajailSandbox) Run(
 		}, err
 	}
 	defer metaFd.Close()
-	return parseMetaFile(ctx, limits, lang, metaFd, &errorFile, lang == "c")
+	return parseMetaFile(ctx, limits, lang, metaFd, &outputFile, &errorFile, lang == "c")
 }
 
 func invokeOmegajail(ctx *common.Context, omegajailRoot string, omegajailParams []string, errorFile string) {
@@ -433,6 +435,7 @@ func parseMetaFile(
 	limits *common.LimitsSettings,
 	lang string,
 	metaFile io.Reader,
+	outputFilePath *string,
 	errorFilePath *string,
 	allowNonZeroExitCode bool,
 ) (*RunMetadata, error) {
@@ -522,6 +525,13 @@ func parseMetaFile(
 			lang == "java" && meta.ExitStatus != 0 && isJavaMLE(ctx, errorFilePath)) {
 		meta.Verdict = "MLE"
 		meta.Memory = limits.MemoryLimit
+	}
+
+	if outputFilePath != nil {
+		outputFileStat, err := os.Stat(*outputFilePath)
+		if err == nil {
+			meta.OutputSize = base.Byte(outputFileStat.Size())
+		}
 	}
 
 	return meta, nil

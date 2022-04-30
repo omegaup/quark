@@ -21,6 +21,7 @@ type LimitsSettings struct {
 	ExtraWallTime        base.Duration
 	MemoryLimit          base.Byte
 	OutputLimit          base.Byte
+	OverallOutputLimit   base.Byte
 	OverallWallTimeLimit base.Duration
 	TimeLimit            base.Duration
 }
@@ -189,6 +190,7 @@ var (
 		OutputLimit:          base.Byte(10) * base.Kibibyte,
 		OverallWallTimeLimit: base.Duration(time.Duration(5) * time.Second),
 		TimeLimit:            base.Duration(time.Duration(1) * time.Second),
+		OverallOutputLimit:   base.Byte(100) * base.Mebibyte,
 	}
 
 	// DefaultLimits specifies the default limits for a problem.
@@ -198,6 +200,7 @@ var (
 		OutputLimit:          base.Byte(10) * base.Kibibyte,
 		OverallWallTimeLimit: base.Duration(time.Duration(1) * time.Minute),
 		TimeLimit:            base.Duration(time.Duration(1) * time.Second),
+		OverallOutputLimit:   base.Byte(100) * base.Mebibyte,
 	}
 )
 
