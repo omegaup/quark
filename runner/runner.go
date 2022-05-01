@@ -462,13 +462,13 @@ func parseOutputOnlyFile(
 			result[fileName] = outputOnlyFile{"", true}
 			continue
 		}
-		if overallOutput > settings.Limits.OverallOutputLimit {
+		if overallOutput > ctx.Config.Runner.OverallOutputLimit {
 			ctx.Log.Info(
 				"Output-only overall size limit has been exceeded. Generating empty file",
 				map[string]interface{}{
 					"name":           f.FileHeader.Name,
 					"overall output": overallOutput,
-					"limit":          settings.Limits.OverallOutputLimit,
+					"limit":          ctx.Config.Runner.OverallOutputLimit,
 				},
 			)
 			result[fileName] = outputOnlyFile{"", true}
@@ -989,13 +989,13 @@ func Grade(
 				runMeta = &RunMetadata{
 					Verdict: "TLE",
 				}
-			} else if runResult.OverallOutput > settings.Limits.OverallOutputLimit {
+			} else if runResult.OverallOutput > ctx.Config.Runner.OverallOutputLimit {
 				ctx.Log.Debug(
 					"Not even running since the overall output limit has been exceeded",
 					map[string]interface{}{
 						"case":           caseData.Name,
 						"overall output": runResult.OverallOutput,
-						"limit":          settings.Limits.OverallOutputLimit,
+						"limit":          ctx.Config.Runner.OverallOutputLimit,
 					},
 				)
 				runMeta = &RunMetadata{

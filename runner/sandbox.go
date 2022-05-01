@@ -310,7 +310,7 @@ func (o *OmegajailSandbox) Run(
 	}
 
 	// "640MB should be enough for anybody"
-	hardLimit := base.MinBytes(base.Byte(640)*base.Mebibyte, limits.MemoryLimit)
+	hardLimit := base.MinBytes(ctx.Config.Runner.HardMemoryLimit, limits.MemoryLimit)
 
 	params := []string{
 		"--homedir", chdir,
