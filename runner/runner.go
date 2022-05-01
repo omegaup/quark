@@ -1019,7 +1019,8 @@ func Grade(
 						)
 					}
 					runMeta = &RunMetadata{
-						Verdict: "OK",
+						Verdict:    "OK",
+						OutputSize: base.Byte(len(file.contents)),
 					}
 					if file.ole {
 						runMeta.Verdict = "OLE"
@@ -1199,8 +1200,8 @@ func Grade(
 							totalWallTime,
 							intermediateResult.runMeta.WallTime,
 						)
-						totalMemory = base.MaxBytes(totalMemory, intermediateResult.runMeta.Memory)
-						totalOutput = base.MaxBytes(totalOutput, intermediateResult.runMeta.OutputSize)
+						totalMemory += intermediateResult.runMeta.Memory
+						totalOutput += intermediateResult.runMeta.OutputSize
 					}
 				}
 				close(metaChan)

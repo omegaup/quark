@@ -1294,8 +1294,8 @@ func TestGradeOLE(t *testing.T) {
 					big.NewRat(1, 4),
 					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
-						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"0":   {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.0": {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
 						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
 					},
 				},
@@ -1307,8 +1307,8 @@ func TestGradeOLE(t *testing.T) {
 					big.NewRat(1, 4),
 					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
-						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"0":   {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.0": {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
 						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
 					},
 				},
@@ -1323,8 +1323,8 @@ func TestGradeOLE(t *testing.T) {
 					big.NewRat(1, 4),
 					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
-						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"0":   {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.0": {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
 						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
 					},
 				},
@@ -1344,8 +1344,8 @@ func TestGradeOLE(t *testing.T) {
 					big.NewRat(1, 4),
 					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
 					map[string]expectedResult{
-						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
-						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"0":   {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.0": {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
 						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
 					},
 				},
@@ -1382,6 +1382,12 @@ func TestGradeOLE(t *testing.T) {
 							"results.Score = %s, expected %s",
 							results.Score.String(),
 							rte.expectedScore.String(),
+						)
+					}
+					if results.OverallOutput != base.Byte(4) {
+						t.Errorf(
+							"results.OverallOutput = %d, expected 4",
+							results.OverallOutput.Bytes(),
 						)
 					}
 				})
