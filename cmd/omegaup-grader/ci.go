@@ -518,10 +518,12 @@ func (h *ciHandler) processCIRequest(
 		}
 		return
 	}
+
 	ciRunConfig, err := ci.NewRunConfig(*problemFiles, false)
+
 	if err != nil {
 		ctx.Log.Error(
-			"Failed to validate commit",
+			"Failed to validate problem",
 			map[string]interface{}{
 				"err": err,
 			},
@@ -549,10 +551,6 @@ func (h *ciHandler) processCIRequest(
 		}
 		return
 	}
-
-	// We can get rid of this reference now: the in-memory data structures will
-	// get persisted to disk (and freed) as the runs are enqueued.
-	problemFiles = nil
 
 	for _, testConfig := range ciRunConfig.TestConfigs {
 		report.Tests = append(report.Tests, testConfig.Test)
