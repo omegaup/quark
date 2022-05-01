@@ -1328,6 +1328,27 @@ func TestGradeOLE(t *testing.T) {
 						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
 					},
 				},
+				{
+					"cat",
+					"data:application/zip;base64,UEsDBAoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABwAMC5vdX" +
+						"RVVAkAA67WxFb8t4ZYdXgLAAEE6AMAAAToAwAAMwpQSwMECgAAAAAAhhE4StGeZ1UCAAAAAg" +
+						"AAAAcAHAAxLjAub3V0VVQJAAP8t4ZYCbiGWHV4CwABBOgDAAAE6AMAADMKUEsDBAoAAAAAAO" +
+						"eiUUhXOT0DAgAAAAIAAAAHABwAMS4xLm91dFVUCQADstbEVgm4hlh1eAsAAQToAwAABOgDAA" +
+						"A1ClBLAQIeAwoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABgAAAAAAAEAAAC0gQAAAAAwLm91dF" +
+						"VUBQADrtbEVnV4CwABBOgDAAAE6AMAAFBLAQIeAwoAAAAAAIYROErRnmdVAgAAAAIAAAAHAB" +
+						"gAAAAAAAEAAAC0gUEAAAAxLjAub3V0VVQFAAP8t4ZYdXgLAAEE6AMAAAToAwAAUEsBAh4DCg" +
+						"AAAAAA56JRSFc5PQMCAAAAAgAAAAcAGAAAAAAAAQAAALSBhAAAADEuMS5vdXRVVAUAA7LWxF" +
+						"Z1eAsAAQToAwAABOgDAABQSwUGAAAAAAMAAwDlAAAAxwAAAAAA",
+					big.NewRat(1, 1),
+					"OLE",
+					big.NewRat(1, 4),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.0": {runOutput: programOutput{"3", "", &RunMetadata{Verdict: "OK"}}},
+						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
+					},
+				},
 			}
 			for idx, rte := range runtests {
 				t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
