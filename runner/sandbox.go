@@ -134,6 +134,10 @@ type Sandbox interface {
 // sandbox.
 type OmegajailSandbox struct {
 	omegajailRoot string
+
+	// AllowSigsysFallback allows omegajail to use the previous implementation of
+	// the sigsys detector if it's running on an older pre-5.13 kernel.
+	AllowSigsysFallback bool
 }
 
 // NewOmegajailSandbox creates a new OmegajailSandbox.
@@ -211,7 +215,7 @@ func (o *OmegajailSandbox) Compile(
 		params = append(params, extraFlags...)
 	}
 
-	invokeOmegajail(ctx, o.omegajailRoot, params, errorFile)
+	o.invokeOmegajail(ctx, params, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -349,7 +353,7 @@ func (o *OmegajailSandbox) Run(
 		preloader.release()
 	}
 
-	invokeOmegajail(ctx, o.omegajailRoot, params, errorFile)
+	o.invokeOmegajail(ctx, params, errorFile)
 	metaFd, err := os.Open(metaFile)
 	if err != nil {
 		return &RunMetadata{
@@ -361,8 +365,11 @@ func (o *OmegajailSandbox) Run(
 	return parseMetaFile(ctx, limits, lang, metaFd, &errorFile, lang == "c")
 }
 
-func invokeOmegajail(ctx *common.Context, omegajailRoot string, omegajailParams []string, errorFile string) {
-	omegajailFullParams := []string{path.Join(omegajailRoot, "bin/omegajail")}
+func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams []string, errorFile string) {
+	omegajailFullParams := []string{path.Join(o.omegajailRoot, "bin/omegajail")}
+	if o.AllowSigsysFallback {
+		omegajailFullParams = append(omegajailFullParams, "--allow-sigsys-fallback")
+	}
 	omegajailFullParams = append(omegajailFullParams, omegajailParams...)
 	ctx.Log.Debug(
 		"invoking",
