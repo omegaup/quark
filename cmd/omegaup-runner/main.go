@@ -702,7 +702,12 @@ func main() {
 			)
 			os.Exit(1)
 		}
-		sandbox = runner.NewOmegajailSandbox(omegajailRoot)
+		oj := runner.NewOmegajailSandbox(omegajailRoot)
+		if *oneshot == "ci" {
+			// Allow sigsys to use the fallback detector when running in CI.
+			oj.AllowSigsysFallback = true
+		}
+		sandbox = oj
 	}
 
 	if isOneShotMode() {
