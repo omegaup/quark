@@ -251,7 +251,8 @@ func (t *ReportTest) String() string {
 // Report represents the result of a CI run.
 type Report struct {
 	Problem     string         `json:"problem"`
-	CommitHash  string         `json:"commit_hash"`
+	Hash        string         `json:"commit_hash"`
+	IsEphemeral bool           `json:"is_ephemeral"`
 	StartTime   time.Time      `json:"start_time"`
 	FinishTime  *time.Time     `json:"finish_time,omitempty"`
 	Duration    *base.Duration `json:"duration,omitempty"`

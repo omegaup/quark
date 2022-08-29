@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -62,7 +64,7 @@ func readReport(
 	t.Fatalf("Run did not finish within 5 seconds")
 }
 
-func TestCI(t *testing.T) {
+func TestCIGit(t *testing.T) {
 	ctx := newGraderContext(t)
 	if !ctx.Config.Runner.PreserveFiles {
 		defer os.RemoveAll(path.Dir(ctx.Config.Grader.RuntimePath))
@@ -118,5 +120,60 @@ func TestCI(t *testing.T) {
 				t.Errorf("%s: test.State == %q, want %q", test.Filename, test.State, ci.StatePassed)
 			}
 		}
+	}
+}
+
+func TestEphemeralCI(t *testing.T) {
+	ctx := newGraderContext(t)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(path.Dir(ctx.Config.Grader.RuntimePath))
+	}
+	if problemZip, err := filepath.Abs("testdata/ofmi-2022-torre.zip"); err != nil {
+		t.Fatalf("Failed to get problem zip: %s", err)
+	}
+	ephemeralRunManager := grader.NewEphemeralRunManager(ctx)
+	if err := ephemeralRunManager.Initialize(); err != nil {
+		t.Fatalf("Failed to fully initalize the ephemeral run manager: %s", err)
+	}
+	mux := http.NewServeMux()
+	shutdowner := registerCIHandlers(ctx, mux, ephemeralRunManager)
+	defer shutdowner.Shutdown(context.Background())
+	registerRunnerHandlers(ctx, mux, nil, true)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	requestURL, err := url.Parse(ts.URL + "/ci/ephemeral/")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: %s", err)
+	}
+
+	var report ci.Report
+
+	body, writer := io.Pipe()
+
+	newCIRequest, err := httptest.NewRequest(http.MethodPost, requestURL, body)
+
+	mwriter := multipart.NewWriter(writer)
+	newCIRequest.Header.Add("Content-Type", mwriter.FormDataContentType())
+
+	resp, err := ts.Client().Do()
+	if err != nil {
+		t.Fatalf("Failed to create request: %s", err)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(report); err != nil {
+		t.Fatalf("Failed to deserialize report: %s", err)
+	}
+
+	readReport(t, ctx, ts.Client(), requestURL.String(), &report, []ci.State{})
+
+	for range report.Tests {
+		ctx.Log.Info("Gonna request a run", nil)
+		RunnerRequestRun(t, ctx, ts)
+	}
+
+	readReport(t, ctx, ts.Client(), requestURL.String(), &report, []ci.State{ci.StateWaiting, ci.StateRunning})
+
+	if report.State != ci.StatePassed {
+		t.Errorf("report.State == %q, want %q", report.State, ci.StatePassed)
 	}
 }
