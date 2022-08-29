@@ -1227,6 +1227,175 @@ func TestGradeLowMemOmegajail(t *testing.T) {
 	}
 }
 
+func TestGradeOLE(t *testing.T) {
+	for name, wrapper := range map[string]sandboxWrapper{
+		"fake":      &fakeSandboxWrapper{},
+		"omegajail": &omegajailSandboxWrapper{omegajail: getSandbox()},
+	} {
+		wrapper := wrapper
+		t.Run(name, func(t *testing.T) {
+			if testing.Short() && wrapper.name() == "OmegajailSandbox" {
+				t.Skip("skipping test in short mode.")
+			}
+			if !wrapper.supported() {
+				t.Skip(fmt.Sprintf("%s not supported", wrapper.name()))
+			}
+
+			ctx, err := newRunnerContext(t)
+			if err != nil {
+				t.Fatalf("RunnerContext creation failed with %q", err)
+			}
+			defer ctx.Close()
+			if !ctx.Config.Runner.PreserveFiles {
+				defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+			}
+
+			// Artificially low limit for the test
+			ctx.Config.Runner.OverallOutputLimit = base.Byte(3)
+
+			inputManager := common.NewInputManager(ctx)
+			AplusB, err := common.NewLiteralInputFactory(
+				&common.LiteralInput{
+					Cases: map[string]*common.LiteralCaseSettings{
+						"0":   {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+						"1.0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+						"1.1": {Input: "2 3", ExpectedOutput: "5", Weight: big.NewRat(2, 1)},
+					},
+					Validator: &common.LiteralValidatorSettings{
+						Name: common.ValidatorNameTokenNumeric,
+					},
+					Limits: &common.LimitsSettings{
+						TimeLimit:            common.DefaultLiteralLimitSettings.TimeLimit,
+						MemoryLimit:          8 * 1024 * 1024,
+						OverallWallTimeLimit: common.DefaultLiteralLimitSettings.OverallWallTimeLimit,
+						ExtraWallTime:        common.DefaultLiteralLimitSettings.ExtraWallTime,
+						OutputLimit:          common.DefaultLiteralLimitSettings.OutputLimit,
+					},
+				},
+				ctx.Config.Runner.RuntimePath,
+				common.LiteralPersistRunner,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create Input: %q", err)
+			}
+
+			inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
+			if err != nil {
+				t.Fatalf("Failed to open problem: %q", err)
+			}
+			defer inputRef.Release()
+
+			runtests := []runnerTestCase{
+				{
+					"c11-gcc",
+					"#include <stdio.h>\nint main() { printf(\"3\\n\"); }",
+					big.NewRat(1, 1),
+					"OLE",
+					big.NewRat(1, 4),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.0": {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
+					},
+				},
+				{
+					"cpp17-gcc",
+					"#include <iostream>\nint main() { std::cout << \"3\\n\"; }",
+					big.NewRat(1, 1),
+					"OLE",
+					big.NewRat(1, 4),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.0": {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
+					},
+				},
+				{
+					"pas",
+					`program Main;
+			begin
+				writeln ('3');
+			end.`,
+					big.NewRat(1, 1),
+					"OLE",
+					big.NewRat(1, 4),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.0": {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
+					},
+				},
+				{
+					"cat",
+					"data:application/zip;base64,UEsDBAoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABwAMC5vdX" +
+						"RVVAkAA67WxFb8t4ZYdXgLAAEE6AMAAAToAwAAMwpQSwMECgAAAAAAhhE4StGeZ1UCAAAAAg" +
+						"AAAAcAHAAxLjAub3V0VVQJAAP8t4ZYCbiGWHV4CwABBOgDAAAE6AMAADMKUEsDBAoAAAAAAO" +
+						"eiUUhXOT0DAgAAAAIAAAAHABwAMS4xLm91dFVUCQADstbEVgm4hlh1eAsAAQToAwAABOgDAA" +
+						"A1ClBLAQIeAwoAAAAAAOWiUUjRnmdVAgAAAAIAAAAFABgAAAAAAAEAAAC0gQAAAAAwLm91dF" +
+						"VUBQADrtbEVnV4CwABBOgDAAAE6AMAAFBLAQIeAwoAAAAAAIYROErRnmdVAgAAAAIAAAAHAB" +
+						"gAAAAAAAEAAAC0gUEAAAAxLjAub3V0VVQFAAP8t4ZYdXgLAAEE6AMAAAToAwAAUEsBAh4DCg" +
+						"AAAAAA56JRSFc5PQMCAAAAAgAAAAcAGAAAAAAAAQAAALSBhAAAADEuMS5vdXRVVAUAA7LWxF" +
+						"Z1eAsAAQToAwAABOgDAABQSwUGAAAAAAMAAwDlAAAAxwAAAAAA",
+					big.NewRat(1, 1),
+					"OLE",
+					big.NewRat(1, 4),
+					expectedResult{runOutput: programOutput{"", "", &RunMetadata{Verdict: "OK"}}},
+					map[string]expectedResult{
+						"0":   {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.0": {runOutput: programOutput{"3\n", "", &RunMetadata{Verdict: "OK", OutputSize: base.Byte(2)}}},
+						"1.1": {runOutput: programOutput{"", "", &RunMetadata{Verdict: "OLE"}}},
+					},
+				},
+			}
+			for idx, rte := range runtests {
+				t.Run(fmt.Sprintf("%s/%d/%s %s", wrapper.name(), idx, rte.language, rte.expectedVerdict), func(t *testing.T) {
+					results, err := Grade(
+						ctx,
+						&bytes.Buffer{},
+						&common.Run{
+							AttemptID: uint64(idx),
+							Language:  rte.language,
+							InputHash: inputRef.Input.Hash(),
+							Source:    rte.source,
+							MaxScore:  rte.maxScore,
+						},
+						inputRef.Input,
+						wrapper.sandbox(&rte),
+					)
+					if err != nil {
+						t.Fatalf("Failed to run %v: %q", rte, err)
+					}
+					if results.Verdict != rte.expectedVerdict {
+						t.Errorf(
+							"results.Verdict = %q, expected %q, test %v: %v",
+							results.Verdict,
+							rte.expectedVerdict,
+							idx,
+							rte,
+						)
+					}
+					if results.Score.Cmp(rte.expectedScore) != 0 {
+						t.Errorf(
+							"results.Score = %s, expected %s",
+							results.Score.String(),
+							rte.expectedScore.String(),
+						)
+					}
+					if results.OverallOutput != base.Byte(4) {
+						t.Errorf(
+							"results.OverallOutput = %d, expected 4",
+							results.OverallOutput.Bytes(),
+						)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestKarelGrade(t *testing.T) {
 	for name, wrapper := range map[string]sandboxWrapper{
 		"fake":      &fakeSandboxWrapper{},

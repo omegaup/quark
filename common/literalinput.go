@@ -143,7 +143,7 @@ var (
 		MemoryLimit:          base.Gibibyte + base.Gibibyte/2,
 		OverallWallTimeLimit: base.Duration(time.Duration(10) * time.Second),
 		ExtraWallTime:        base.Duration(0),
-		OutputLimit:          base.Byte(2) * base.Mebibyte,
+		OutputLimit:          base.Byte(20) * base.Mebibyte,
 	}
 
 	DefaultLiteralValidatorSettings = LiteralValidatorSettings{
