@@ -18,7 +18,7 @@ import (
 	"github.com/omegaup/quark/runner"
 )
 
-func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
+func newInMemoryDB(t *testing.T, scoreMode string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open(
 		"sqlite3",
@@ -118,7 +118,7 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 			alias varchar(32) NOT NULL UNIQUE,
 			scoreboard int NOT NULL DEFAULT '1',
 			points_decay_factor double NOT NULL DEFAULT '0',
-			partial_score tinyint(1) NOT NULL DEFAULT '1',
+			score_mode enum('partial','all_or_nothing','max_per_group') NOT NULL DEFAULT 'partial',
 			submissions_gap int NOT NULL DEFAULT '60',
 			feedback varchar NOT NULL DEFAULT 'none',
 			penalty int NOT NULL DEFAULT '1',
@@ -160,9 +160,9 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 		);
 		INSERT INTO Contests (
 			contest_id, problemset_id, acl_id, alias, title, description, rerun_id,
-			partial_score, penalty_type, penalty_calc_policy, start_time
+			score_mode, penalty_type, penalty_calc_policy, start_time
 		) VALUES (
-			1, 1, 1, "contest", "Contest", "Contest", 0, ?, "none", "sum",
+			1, 1, 1, "contest", "Contest", "Contest", 0, ?, ?, "none", "sum",
 			"1970-01-01 00:00:00"
 		);
 		INSERT INTO Problemset_Problems (
@@ -191,7 +191,7 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 		) VALUES (
 			1, "identity"
 		);
-	`, partialScore); err != nil {
+	`, scoreMode); err != nil {
 		t.Fatalf("Failed to initialize database: %v", err)
 	}
 	return db
@@ -274,18 +274,18 @@ func TestUpdateDatabase(t *testing.T) {
 func TestBroadcastRun(t *testing.T) {
 	ctx := newGraderContext(t)
 	scenarios := []struct {
-		partialScore  bool
+		scoreMode     string
 		verdict       string
 		score         *big.Rat
 		expectedScore float64
 	}{
-		{partialScore: true, verdict: "AC", score: big.NewRat(1, 1), expectedScore: 1.},
-		{partialScore: true, verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.5},
-		{partialScore: false, verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.},
+		{scoreMode: "partial", verdict: "AC", score: big.NewRat(1, 1), expectedScore: 1.},
+		{scoreMode: "partial", verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.5},
+		{scoreMode: "all_or_nothing", verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.},
 	}
 	for idx, s := range scenarios {
-		t.Run(fmt.Sprintf("%d: verdict=%s partialScore=%v", idx, s.verdict, s.partialScore), func(t *testing.T) {
-			db := newInMemoryDB(t, s.partialScore)
+		t.Run(fmt.Sprintf("%d: verdict=%s scoreMode=%s", idx, s.verdict, s.scoreMode), func(t *testing.T) {
+			db := newInMemoryDB(t, s.scoreMode)
 
 			var message broadcaster.Message
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -305,7 +305,7 @@ func TestBroadcastRun(t *testing.T) {
 				GUID:         "1",
 				Run:          &common.Run{},
 				PenaltyType:  "none",
-				PartialScore: s.partialScore,
+				ScoreMode:    s.scoreMode,
 				Result: runner.RunResult{
 					Verdict:      s.verdict,
 					Score:        s.score,
