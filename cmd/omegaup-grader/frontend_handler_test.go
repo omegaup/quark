@@ -162,7 +162,7 @@ func newInMemoryDB(t *testing.T, scoreMode string) *sql.DB {
 			contest_id, problemset_id, acl_id, alias, title, description, rerun_id,
 			score_mode, penalty_type, penalty_calc_policy, start_time
 		) VALUES (
-			1, 1, 1, "contest", "Contest", "Contest", 0, ?, ?, "none", "sum",
+			1, 1, 1, "contest", "Contest", "Contest", 0, ?, "none", "sum",
 			"1970-01-01 00:00:00"
 		);
 		INSERT INTO Problemset_Problems (
