@@ -199,7 +199,7 @@ func newInMemoryDB(t *testing.T, scoreMode string) *sql.DB {
 
 func TestUpdateDatabase(t *testing.T) {
 	ctx := newGraderContext(t)
-	db := newInMemoryDB(t, true)
+	db := newInMemoryDB(t, "partial")
 
 	var count int
 	if err := queryRowWithRetry(
