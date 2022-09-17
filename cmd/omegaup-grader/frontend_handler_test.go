@@ -118,7 +118,7 @@ func newInMemoryDB(t *testing.T, scoreMode string) *sql.DB {
 			alias varchar(32) NOT NULL UNIQUE,
 			scoreboard int NOT NULL DEFAULT '1',
 			points_decay_factor double NOT NULL DEFAULT '0',
-			score_mode enum('partial','all_or_nothing','max_per_group') NOT NULL DEFAULT 'partial',
+			score_mode varchar NOT NULL DEFAULT 'partial',
 			submissions_gap int NOT NULL DEFAULT '60',
 			feedback varchar NOT NULL DEFAULT 'none',
 			penalty int NOT NULL DEFAULT '1',
