@@ -31,7 +31,7 @@ var (
 // while there is at least one reference to it. Once the last reference is
 // released, it will be inserted into its associated InputManager.
 type Input interface {
-	base.SizedEntry[Input]
+	base.SizedEntry
 
 	// Path returns the path to the uncompressed representation of the Input
 	// on-disk.
@@ -228,10 +228,6 @@ func (input *cacheOnlyInput) Size() base.Byte {
 func (input *cacheOnlyInput) Release() {
 }
 
-func (input *cacheOnlyInput) Value() Input {
-	return input
-}
-
 func (input *cacheOnlyInput) Path() string {
 	return "/dev/null"
 }
@@ -281,7 +277,7 @@ func NewInputManager(ctx *Context) *InputManager {
 func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, error) {
 	entryRef, err := mgr.lruCache.Get(
 		hash,
-		func(hash string) (base.SizedEntry[Input], error) {
+		func(hash string) (Input, error) {
 			input := factory.NewInput(hash, mgr)
 			if input.Committed() {
 				// No further processing necessary.
@@ -331,7 +327,7 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, erro
 		return nil, err
 	}
 	return &InputRef{
-		Input: entryRef.Value.(Input),
+		Input: entryRef.Value,
 		mgr:   mgr,
 		ref:   entryRef,
 	}, nil

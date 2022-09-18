@@ -24,21 +24,14 @@ var (
 
 type slowProblemEntry bool
 
-var _ base.SizedEntry[slowProblemEntry] = (*slowProblemEntry)(nil)
+var _ base.SizedEntry = (slowProblemEntry)(false)
 
-func (e *slowProblemEntry) Size() base.Byte {
+func (e slowProblemEntry) Size() base.Byte {
 	return base.Byte(1)
 }
 
-func (e *slowProblemEntry) Release() {
+func (e slowProblemEntry) Release() {
 	// It's just, like, a bool.
-}
-
-func (e *slowProblemEntry) Value() slowProblemEntry {
-	if e == nil {
-		return false
-	}
-	return *e
 }
 
 // IsProblemSlow returns whether the problem at that particular commit is slow.
@@ -53,36 +46,36 @@ func IsProblemSlow(
 		gitserverURL += "/"
 	}
 	cacheKey := fmt.Sprintf("%s:%s", problemName, inputHash)
-	entry, err := slowProblemCache.Get(cacheKey, func(key string) (base.SizedEntry[slowProblemEntry], error) {
+	entry, err := slowProblemCache.Get(cacheKey, func(key string) (slowProblemEntry, error) {
 		client := &http.Client{
 			Timeout: 15 * time.Second,
 		}
 
 		req, err := http.NewRequest("GET", fmt.Sprintf("%s%s/+/%s/settings.json", gitserverURL, problemName, inputHash), nil)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create a request for problem settings for %s", cacheKey)
+			return false, errors.Wrapf(err, "failed to create a request for problem settings for %s", cacheKey)
 		}
 		if gitserverAuthorization != "" {
 			req.Header.Add("Authorization", gitserverAuthorization)
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get problem settings for %s", cacheKey)
+			return false, errors.Wrapf(err, "failed to get problem settings for %s", cacheKey)
 		}
 		var problemSettings common.ProblemSettings
 		err = json.NewDecoder(resp.Body).Decode(&problemSettings)
 		resp.Body.Close()
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to unmarshal settings.json for %s", cacheKey)
+			return false, errors.Wrapf(err, "failed to unmarshal settings.json for %s", cacheKey)
 		}
 
-		slow := problemSettings.Slow
-		return (*slowProblemEntry)(&slow), nil
+		slow := slowProblemEntry(problemSettings.Slow)
+		return slow, nil
 	})
 	if err != nil {
 		return false, err
 	}
-	slow := *(*bool)(entry.Value.(*slowProblemEntry))
+	slow := bool(entry.Value)
 	slowProblemCache.Put(entry)
 
 	return slow, nil
@@ -306,11 +299,6 @@ func (input *Input) Persist() error {
 	return nil
 }
 
-// Value implements the SizedEntry interface.
-func (input *Input) Value() common.Input {
-	return input
-}
-
 // Transmit sends a serialized version of the Input to the runner. It sends a
 // .tar.gz file with the Content-SHA1 header with the hexadecimal
 // representation of its SHA-1 hash.
@@ -367,10 +355,6 @@ type cachedInput struct {
 
 func (input *cachedInput) Persist() error {
 	return common.ErrUnimplemented
-}
-
-func (input *cachedInput) Value() common.Input {
-	return input
 }
 
 // A CachedInputFactory is a grader-specific CachedInputFactory. It reads

@@ -599,10 +599,6 @@ func (input *inMemoryInput) Release() {
 	input.Delete()
 }
 
-func (input *inMemoryInput) Value() Input {
-	return input
-}
-
 func createTar(buf *bytes.Buffer, files *map[string][]byte) error {
 	gz := gzip.NewWriter(buf)
 	defer gz.Close()
