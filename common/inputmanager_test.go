@@ -48,10 +48,6 @@ func (input *testInput) Release() {
 	input.Delete()
 }
 
-func (input *testInput) Value() Input {
-	return input
-}
-
 func (input *testInput) Persist() error {
 	return ErrUnimplemented
 }

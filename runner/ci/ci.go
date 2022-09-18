@@ -767,7 +767,7 @@ type sizedEntry struct {
 	log  logging.Logger
 }
 
-var _ base.SizedEntry[*sizedEntry] = (*sizedEntry)(nil)
+var _ base.SizedEntry = (*sizedEntry)(nil)
 
 func (e *sizedEntry) Release() {
 	if err := os.RemoveAll(e.path); err != nil {
@@ -783,10 +783,6 @@ func (e *sizedEntry) Release() {
 
 func (e *sizedEntry) Size() base.Byte {
 	return e.size
-}
-
-func (e *sizedEntry) Value() *sizedEntry {
-	return e
 }
 
 func getDirectorySize(root string) (base.Byte, error) {
@@ -821,7 +817,7 @@ func NewLRUCache(sizeLimit base.Byte, log logging.Logger) *LRUCache {
 func (l *LRUCache) AddRun(currentPath string, key string) {
 	ref, err := l.Get(
 		key,
-		func(hash string) (base.SizedEntry[*sizedEntry], error) {
+		func(hash string) (*sizedEntry, error) {
 			size, err := getDirectorySize(currentPath)
 			if err != nil {
 				return nil, err
