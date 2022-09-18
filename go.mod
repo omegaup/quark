@@ -11,7 +11,7 @@ require (
 	github.com/libgit2/git2go/v33 v33.0.4
 	github.com/mattn/go-sqlite3 v1.14.8
 	github.com/newrelic/go-agent/v3 v3.15.2
-	github.com/omegaup/githttp/v2 v2.4.11
+	github.com/omegaup/githttp/v2 v2.4.13
 	github.com/omegaup/go-base/logging/log15 v0.0.0-20211215145412-f1de9d5c6aee
 	github.com/omegaup/go-base/tracing/newrelic/v3 v3.3.6
 	github.com/omegaup/go-base/v3 v3.3.6
