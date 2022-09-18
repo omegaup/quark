@@ -147,54 +147,73 @@ func updateDatabase(
 				run.ID,
 			)
 			if err != nil {
-				return err
-			}
-		} else if run.PenaltyType == "runtime" {
-			_, err := tx.Exec(
-				`
-				UPDATE
-					Runs
-				SET
-					status = ?, verdict = ?, runtime = ?, penalty = ?, memory = ?,
-					score = ?, contest_score = ?, judged_by = ?
-				WHERE
-					run_id = ?;
-				`,
-				status,
-				run.Result.Verdict,
-				run.Result.Time*1000,
-				run.Result.Time*1000,
-				run.Result.Memory.Bytes(),
-				base.RationalToFloat(run.Result.Score),
-				base.RationalToFloat(run.Result.ContestScore),
-				run.Result.JudgedBy,
-				run.ID,
-			)
-			if err != nil {
-				return err
+				return fmt.Errorf("update runs: %w", err)
 			}
 		} else {
-			_, err := tx.Exec(
-				`
-				UPDATE
-					Runs
-				SET
-					status = ?, verdict = ?, runtime = ?, memory = ?, score = ?,
-					contest_score = ?, judged_by = ?
-				WHERE
-					run_id = ?;
-				`,
-				status,
-				run.Result.Verdict,
-				run.Result.Time*1000,
-				run.Result.Memory.Bytes(),
-				base.RationalToFloat(run.Result.Score),
-				base.RationalToFloat(run.Result.ContestScore),
-				run.Result.JudgedBy,
-				run.ID,
-			)
-			if err != nil {
-				return err
+			if run.PenaltyType == "runtime" {
+				_, err := tx.Exec(
+					`
+					UPDATE
+						Runs
+					SET
+						status = ?, verdict = ?, runtime = ?, penalty = ?, memory = ?,
+						score = ?, contest_score = ?, judged_by = ?
+					WHERE
+						run_id = ?;
+					`,
+					status,
+					run.Result.Verdict,
+					run.Result.Time*1000,
+					run.Result.Time*1000,
+					run.Result.Memory.Bytes(),
+					base.RationalToFloat(run.Result.Score),
+					base.RationalToFloat(run.Result.ContestScore),
+					run.Result.JudgedBy,
+					run.ID,
+				)
+				if err != nil {
+					return fmt.Errorf("update runs: %w", err)
+				}
+			} else {
+				_, err := tx.Exec(
+					`
+					UPDATE
+						Runs
+					SET
+						status = ?, verdict = ?, runtime = ?, memory = ?, score = ?,
+						contest_score = ?, judged_by = ?
+					WHERE
+						run_id = ?;
+					`,
+					status,
+					run.Result.Verdict,
+					run.Result.Time*1000,
+					run.Result.Memory.Bytes(),
+					base.RationalToFloat(run.Result.Score),
+					base.RationalToFloat(run.Result.ContestScore),
+					run.Result.JudgedBy,
+					run.ID,
+				)
+				if err != nil {
+					return fmt.Errorf("update runs: %w", err)
+				}
+			}
+			for _, g := range run.Result.Groups {
+				_, err := tx.Exec(
+					`
+					REPLACE INTO
+						Runs_Groups(run_id, group_name, score, verdict)
+					VALUES
+						(?, ?, ?, ?);
+					`,
+					run.ID,
+					g.Group,
+					base.RationalToFloat(g.Score),
+					g.Verdict(),
+				)
+				if err != nil {
+					return fmt.Errorf("replace into groups (%d, %s): %w", run.ID, g.Group, err)
+				}
 			}
 		}
 		_, err := tx.Exec(

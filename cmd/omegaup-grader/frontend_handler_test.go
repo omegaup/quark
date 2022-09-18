@@ -62,6 +62,14 @@ func newInMemoryDB(t *testing.T, partialScore bool) *sql.DB {
 			judged_by varchar DEFAULT NULL,
 			UNIQUE (submission_id, version)
 		);
+		CREATE TABLE Runs_Groups (
+			case_run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id int NOT NULL,
+			group_name varchar NOT NULL,
+			score double NOT NULL DEFAULT '0',
+			verdict varchar NOT NULL,
+			UNIQUE (run_id,group_name)
+		);
 		CREATE TABLE Submissions (
 			submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
 			current_run_id int DEFAULT NULL,
@@ -216,6 +224,18 @@ func TestUpdateDatabase(t *testing.T) {
 
 	if err := queryRowWithRetry(
 		db,
+		`SELECT COUNT(*) FROM Runs_Groups;`,
+	).Scan(
+		&count,
+	); err != nil {
+		t.Fatalf("Error updating the database: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 0)
+	}
+
+	if err := queryRowWithRetry(
+		db,
 		`SELECT COUNT(*) FROM Submissions WHERE verdict = "AC";`,
 	).Scan(
 		&count,
@@ -241,6 +261,38 @@ func TestUpdateDatabase(t *testing.T) {
 			WallTime:     1.,
 			Memory:       base.Mebibyte,
 			JudgedBy:     "Test",
+			Groups: []runner.GroupResult{
+				{
+					Group:        "group1",
+					Score:        big.NewRat(1, 2),
+					ContestScore: big.NewRat(1, 2),
+					MaxScore:     big.NewRat(1, 2),
+					Cases: []runner.CaseResult{
+						{
+							Verdict:      "AC",
+							Name:         "1",
+							Score:        big.NewRat(1, 1),
+							ContestScore: big.NewRat(1, 2),
+							MaxScore:     big.NewRat(1, 2),
+						},
+					},
+				},
+				{
+					Group:        "group2",
+					Score:        big.NewRat(1, 2),
+					ContestScore: big.NewRat(1, 2),
+					MaxScore:     big.NewRat(1, 2),
+					Cases: []runner.CaseResult{
+						{
+							Verdict:      "AC",
+							Name:         "2",
+							Score:        big.NewRat(1, 1),
+							ContestScore: big.NewRat(1, 2),
+							MaxScore:     big.NewRat(1, 2),
+						},
+					},
+				},
+			},
 		},
 	}
 	if err := updateDatabase(ctx, db, "ready", &run); err != nil {
@@ -257,6 +309,17 @@ func TestUpdateDatabase(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 1)
+	}
+	if err := queryRowWithRetry(
+		db,
+		`SELECT COUNT(*) FROM Runs_Groups;`,
+	).Scan(
+		&count,
+	); err != nil {
+		t.Fatalf("Error updating the database: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 2)
 	}
 	if err := queryRowWithRetry(
 		db,
