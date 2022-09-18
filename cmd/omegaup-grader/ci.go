@@ -42,7 +42,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx.Log.Info(
 		"CI request",
-		map[string]interface{}{
+		map[string]any{
 			"path": r.URL.Path,
 		},
 	)
@@ -80,7 +80,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			ctx.Log.Error(
 				"Failed to stat the file",
-				map[string]interface{}{
+				map[string]any{
 					"filename": reportPath,
 					"err":      err,
 				},
@@ -104,7 +104,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ctx.Log.Error(
 			"failed to open repository",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"err":      err,
 			},
@@ -117,7 +117,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ctx.Log.Error(
 			"failed to parse commit",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"commit":   report.CommitHash,
 				"err":      err,
@@ -130,7 +130,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ctx.Log.Error(
 			"failed to lookup commit",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"commit":   report.CommitHash,
 				"err":      err,
@@ -146,7 +146,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := os.MkdirAll(path.Dir(reportPath), 0755); err != nil {
 		ctx.Log.Error(
 			"Failed to create the report directory",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"err":      err,
 			},
@@ -163,7 +163,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to create the running stamp",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"err":      err,
 			},
@@ -176,7 +176,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := report.Write(reportPath); err != nil {
 		ctx.Log.Error(
 			"Failed to create the report file",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"err":      err,
 			},
@@ -193,7 +193,7 @@ func (h *ciHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err = encoder.Encode(report); err != nil {
 		ctx.Log.Error(
 			"Failed to write report",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -218,7 +218,7 @@ func (h *ciHandler) runTest(
 	ctx.Metrics.CounterAdd("grader_ephemeral_runs_total", 1)
 	ctx.Log.Debug(
 		"Adding new run",
-		map[string]interface{}{
+		map[string]any{
 			"run": &grader.EphemeralRunRequest{
 				Source:   testConfig.Solution.Source,
 				Language: testConfig.Solution.Language,
@@ -238,7 +238,7 @@ func (h *ciHandler) runTest(
 	if err != nil {
 		ctx.Log.Error(
 			"Error creating input factory",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -255,7 +255,7 @@ func (h *ciHandler) runTest(
 	if err != nil {
 		ctx.Log.Error(
 			"Error making run ephemeral",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -271,7 +271,7 @@ func (h *ciHandler) runTest(
 		if err != nil {
 			ctx.Log.Error(
 				"Error cleaning up after run",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -282,7 +282,7 @@ func (h *ciHandler) runTest(
 	if err != nil {
 		ctx.Log.Error(
 			"Error adding input",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -292,7 +292,7 @@ func (h *ciHandler) runTest(
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to add run",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -301,7 +301,7 @@ func (h *ciHandler) runTest(
 
 	ctx.Log.Info(
 		"enqueued run",
-		map[string]interface{}{
+		map[string]any{
 			"run": runInfo.Run,
 		},
 	)
@@ -313,7 +313,7 @@ func (h *ciHandler) runTest(
 		if err := report.Write(reportPath); err != nil {
 			ctx.Log.Error(
 				"Failed to write the report file",
-				map[string]interface{}{
+				map[string]any{
 					"filename": reportPath,
 					"err":      err,
 				},
@@ -335,7 +335,7 @@ func (h *ciHandler) runTest(
 	if err := report.Write(reportPath); err != nil {
 		ctx.Log.Error(
 			"Failed to write the report file",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"err":      err,
 			},
@@ -354,7 +354,7 @@ func (h *ciHandler) runTest(
 	); err != nil {
 		ctx.Log.Error(
 			"Failed to commit the original request",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -365,7 +365,7 @@ func (h *ciHandler) runTest(
 	committed = true
 	ctx.Log.Info(
 		"Finished running ephemeral run",
-		map[string]interface{}{
+		map[string]any{
 			"token": testConfig.Test.EphemeralToken,
 		},
 	)
@@ -381,7 +381,7 @@ func (h *ciHandler) processCIRequest(
 	ctx := h.ctx.Wrap(context.TODO())
 	ctx.Log.Info(
 		"running request",
-		map[string]interface{}{
+		map[string]any{
 			"report": report,
 		},
 	)
@@ -395,7 +395,7 @@ func (h *ciHandler) processCIRequest(
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to validate commit",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -410,7 +410,7 @@ func (h *ciHandler) processCIRequest(
 		if err := report.Write(reportPath); err != nil {
 			ctx.Log.Error(
 				"Failed to write the report file",
-				map[string]interface{}{
+				map[string]any{
 					"filename": reportPath,
 					"err":      err,
 				},
@@ -422,7 +422,7 @@ func (h *ciHandler) processCIRequest(
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to validate commit",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -441,7 +441,7 @@ func (h *ciHandler) processCIRequest(
 		if err := report.Write(reportPath); err != nil {
 			ctx.Log.Error(
 				"Failed to write the report file",
-				map[string]interface{}{
+				map[string]any{
 					"filename": reportPath,
 					"err":      err,
 				},
@@ -455,7 +455,7 @@ func (h *ciHandler) processCIRequest(
 	if err := report.Write(reportPath); err != nil {
 		ctx.Log.Error(
 			"Failed to write the report file",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"err":      err,
 			},
@@ -467,7 +467,7 @@ func (h *ciHandler) processCIRequest(
 		if err := h.runTest(ctx, testConfig, runs, report, reportPath); err != nil {
 			ctx.Log.Error(
 				"Failed to perform ephemeral run",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -486,14 +486,14 @@ func (h *ciHandler) processCIRequest(
 	}
 	ctx.Log.Info(
 		"running request",
-		map[string]interface{}{
+		map[string]any{
 			"report": report,
 		},
 	)
 	if err := report.Write(reportPath); err != nil {
 		ctx.Log.Error(
 			"Failed to write the report file",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"err":      err,
 			},
@@ -502,7 +502,7 @@ func (h *ciHandler) processCIRequest(
 
 	ctx.Log.Info(
 		"finished running request",
-		map[string]interface{}{
+		map[string]any{
 			"report": report,
 		},
 	)
@@ -510,7 +510,7 @@ func (h *ciHandler) processCIRequest(
 	if err := os.Remove(path.Join(path.Dir(reportPath), ci.RunningStampFilename)); err != nil {
 		ctx.Log.Error(
 			"Failed to remove the running stamp",
-			map[string]interface{}{
+			map[string]any{
 				"filename": reportPath,
 				"err":      err,
 			},
@@ -535,14 +535,14 @@ func (h *ciHandler) run() {
 	if err := h.lruCache.ReloadRuns(ciRoot); err != nil {
 		ctx.Log.Error(
 			"Reloading CI runs failed",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
 	}
 	ctx.Log.Info(
 		"Finished preloading CI runs",
-		map[string]interface{}{
+		map[string]any{
 			"cache_size": h.lruCache.Size(),
 		},
 	)

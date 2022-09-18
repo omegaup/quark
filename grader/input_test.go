@@ -265,7 +265,7 @@ func TestTransmitInput(t *testing.T) {
 		t.Fatalf("Failed to transmit input: %q", err)
 	}
 	headers := w.Header()
-	ctx.Log.Info("path", map[string]interface{}{"path": ctx.Config.Grader.RuntimePath})
+	ctx.Log.Info("path", map[string]any{"path": ctx.Config.Grader.RuntimePath})
 
 	headerentries := []struct {
 		name, value string

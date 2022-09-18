@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	nrtracing "github.com/omegaup/go-base/tracing/newrelic"
+	nrtracing "github.com/omegaup/go-base/tracing/newrelic/v3"
 	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 
@@ -224,25 +224,25 @@ func main() {
 					},
 				}).
 				WithLogLevel(aws.LogOff).
-				WithLogger(aws.LoggerFunc(func(args ...interface{}) {
+				WithLogger(aws.LoggerFunc(func(args ...any) {
 					ctx.Log.Debug(fmt.Sprintln(args...), nil)
 				})),
 		)
 		if err != nil {
-			ctx.Log.Error("aws session", map[string]interface{}{"error": err})
+			ctx.Log.Error("aws session", map[string]any{"error": err})
 			os.Exit(1)
 		}
 		s3c = s3.New(sess)
 	}
 	artifacts := grader.NewArtifactManager(s3c)
 
-	expvar.Publish("codemanager", expvar.Func(func() interface{} {
+	expvar.Publish("codemanager", expvar.Func(func() any {
 		return graderContext().InputManager
 	}))
-	expvar.Publish("queues", expvar.Func(func() interface{} {
+	expvar.Publish("queues", expvar.Func(func() any {
 		return graderContext().QueueManager
 	}))
-	expvar.Publish("inflight_runs", expvar.Func(func() interface{} {
+	expvar.Publish("inflight_runs", expvar.Func(func() any {
 		return graderContext().InflightMonitor
 	}))
 	cachePath := path.Join(ctx.Config.Grader.RuntimePath, "cache")
@@ -273,14 +273,14 @@ func main() {
 		if err := ephemeralRunManager.Initialize(); err != nil {
 			ctx.Log.Error(
 				"Failed to fully initalize the ephemeral run manager",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
 		} else {
 			ctx.Log.Info(
 				"Ephemeral run manager ready",
-				map[string]interface{}{
+				map[string]any{
 					"manager": ephemeralRunManager,
 				},
 			)
@@ -349,7 +349,7 @@ func main() {
 
 	ctx.Log.Info(
 		"omegaUp grader ready",
-		map[string]interface{}{
+		map[string]any{
 			"version": ProgramVersion,
 		},
 	)

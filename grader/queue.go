@@ -146,7 +146,7 @@ func (mgr *EphemeralRunManager) Initialize() error {
 			if err = os.RemoveAll(entryPath); err != nil {
 				mgr.ctx.Log.Error(
 					"Failed to remove directory during initialization",
-					map[string]interface{}{
+					map[string]any{
 						"entry": entryPath,
 						"err":   err,
 					},
@@ -161,7 +161,7 @@ func (mgr *EphemeralRunManager) Initialize() error {
 		}); err != nil {
 			mgr.ctx.Log.Error(
 				"Failed to add entry to manager",
-				map[string]interface{}{
+				map[string]any{
 					"entry": entryPath,
 					"err":   err,
 				},
@@ -266,7 +266,7 @@ func (mgr *EphemeralRunManager) add(entry *ephemeralRunEntry) error {
 
 		mgr.ctx.Log.Info(
 			"Evicting a run",
-			map[string]interface{}{
+			map[string]any{
 				"entry": evictedEntry,
 			},
 		)
@@ -377,7 +377,7 @@ func (runCtx *RunContext) Close() {
 	defer runCtx.Context.Transaction.End()
 	runCtx.Log.Info(
 		"Marking run as done",
-		map[string]interface{}{
+		map[string]any{
 			"context": runCtx,
 		},
 	)
@@ -409,7 +409,7 @@ func (runCtx *RunContext) Close() {
 		if err != nil {
 			runCtx.Log.Error(
 				"Unable to marshal results file",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -419,7 +419,7 @@ func (runCtx *RunContext) Close() {
 		if err != nil {
 			runCtx.Log.Error(
 				"Unable to write results file",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -435,7 +435,7 @@ func (runCtx *RunContext) Close() {
 			gz.Close()
 			runCtx.Log.Error(
 				"Unable to write log file",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -444,7 +444,7 @@ func (runCtx *RunContext) Close() {
 		if err := gz.Close(); err != nil {
 			runCtx.Log.Error(
 				"Unable to finalize log file",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -454,7 +454,7 @@ func (runCtx *RunContext) Close() {
 		if err != nil {
 			runCtx.Log.Error(
 				"Unable to create log file",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -560,7 +560,7 @@ func (queue *Queue) AddRun(
 ) error {
 	runCtx := &RunContext{
 		RunInfo:  runInfo,
-		Context:  ctx.DebugContext(map[string]interface{}{"id": runInfo.ID}),
+		Context:  ctx.DebugContext(map[string]any{"id": runInfo.ID}),
 		inputRef: inputRef,
 
 		attemptsLeft: ctx.Config.Grader.MaxGradeRetries,
@@ -604,7 +604,7 @@ func (queue *Queue) AddWaitableRun(
 ) (*RunWaitHandle, error) {
 	runCtx := &RunContext{
 		RunInfo:  runInfo,
-		Context:  ctx.DebugContext(map[string]interface{}{"id": runInfo.ID}),
+		Context:  ctx.DebugContext(map[string]any{"id": runInfo.ID}),
 		inputRef: inputRef,
 
 		attemptsLeft: ctx.Config.Grader.MaxGradeRetries,
@@ -768,7 +768,7 @@ func (monitor *InflightMonitor) timeout(
 ) {
 	runCtx.Log.Warn(
 		"run timed out. retrying",
-		map[string]interface{}{
+		map[string]any{
 			"context": runCtx,
 		},
 	)

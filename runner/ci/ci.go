@@ -767,13 +767,13 @@ type sizedEntry struct {
 	log  logging.Logger
 }
 
-var _ base.SizedEntry = &sizedEntry{}
+var _ base.SizedEntry[*sizedEntry] = (*sizedEntry)(nil)
 
 func (e *sizedEntry) Release() {
 	if err := os.RemoveAll(e.path); err != nil {
 		e.log.Error(
 			"Evicting CI run failed",
-			map[string]interface{}{
+			map[string]any{
 				"path": e.path,
 				"err":  err,
 			},
@@ -783,6 +783,10 @@ func (e *sizedEntry) Release() {
 
 func (e *sizedEntry) Size() base.Byte {
 	return e.size
+}
+
+func (e *sizedEntry) Value() *sizedEntry {
+	return e
 }
 
 func getDirectorySize(root string) (base.Byte, error) {
@@ -801,14 +805,14 @@ func getDirectorySize(root string) (base.Byte, error) {
 
 // LRUCache is a base.LRUCache specialized for CI runs.
 type LRUCache struct {
-	*base.LRUCache
+	*base.LRUCache[*sizedEntry]
 	log logging.Logger
 }
 
 // NewLRUCache returns a new LRUCache with the specified size limit.
 func NewLRUCache(sizeLimit base.Byte, log logging.Logger) *LRUCache {
 	return &LRUCache{
-		LRUCache: base.NewLRUCache(sizeLimit),
+		LRUCache: base.NewLRUCache[*sizedEntry](sizeLimit),
 		log:      log,
 	}
 }
@@ -817,7 +821,7 @@ func NewLRUCache(sizeLimit base.Byte, log logging.Logger) *LRUCache {
 func (l *LRUCache) AddRun(currentPath string, key string) {
 	ref, err := l.Get(
 		key,
-		func(hash string) (base.SizedEntry, error) {
+		func(hash string) (base.SizedEntry[*sizedEntry], error) {
 			size, err := getDirectorySize(currentPath)
 			if err != nil {
 				return nil, err
@@ -832,7 +836,7 @@ func (l *LRUCache) AddRun(currentPath string, key string) {
 	if err != nil {
 		l.log.Error(
 			"Error adding path to LRU cache. Removing instead",
-			map[string]interface{}{
+			map[string]any{
 				"path": currentPath,
 				"err":  err,
 			},
@@ -840,7 +844,7 @@ func (l *LRUCache) AddRun(currentPath string, key string) {
 		if err := os.RemoveAll(currentPath); err != nil {
 			l.log.Error(
 				"Removing errored run failed",
-				map[string]interface{}{
+				map[string]any{
 					"path": currentPath,
 					"err":  err,
 				},
@@ -871,7 +875,7 @@ func (l *LRUCache) ReloadRuns(ciRoot string) error {
 			if err := os.RemoveAll(currentPath); err != nil {
 				l.log.Error(
 					"Removing unfinished run failed",
-					map[string]interface{}{
+					map[string]any{
 						"path": currentPath,
 						"err":  err,
 					},

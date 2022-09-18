@@ -35,7 +35,7 @@ func processRun(
 	if err != nil {
 		runCtx.Log.Error(
 			"Error decoding multipart data",
-			map[string]interface{}{
+			map[string]any{
 				"err":    err,
 				"runner": runnerName,
 			},
@@ -49,7 +49,7 @@ func processRun(
 		} else if err != nil {
 			runCtx.Log.Error(
 				"Error receiving next file",
-				map[string]interface{}{
+				map[string]any{
 					"err":    err,
 					"runner": runnerName,
 				},
@@ -58,7 +58,7 @@ func processRun(
 		}
 		runCtx.Log.Debug(
 			"Processing file",
-			map[string]interface{}{
+			map[string]any{
 				"attempt_id": attemptID,
 				"filename":   part.FileName(),
 				"runner":     runnerName,
@@ -74,7 +74,7 @@ func processRun(
 			if err := decoder.Decode(&result); err != nil {
 				runCtx.Log.Error(
 					"Error obtaining result",
-					map[string]interface{}{
+					map[string]any{
 						"err":    err,
 						"runner": runnerName,
 					},
@@ -88,7 +88,7 @@ func processRun(
 			if _, err := io.Copy(&buffer, part); err != nil {
 				runCtx.Log.Error(
 					"Unable to read logs",
-					map[string]interface{}{
+					map[string]any{
 						"err":    err,
 						"runner": runnerName,
 					},
@@ -101,7 +101,7 @@ func processRun(
 			if err != nil {
 				runCtx.Log.Error(
 					"Unable to upload results",
-					map[string]interface{}{
+					map[string]any{
 						"err":    err,
 						"runner": runnerName,
 					},
@@ -112,7 +112,7 @@ func processRun(
 	}
 	runCtx.Log.Info(
 		"Finished processing run",
-		map[string]interface{}{
+		map[string]any{
 			"verdict": runCtx.RunInfo.Result.Verdict,
 			"score":   runCtx.RunInfo.Result.Score,
 			"runner":  runnerName,
@@ -123,7 +123,7 @@ func processRun(
 		// Retry the run in case it is some transient problem.
 		runCtx.Log.Info(
 			"Judge Error. Re-attempting run.",
-			map[string]interface{}{
+			map[string]any{
 				"verdict": runCtx.RunInfo.Result.Verdict,
 				"runner":  runnerName,
 				"runInfo": runCtx.RunInfo,
@@ -153,7 +153,7 @@ func registerRunnerHandlers(
 		if err != nil {
 			ctx.Log.Error(
 				"Failed to open benchmark file",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -167,7 +167,7 @@ func registerRunnerHandlers(
 		if _, err := io.Copy(f, &buf); err != nil {
 			ctx.Log.Error(
 				"Failed to write to benchmark file",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -180,7 +180,7 @@ func registerRunnerHandlers(
 		runnerName := peerName(r, insecure)
 		ctx.Log.Debug(
 			"requesting run",
-			map[string]interface{}{
+			map[string]any{
 				"proto":  r.Proto,
 				"client": runnerName,
 			},
@@ -194,7 +194,7 @@ func registerRunnerHandlers(
 		if !ok {
 			ctx.Log.Debug(
 				"client gone",
-				map[string]interface{}{
+				map[string]any{
 					"client": runnerName,
 				},
 			)
@@ -203,7 +203,7 @@ func registerRunnerHandlers(
 
 		runCtx.Log.Debug(
 			"served run",
-			map[string]interface{}{
+			map[string]any{
 				"run":    runCtx,
 				"client": runnerName,
 			},
@@ -241,7 +241,7 @@ func registerRunnerHandlers(
 		}
 		runCtx.Log.Error(
 			"run errored out. retrying",
-			map[string]interface{}{
+			map[string]any{
 				"context": runCtx,
 			},
 		)
@@ -279,7 +279,7 @@ func registerRunnerHandlers(
 		if err != nil {
 			ctx.Log.Error(
 				"Input not found",
-				map[string]interface{}{
+				map[string]any{
 					"hash": hash,
 				},
 			)
@@ -290,7 +290,7 @@ func registerRunnerHandlers(
 		if err := inputRef.Input.(common.TransmittableInput).Transmit(w); err != nil {
 			ctx.Log.Error(
 				"Error transmitting input",
-				map[string]interface{}{
+				map[string]any{
 					"hash": hash,
 					"err":  err,
 				},
