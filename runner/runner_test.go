@@ -1907,7 +1907,6 @@ func TestGradeWithCustomValidatorExpectedOutput(t *testing.T) {
 		wrapperName := wrapperName
 		wrapper := wrapper
 		t.Run(wrapperName, func(t *testing.T) {
-
 			if testing.Short() && wrapper.name() == "OmegajailSandbox" {
 				t.Skip("skipping test in short mode.")
 			}

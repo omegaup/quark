@@ -31,7 +31,7 @@ var (
 // while there is at least one reference to it. Once the last reference is
 // released, it will be inserted into its associated InputManager.
 type Input interface {
-	base.SizedEntry
+	base.SizedEntry[Input]
 
 	// Path returns the path to the uncompressed representation of the Input
 	// on-disk.
@@ -78,7 +78,7 @@ type TransmittableInput interface {
 // InputRef represents a reference to an Input
 type InputRef struct {
 	Input Input
-	ref   *base.SizedEntryRef
+	ref   *base.SizedEntryRef[Input]
 	mgr   *InputManager
 }
 
@@ -149,7 +149,7 @@ func (input *BaseInput) Settings() *ProblemSettings {
 // fixed maximum size with a least-recently used eviction policy.
 type InputManager struct {
 	ctx      *Context
-	lruCache *base.LRUCache
+	lruCache *base.LRUCache[Input]
 }
 
 // inputEntry represents an entry in the InputManager.
@@ -228,6 +228,10 @@ func (input *cacheOnlyInput) Size() base.Byte {
 func (input *cacheOnlyInput) Release() {
 }
 
+func (input *cacheOnlyInput) Value() Input {
+	return input
+}
+
 func (input *cacheOnlyInput) Path() string {
 	return "/dev/null"
 }
@@ -260,7 +264,7 @@ func (input *cacheOnlyInput) Settings() *ProblemSettings {
 func NewInputManager(ctx *Context) *InputManager {
 	return &InputManager{
 		ctx:      ctx,
-		lruCache: base.NewLRUCache(base.Byte(ctx.Config.InputManager.CacheSize)),
+		lruCache: base.NewLRUCache[Input](base.Byte(ctx.Config.InputManager.CacheSize)),
 	}
 }
 
@@ -277,7 +281,7 @@ func NewInputManager(ctx *Context) *InputManager {
 func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, error) {
 	entryRef, err := mgr.lruCache.Get(
 		hash,
-		func(hash string) (base.SizedEntry, error) {
+		func(hash string) (base.SizedEntry[Input], error) {
 			input := factory.NewInput(hash, mgr)
 			if input.Committed() {
 				// No further processing necessary.
@@ -287,7 +291,7 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, erro
 			if err := input.Verify(); err != nil {
 				mgr.ctx.Log.Warn(
 					"Hash verification failed. Regenerating",
-					map[string]interface{}{
+					map[string]any{
 						"path": input.Hash(),
 						"err":  err,
 					},
@@ -297,7 +301,7 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, erro
 				if err := input.Persist(); err != nil {
 					mgr.ctx.Log.Error(
 						"Error creating archive",
-						map[string]interface{}{
+						map[string]any{
 							"hash": input.Hash(),
 							"err":  err,
 						},
@@ -306,7 +310,7 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, erro
 				}
 				mgr.ctx.Log.Info(
 					"Generated input",
-					map[string]interface{}{
+					map[string]any{
 						"hash": input.Hash(),
 						"size": input.Size(),
 					},
@@ -314,7 +318,7 @@ func (mgr *InputManager) Add(hash string, factory InputFactory) (*InputRef, erro
 			} else {
 				mgr.ctx.Log.Debug(
 					"Reusing input",
-					map[string]interface{}{
+					map[string]any{
 						"hash": input.Hash(),
 						"size": input.Size(),
 					},
@@ -371,7 +375,7 @@ func (mgr *InputManager) PreloadInputs(
 				os.RemoveAll(path.Join(dirname, info.Name()))
 				mgr.ctx.Log.Error(
 					"Cached input corrupted",
-					map[string]interface{}{
+					map[string]any{
 						"hash": hash,
 					},
 				)
@@ -383,7 +387,7 @@ func (mgr *InputManager) PreloadInputs(
 	}
 	mgr.ctx.Log.Info(
 		"Finished preloading cached inputs",
-		map[string]interface{}{
+		map[string]any{
 			"cache_size": mgr.Size(),
 		},
 	)

@@ -39,7 +39,7 @@ func readReport(
 
 		ctx.Log.Info(
 			"Getting results...",
-			map[string]interface{}{
+			map[string]any{
 				"report": report,
 				"round":  i + 1,
 			},
@@ -99,7 +99,10 @@ func TestCI(t *testing.T) {
 
 	for range report.Tests {
 		ctx.Log.Info("Gonna request a run", nil)
-		RunnerRequestRun(t, ctx, ts)
+		err := runnerRequestRun(t, ctx, ts)
+		if err != nil {
+			t.Fatalf("failed to request run: %v", err)
+		}
 	}
 
 	readReport(t, ctx, ts.Client(), requestURL.String(), &report, []ci.State{ci.StateWaiting, ci.StateRunning})

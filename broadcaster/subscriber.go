@@ -146,7 +146,7 @@ func (b *Broadcaster) Run() {
 					b.metrics.IncrementChannelDropCount()
 					b.ctx.Log.Error(
 						"Dropped message on subscriber",
-						map[string]interface{}{
+						map[string]any{
 							"subscriber": s,
 						},
 					)
@@ -194,7 +194,7 @@ func (b *Broadcaster) Subscribe(subscriber *Subscriber) bool {
 		b.metrics.IncrementChannelDropCount()
 		b.ctx.Log.Error(
 			"Dropped subscribe request",
-			map[string]interface{}{
+			map[string]any{
 				"subscriber": subscriber,
 			},
 		)
@@ -212,7 +212,7 @@ func (b *Broadcaster) Unsubscribe(subscriber *Subscriber) bool {
 		b.metrics.IncrementChannelDropCount()
 		b.ctx.Log.Error(
 			"Dropped unsubscribe request",
-			map[string]interface{}{
+			map[string]any{
 				"subscriber": subscriber,
 			},
 		)
@@ -297,7 +297,7 @@ func NewSubscriber(
 	if err != nil {
 		ctx.Log.Error(
 			"Error",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -310,7 +310,7 @@ func NewSubscriber(
 	io.Copy(&buf, response.Body)
 	ctx.Log.Debug(
 		"ValidateFilterResponse",
-		map[string]interface{}{
+		map[string]any{
 			"status": response.Status,
 			"data":   buf.String(),
 		},
@@ -372,7 +372,7 @@ func (s *Subscriber) Run() {
 		ticker.Stop()
 		s.ctx.Log.Info(
 			"Subscriber gone",
-			map[string]interface{}{
+			map[string]any{
 				"transport": s.transport,
 				"user":      s.user,
 				"filters":   s.filters,
@@ -382,7 +382,7 @@ func (s *Subscriber) Run() {
 
 	s.ctx.Log.Info(
 		"New subscriber",
-		map[string]interface{}{
+		map[string]any{
 			"transport": s.transport,
 			"user":      s.user,
 			"filters":   s.filters,
@@ -401,7 +401,7 @@ func (s *Subscriber) Run() {
 			if err := s.transport.Send(message); err != nil {
 				s.ctx.Log.Error(
 					"Error sending message",
-					map[string]interface{}{
+					map[string]any{
 						"err": err,
 					},
 				)
@@ -412,7 +412,7 @@ func (s *Subscriber) Run() {
 			if err := s.transport.Ping(); err != nil {
 				s.ctx.Log.Error(
 					"Write error",
-					map[string]interface{}{
+					map[string]any{
 						"err": err,
 					},
 				)

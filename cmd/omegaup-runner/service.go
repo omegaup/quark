@@ -32,14 +32,14 @@ func benchmarkLoop(ctx *common.Context, wg *sync.WaitGroup) {
 		if err != nil {
 			ctx.Log.Error(
 				"Failed to run benchmark",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
 		} else {
 			ctx.Log.Info(
 				"Benchmark successful",
-				map[string]interface{}{
+				map[string]any{
 					"results": results,
 				},
 			)
@@ -69,7 +69,7 @@ func runnerLoop(ctx *common.Context, wg *sync.WaitGroup, client *http.Client, ba
 			}
 			ctx.Log.Error(
 				"error grading run",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -264,7 +264,7 @@ func gradeAndUploadResults(
 		// Still try to send the details
 		ctx.Log.Error(
 			"Error grading run",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -280,7 +280,7 @@ func gradeAndUploadResults(
 	if err != nil {
 		ctx.Log.Error(
 			"Error sending details.json",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -290,7 +290,7 @@ func gradeAndUploadResults(
 	if err := encoder.Encode(result); err != nil {
 		ctx.Log.Error(
 			"Error encoding details.json",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -304,7 +304,7 @@ func gradeAndUploadResults(
 		if err != nil {
 			ctx.Log.Error(
 				"Error creating logs.txt",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -313,7 +313,7 @@ func gradeAndUploadResults(
 		if _, err = logsWriter.Write(logsBuffer); err != nil {
 			ctx.Log.Error(
 				"Error sending logs.txt",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)

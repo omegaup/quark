@@ -174,7 +174,7 @@ func (o *OmegajailSandbox) Compile(
 		if err != nil {
 			ctx.Log.Error(
 				"Failed to symlink runtimeconfig",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -314,7 +314,7 @@ func (o *OmegajailSandbox) Run(
 	}
 
 	// "640MB should be enough for anybody"
-	hardLimit := base.MinBytes(ctx.Config.Runner.HardMemoryLimit, limits.MemoryLimit)
+	hardLimit := base.Min(ctx.Config.Runner.HardMemoryLimit, limits.MemoryLimit)
 
 	params := []string{
 		"--homedir", chdir,
@@ -345,7 +345,7 @@ func (o *OmegajailSandbox) Run(
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to preload input",
-			map[string]interface{}{
+			map[string]any{
 				"file": inputFile,
 				"err":  err,
 			},
@@ -375,7 +375,7 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 	omegajailFullParams = append(omegajailFullParams, omegajailParams...)
 	ctx.Log.Debug(
 		"invoking",
-		map[string]interface{}{
+		map[string]any{
 			"params": shellquote.Join(omegajailFullParams...),
 		},
 	)
@@ -385,7 +385,7 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to redirect omegajail stderr",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -396,7 +396,7 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 	if err := cmd.Run(); err != nil {
 		ctx.Log.Error(
 			"Omegajail execution failed",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -406,7 +406,7 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 		if err := appendFile(errorFile, omegajailErrorFile); err != nil {
 			ctx.Log.Error(
 				"Failed to append omegajail stderr",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -484,7 +484,7 @@ func parseMetaFile(
 		default:
 			ctx.Log.Warn(
 				"Unknown field in .meta file",
-				map[string]interface{}{
+				map[string]any{
 					"tokens": tokens,
 				},
 			)
@@ -507,7 +507,7 @@ func parseMetaFile(
 		default:
 			ctx.Log.Error(
 				"Received odd signal",
-				map[string]interface{}{
+				map[string]any{
 					"signal": *meta.Signal,
 				},
 			)
@@ -553,7 +553,7 @@ func isJavaMLE(ctx *common.Context, errorFilePath *string) bool {
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to open stderr",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)

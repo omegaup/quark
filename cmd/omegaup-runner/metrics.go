@@ -157,7 +157,7 @@ func setupMetrics(ctx *common.Context) {
 		if !errors.Is(err, http.ErrServerClosed) {
 			ctx.Log.Error(
 				"http listen and serve",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)

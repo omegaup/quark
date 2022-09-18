@@ -31,7 +31,7 @@ func main() {
 	if err != nil {
 		log.Error(
 			"Unable to open expected file",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -43,7 +43,7 @@ func main() {
 	if err != nil {
 		log.Error(
 			"Unable to open contestant file",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -64,7 +64,7 @@ func main() {
 	if err != nil {
 		log.Error(
 			"Error validating",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -74,7 +74,7 @@ func main() {
 	if mismatch != nil {
 		log.Info(
 			"Token mismatch",
-			map[string]interface{}{
+			map[string]any{
 				"expected": mismatch.Expected,
 				"got":      mismatch.Contestant,
 			},

@@ -286,23 +286,23 @@ func NewLiteralInputFactory(
 
 	// Limits
 	if input.Limits != nil {
-		settings.Limits.TimeLimit = base.MinDuration(
+		settings.Limits.TimeLimit = base.Min(
 			input.Limits.TimeLimit,
 			DefaultLiteralLimitSettings.TimeLimit,
 		)
-		settings.Limits.MemoryLimit = base.MinBytes(
+		settings.Limits.MemoryLimit = base.Min(
 			input.Limits.MemoryLimit,
 			DefaultLiteralLimitSettings.MemoryLimit,
 		)
-		settings.Limits.OverallWallTimeLimit = base.MinDuration(
+		settings.Limits.OverallWallTimeLimit = base.Min(
 			input.Limits.OverallWallTimeLimit,
 			DefaultLiteralLimitSettings.OverallWallTimeLimit,
 		)
-		settings.Limits.ExtraWallTime = base.MinDuration(
+		settings.Limits.ExtraWallTime = base.Min(
 			input.Limits.ExtraWallTime,
 			DefaultLiteralLimitSettings.ExtraWallTime,
 		)
-		settings.Limits.OutputLimit = base.MinBytes(
+		settings.Limits.OutputLimit = base.Min(
 			input.Limits.OutputLimit,
 			DefaultLiteralLimitSettings.OutputLimit,
 		)
@@ -597,6 +597,10 @@ func (input *inMemoryInput) Delete() error {
 
 func (input *inMemoryInput) Release() {
 	input.Delete()
+}
+
+func (input *inMemoryInput) Value() Input {
+	return input
 }
 
 func createTar(buf *bytes.Buffer, files *map[string][]byte) error {

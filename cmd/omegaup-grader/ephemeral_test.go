@@ -59,29 +59,34 @@ func newGraderContext(t *testing.T) *grader.Context {
 	return ctx
 }
 
-func RunnerRequestRun(t *testing.T, ctx *grader.Context, ts *httptest.Server) {
+func runnerRequestRun(t *testing.T, ctx *grader.Context, ts *httptest.Server) error {
+	t.Helper()
+
 	baseURL, err := url.Parse(ts.URL)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	requestURL, err := url.Parse(ts.URL + "/run/request/")
 	if err != nil {
-		panic(err)
+		return err
 	}
 	resp, err := ts.Client().Get(requestURL.String())
 	if err != nil {
-		t.Fatalf("Failed to request a run: %s", err)
+		t.Errorf("Failed to request a run: %s", err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	decoder := json.NewDecoder(resp.Body)
 	var run common.Run
 	if err := decoder.Decode(&run); err != nil {
-		t.Fatalf("Failed to decode run request: %s", err)
+		t.Errorf("Failed to decode run request: %s", err)
+		return err
 	}
 	uploadURL, err := url.Parse(fmt.Sprintf("%s/run/%d/results/", ts.URL, run.AttemptID))
 	if err != nil {
-		t.Fatalf("Failed to parse result URL: %s", err)
+		t.Errorf("Failed to parse result URL: %s", err)
+		return err
 	}
 
 	var buf bytes.Buffer
@@ -91,7 +96,8 @@ func RunnerRequestRun(t *testing.T, ctx *grader.Context, ts *httptest.Server) {
 		contentType = multipartWriter.FormDataContentType()
 		filesWriter, err := multipartWriter.CreateFormFile("file", "files.zip")
 		if err != nil {
-			t.Fatalf("Failed to create files.zip multipart writer: %s", err)
+			t.Errorf("Failed to create files.zip multipart writer: %s", err)
+			return err
 		}
 
 		inputManager := common.NewInputManager(&ctx.Context)
@@ -100,23 +106,27 @@ func RunnerRequestRun(t *testing.T, ctx *grader.Context, ts *httptest.Server) {
 			runner.NewInputFactory(ts.Client(), &ctx.Config, baseURL, ""),
 		)
 		if err != nil {
-			t.Fatalf("Failed to add input to input manager: %s", err)
+			t.Errorf("Failed to add input to input manager: %s", err)
+			return err
 		}
 		defer inputRef.Release()
 
 		result, err := runner.Grade(&ctx.Context, filesWriter, &run, inputRef.Input, &runner.NoopSandbox{})
 		if err != nil {
-			t.Fatalf("Failed to grade run: %s", err)
+			t.Errorf("Failed to grade run: %s", err)
+			return err
 		}
 
 		runner.NoopSandboxFixupResult(result)
 
 		resultWriter, err := multipartWriter.CreateFormFile("file", "details.json")
 		if err != nil {
-			t.Fatalf("Failed to create details.json multipart writer: %s", err)
+			t.Errorf("Failed to create details.json multipart writer: %s", err)
+			return err
 		}
 		if err := json.NewEncoder(resultWriter).Encode(result); err != nil {
-			t.Fatalf("Failed to write run results: %s", err)
+			t.Errorf("Failed to write run results: %s", err)
+			return err
 		}
 		multipartWriter.Close()
 	}
@@ -131,9 +141,12 @@ func RunnerRequestRun(t *testing.T, ctx *grader.Context, ts *httptest.Server) {
 	}
 	response, err := ts.Client().Do(req)
 	if err != nil {
-		t.Fatalf("Failed to upload final results: %s", err)
+		t.Errorf("Failed to upload final results: %s", err)
+		return err
 	}
 	response.Body.Close()
+
+	return nil
 }
 
 func TestEphemeralGrader(t *testing.T) {
@@ -151,7 +164,12 @@ func TestEphemeralGrader(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
-	go RunnerRequestRun(t, ctx, ts)
+	go func() {
+		err := runnerRequestRun(t, ctx, ts)
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	prePushURL, err := url.Parse(ts.URL + "/ephemeral/run/new/")
 	if err != nil {

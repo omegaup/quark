@@ -96,7 +96,7 @@ func transactionWithRetry(ctx context.Context, db *sql.DB, opts *sql.TxOptions, 
 	return
 }
 
-func execWithRetry(db *sql.DB, query string, args ...interface{}) (result sql.Result, err error) {
+func execWithRetry(db *sql.DB, query string, args ...any) (result sql.Result, err error) {
 	for tries := 0; tries < sqlMaxRetries; tries++ {
 		result, err = db.Exec(query, args...)
 		if !isRetriable(err) {
@@ -106,7 +106,7 @@ func execWithRetry(db *sql.DB, query string, args ...interface{}) (result sql.Re
 	return
 }
 
-func queryWithRetry(db *sql.DB, query string, args ...interface{}) (rows *sql.Rows, err error) {
+func queryWithRetry(db *sql.DB, query string, args ...any) (rows *sql.Rows, err error) {
 	for tries := 0; tries < sqlMaxRetries; tries++ {
 		rows, err = db.Query(query, args...)
 		if !isRetriable(err) {
@@ -116,7 +116,7 @@ func queryWithRetry(db *sql.DB, query string, args ...interface{}) (rows *sql.Ro
 	return
 }
 
-func queryRowWithRetry(db *sql.DB, query string, args ...interface{}) (row *sql.Row) {
+func queryRowWithRetry(db *sql.DB, query string, args ...any) (row *sql.Row) {
 	for tries := 0; tries < sqlMaxRetries; tries++ {
 		row = db.QueryRow(query, args...)
 		if !isRetriable(row.Err()) {
@@ -317,7 +317,7 @@ func broadcastRun(
 	if err := broadcast(ctx, client, &message); err != nil {
 		ctx.Log.Error(
 			"Error sending run broadcast",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -339,7 +339,7 @@ func runPostProcessor(
 			if err := updateDatabase(ctx, db, "ready", run); err != nil {
 				ctx.Log.Error(
 					"Error updating the database",
-					map[string]interface{}{
+					map[string]any{
 						"err": err,
 						"run": run,
 					},
@@ -350,7 +350,7 @@ func runPostProcessor(
 			if err := broadcastRun(ctx, db, client, run); err != nil {
 				ctx.Log.Error(
 					"Error sending run broadcast",
-					map[string]interface{}{
+					map[string]any{
 						"err": err,
 					},
 				)
@@ -387,7 +387,7 @@ func runQueueLoop(
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to reset pending runs",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
@@ -408,14 +408,14 @@ func runQueueLoop(
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to get the max submission ID",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 			},
 		)
 	}
 	ctx.Log.Debug(
 		"Max run ID found",
-		map[string]interface{}{
+		map[string]any{
 			"maxSubmissionID": maxSubmissionID,
 		},
 	)
@@ -470,7 +470,7 @@ func runQueueLoop(
 			if err != nil {
 				ctx.Log.Error(
 					"Failed to get new runs",
-					map[string]interface{}{
+					map[string]any{
 						"err": err,
 					},
 				)
@@ -485,7 +485,7 @@ func runQueueLoop(
 				if err != nil {
 					ctx.Log.Error(
 						"Failed to get run",
-						map[string]interface{}{
+						map[string]any{
 							"err": err,
 						},
 					)
@@ -520,7 +520,7 @@ func runQueueLoop(
 				if err != nil {
 					ctx.Log.Error(
 						"Failed to mark a run as waiting",
-						map[string]interface{}{
+						map[string]any{
 							"run": dbRun,
 							"err": err,
 						},
@@ -531,7 +531,7 @@ func runQueueLoop(
 				if err != nil {
 					ctx.Log.Error(
 						"Error getting run information",
-						map[string]interface{}{
+						map[string]any{
 							"err": err,
 							"run": dbRun,
 						},
@@ -551,7 +551,7 @@ func runQueueLoop(
 					if err != nil {
 						ctx.Log.Error(
 							"Failed to mark a run as ready",
-							map[string]interface{}{
+							map[string]any{
 								"run": dbRun,
 								"err": err,
 							},
@@ -575,7 +575,7 @@ func runQueueLoop(
 				); err != nil {
 					ctx.Log.Error(
 						"Error injecting run",
-						map[string]interface{}{
+						map[string]any{
 							"run": dbRun,
 							"err": err,
 						},
@@ -584,7 +584,7 @@ func runQueueLoop(
 					if err != nil {
 						ctx.Log.Error(
 							"Error marking run as ready",
-							map[string]interface{}{
+							map[string]any{
 								"run": dbRun,
 								"err": err,
 							},
@@ -597,7 +597,7 @@ func runQueueLoop(
 		}
 		ctx.Log.Debug(
 			"Round finished",
-			map[string]interface{}{
+			map[string]any{
 				"runs processed": totalRunsInRound,
 			},
 		)
@@ -708,7 +708,7 @@ func injectRun(
 	if err != nil {
 		ctx.Log.Error(
 			"Error getting run source",
-			map[string]interface{}{
+			map[string]any{
 				"err":   err,
 				"runId": runInfo.ID,
 				"guid":  runInfo.GUID,
@@ -722,7 +722,7 @@ func injectRun(
 	}
 	ctx.Log.Info(
 		"RunContext",
-		map[string]interface{}{
+		map[string]any{
 			"runInfo": runInfo,
 		},
 	)
@@ -737,7 +737,7 @@ func injectRun(
 	if err != nil {
 		ctx.Log.Error(
 			"Error getting input",
-			map[string]interface{}{
+			map[string]any{
 				"err": err,
 				"run": runInfo,
 			},
@@ -747,7 +747,7 @@ func injectRun(
 	if err = runs.AddRun(&ctx.Context, runInfo, inputRef); err != nil {
 		ctx.Log.Error(
 			"Error adding run information",
-			map[string]interface{}{
+			map[string]any{
 				"err":   err,
 				"runId": runInfo.ID,
 			},
@@ -774,7 +774,7 @@ func broadcast(
 	)
 	ctx.Log.Debug(
 		"Broadcast",
-		map[string]interface{}{
+		map[string]any{
 			"message": message,
 			"resp":    resp,
 			"err":     err,
@@ -871,7 +871,7 @@ func registerFrontendHandlers(
 		if err := encoder.Encode(&status); err != nil {
 			ctx.Log.Error(
 				"Error writing /grader/status/ response",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -883,7 +883,7 @@ func registerFrontendHandlers(
 		if r.Method != "POST" {
 			ctx.Log.Error(
 				"Invalid request",
-				map[string]interface{}{
+				map[string]any{
 					"url":    r.URL.Path,
 					"method": r.Method,
 				},
@@ -897,7 +897,7 @@ func registerFrontendHandlers(
 		if len(tokens) != 3 {
 			ctx.Log.Error(
 				"Invalid request",
-				map[string]interface{}{
+				map[string]any{
 					"url": r.URL.Path,
 				},
 			)
@@ -909,7 +909,7 @@ func registerFrontendHandlers(
 		if err != nil {
 			ctx.Log.Error(
 				"Invalid Run ID",
-				map[string]interface{}{
+				map[string]any{
 					"run id": tokens[2],
 				},
 			)
@@ -920,7 +920,7 @@ func registerFrontendHandlers(
 		if err != nil {
 			ctx.Log.Error(
 				"/run/new/",
-				map[string]interface{}{
+				map[string]any{
 					"runID":    runID,
 					"response": "internal server error",
 					"err":      err,
@@ -934,7 +934,7 @@ func registerFrontendHandlers(
 		if err != nil {
 			ctx.Log.Error(
 				"/run/new/",
-				map[string]interface{}{
+				map[string]any{
 					"runID":    runID,
 					"guid":     runInfo.GUID,
 					"response": "internal server error",
@@ -952,7 +952,7 @@ func registerFrontendHandlers(
 		if err != nil {
 			ctx.Log.Error(
 				"Failed to mark a run as new",
-				map[string]interface{}{
+				map[string]any{
 					"run": runInfo,
 					"err": err,
 				},
@@ -968,7 +968,7 @@ func registerFrontendHandlers(
 
 		ctx.Log.Info(
 			"/run/new/",
-			map[string]interface{}{
+			map[string]any{
 				"guid":     runInfo.GUID,
 				"response": "ok",
 			},
@@ -985,7 +985,7 @@ func registerFrontendHandlers(
 		if err := decoder.Decode(&request); err != nil {
 			ctx.Log.Error(
 				"Error receiving grade request",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -994,7 +994,7 @@ func registerFrontendHandlers(
 		}
 		ctx.Log.Info(
 			"/run/grade/",
-			map[string]interface{}{
+			map[string]any{
 				"request": request,
 			},
 		)
@@ -1015,7 +1015,7 @@ func registerFrontendHandlers(
 		if r.Method != "GET" {
 			ctx.Log.Error(
 				"Invalid request",
-				map[string]interface{}{
+				map[string]any{
 					"url":    r.URL.Path,
 					"method": r.Method,
 				},
@@ -1029,7 +1029,7 @@ func registerFrontendHandlers(
 		if len(tokens) != 3 {
 			ctx.Log.Error(
 				"Invalid request",
-				map[string]interface{}{
+				map[string]any{
 					"url": r.URL.Path,
 				},
 			)
@@ -1042,7 +1042,7 @@ func registerFrontendHandlers(
 		if len(guid) != 32 || !guidRegex.MatchString(guid) {
 			ctx.Log.Error(
 				"Invalid GUID",
-				map[string]interface{}{
+				map[string]any{
 					"guid": guid,
 				},
 			)
@@ -1054,7 +1054,7 @@ func registerFrontendHandlers(
 		if err != nil {
 			ctx.Log.Info(
 				"/run/source/",
-				map[string]interface{}{
+				map[string]any{
 					"guid":     guid,
 					"response": "not found",
 				},
@@ -1069,7 +1069,7 @@ func registerFrontendHandlers(
 
 		ctx.Log.Info(
 			"/run/source/",
-			map[string]interface{}{
+			map[string]any{
 				"guid":     guid,
 				"response": "ok",
 			},
@@ -1087,7 +1087,7 @@ func registerFrontendHandlers(
 		if err := decoder.Decode(&request); err != nil {
 			ctx.Log.Error(
 				"Error receiving resource request",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -1098,7 +1098,7 @@ func registerFrontendHandlers(
 		if request.RunID == 0 {
 			ctx.Log.Info(
 				"/run/resource/",
-				map[string]interface{}{
+				map[string]any{
 					"request":  request,
 					"response": "not found",
 					"err":      err,
@@ -1112,7 +1112,7 @@ func registerFrontendHandlers(
 			strings.Contains(request.Filename, "/") {
 			ctx.Log.Error(
 				"Invalid filename",
-				map[string]interface{}{
+				map[string]any{
 					"filename": request.Filename,
 				},
 			)
@@ -1129,7 +1129,7 @@ func registerFrontendHandlers(
 			if os.IsNotExist(err) {
 				ctx.Log.Info(
 					"/run/resource/",
-					map[string]interface{}{
+					map[string]any{
 						"request":  request,
 						"response": "not found",
 						"err":      err,
@@ -1140,7 +1140,7 @@ func registerFrontendHandlers(
 			}
 			ctx.Log.Info(
 				"/run/resource/",
-				map[string]interface{}{
+				map[string]any{
 					"request":  request,
 					"response": "internal server error",
 					"err":      err,
@@ -1155,7 +1155,7 @@ func registerFrontendHandlers(
 		if err != nil {
 			ctx.Log.Info(
 				"/run/resource/",
-				map[string]interface{}{
+				map[string]any{
 					"request":  request,
 					"response": "internal server error",
 					"err":      err,
@@ -1169,7 +1169,7 @@ func registerFrontendHandlers(
 
 		ctx.Log.Info(
 			"/run/resource/",
-			map[string]interface{}{
+			map[string]any{
 				"request":  request,
 				"response": "ok",
 			},
@@ -1187,7 +1187,7 @@ func registerFrontendHandlers(
 		if err := decoder.Decode(&message); err != nil {
 			ctx.Log.Error(
 				"Error receiving broadcast request",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -1196,14 +1196,14 @@ func registerFrontendHandlers(
 		}
 		ctx.Log.Debug(
 			"/broadcast/",
-			map[string]interface{}{
+			map[string]any{
 				"message": message,
 			},
 		)
 		if err := broadcast(ctx, client, &message); err != nil {
 			ctx.Log.Error(
 				"Error sending broadcast message",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)

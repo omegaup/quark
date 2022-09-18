@@ -321,17 +321,17 @@ func TestBroadcastRun(t *testing.T) {
 				t.Fatalf("Error broadcasting run: %v", err)
 			}
 
-			var encodedMessage map[string]interface{}
+			var encodedMessage map[string]any
 			if err := json.Unmarshal([]byte(message.Message), &encodedMessage); err != nil {
 				t.Fatalf("Error decoding inner message: %v", err)
 			}
 
-			runInfo, ok := encodedMessage["run"].(map[string]interface{})
+			runInfo, ok := encodedMessage["run"].(map[string]any)
 			if !ok {
 				t.Fatalf("Message does not contain a run entry: %v", encodedMessage)
 			}
 
-			for key, value := range map[string]interface{}{
+			for key, value := range map[string]any{
 				"guid":          "1",
 				"status":        "ready",
 				"verdict":       s.verdict,

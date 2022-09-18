@@ -19,12 +19,12 @@ import (
 )
 
 var (
-	slowProblemCache = base.NewLRUCache(4 * 1024 * 1024) // 4 MiB cache should be enough.
+	slowProblemCache = base.NewLRUCache[slowProblemEntry](4 * 1024 * 1024) // 4 MiB cache should be enough.
 )
 
 type slowProblemEntry bool
 
-var _ base.SizedEntry = (*slowProblemEntry)(nil)
+var _ base.SizedEntry[slowProblemEntry] = (*slowProblemEntry)(nil)
 
 func (e *slowProblemEntry) Size() base.Byte {
 	return base.Byte(1)
@@ -32,6 +32,13 @@ func (e *slowProblemEntry) Size() base.Byte {
 
 func (e *slowProblemEntry) Release() {
 	// It's just, like, a bool.
+}
+
+func (e *slowProblemEntry) Value() slowProblemEntry {
+	if e == nil {
+		return false
+	}
+	return *e
 }
 
 // IsProblemSlow returns whether the problem at that particular commit is slow.
@@ -46,7 +53,7 @@ func IsProblemSlow(
 		gitserverURL += "/"
 	}
 	cacheKey := fmt.Sprintf("%s:%s", problemName, inputHash)
-	entry, err := slowProblemCache.Get(cacheKey, func(key string) (base.SizedEntry, error) {
+	entry, err := slowProblemCache.Get(cacheKey, func(key string) (base.SizedEntry[slowProblemEntry], error) {
 		client := &http.Client{
 			Timeout: 15 * time.Second,
 		}
@@ -299,6 +306,11 @@ func (input *Input) Persist() error {
 	return nil
 }
 
+// Value implements the SizedEntry interface.
+func (input *Input) Value() common.Input {
+	return input
+}
+
 // Transmit sends a serialized version of the Input to the runner. It sends a
 // .tar.gz file with the Content-SHA1 header with the hexadecimal
 // representation of its SHA-1 hash.
@@ -355,6 +367,10 @@ type cachedInput struct {
 
 func (input *cachedInput) Persist() error {
 	return common.ErrUnimplemented
+}
+
+func (input *cachedInput) Value() common.Input {
+	return input
 }
 
 // A CachedInputFactory is a grader-specific CachedInputFactory. It reads
