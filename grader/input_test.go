@@ -168,6 +168,8 @@ func TestIsProblemSlow(t *testing.T) {
 	if !ctx.Config.Runner.PreserveFiles {
 		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
 	}
+	m := githttp.NewLockfileManager()
+	defer m.Clear()
 
 	handler := githttp.NewGitServer(githttp.GitServerOpts{
 		RootPath:     path.Join(ctx.Config.Grader.RuntimePath, "problems.git"),
@@ -184,7 +186,8 @@ func TestIsProblemSlow(t *testing.T) {
 			},
 			Log: ctx.Log,
 		}),
-		Log: ctx.Log,
+		LockfileManager: m,
+		Log:             ctx.Log,
 	})
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
@@ -225,6 +228,8 @@ func TestTransmitInput(t *testing.T) {
 	if !ctx.Config.Runner.PreserveFiles {
 		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
 	}
+	m := githttp.NewLockfileManager()
+	defer m.Clear()
 
 	handler := githttp.NewGitServer(githttp.GitServerOpts{
 		RootPath:     path.Join(ctx.Config.Grader.RuntimePath, "problems.git"),
@@ -241,7 +246,8 @@ func TestTransmitInput(t *testing.T) {
 			},
 			Log: ctx.Log,
 		}),
-		Log: ctx.Log,
+		LockfileManager: m,
+		Log:             ctx.Log,
 	})
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
