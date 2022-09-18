@@ -140,6 +140,15 @@ func (g *GroupResult) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Verdict returns the final verdict of the group.
+func (g *GroupResult) Verdict() string {
+	verdict := "AC"
+	for _, c := range g.Cases {
+		verdict = worseVerdict(verdict, c.Verdict)
+	}
+	return verdict
+}
+
 // A RunResult represents the results of a run.
 type RunResult struct {
 	Verdict       string                 `json:"verdict"`
