@@ -978,12 +978,12 @@ func Grade(
 	}
 	compileSegment.End()
 
-	groupResults := make([]GroupResult, len(settings.Cases))
+	groupResults := make([]GroupResult, 0, len(settings.Cases))
 	runResult.Verdict = "OK"
 	runSegment := ctx.Transaction.StartSegment("run")
-	for i, group := range settings.Cases {
-		caseResults := make([]CaseResult, len(group.Cases))
-		for j, caseData := range group.Cases {
+	for _, group := range settings.Cases {
+		caseResults := make([]CaseResult, 0, len(group.Cases))
+		for _, caseData := range group.Cases {
 			var runMeta *RunMetadata
 			var individualMeta = make(map[string]RunMetadata)
 			if runResult.WallTime > settings.Limits.OverallWallTimeLimit.Seconds() {
@@ -1230,7 +1230,7 @@ func Grade(
 			runResult.OverallOutput += runMeta.OutputSize
 
 			// TODO: change CaseResult to split original metadatas and final metadata
-			caseResults[j] = CaseResult{
+			caseResults = append(caseResults, CaseResult{
 				Name:           caseData.Name,
 				Verdict:        runMeta.Verdict,
 				Meta:           *runMeta,
@@ -1242,9 +1242,9 @@ func Grade(
 					runResult.MaxScore,
 					new(big.Rat).Mul(caseData.Weight, totalWeightFactor),
 				),
-			}
+			})
 		}
-		groupResults[i] = GroupResult{
+		groupResults = append(groupResults, GroupResult{
 			Group: group.Name,
 			Cases: caseResults,
 
@@ -1254,7 +1254,7 @@ func Grade(
 				runResult.MaxScore,
 				new(big.Rat).Mul(group.Weight(), totalWeightFactor),
 			),
-		}
+		})
 	}
 	runSegment.End()
 
