@@ -94,11 +94,11 @@ func (h updateScoreboardEventHeap) Less(i, j int) bool {
 	return h[i].deadline.Before(h[j].deadline)
 }
 
-func (h *updateScoreboardEventHeap) Push(x interface{}) {
+func (h *updateScoreboardEventHeap) Push(x any) {
 	*h = append(*h, x.(*updateScoreboardEvent))
 }
 
-func (h *updateScoreboardEventHeap) Pop() interface{} {
+func (h *updateScoreboardEventHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -114,7 +114,7 @@ func updateScoreboardForContest(
 ) {
 	ctx.Log.Info(
 		"Requesting scoreboard update",
-		map[string]interface{}{
+		map[string]any{
 			"contest": contestAlias,
 		},
 	)
@@ -128,7 +128,7 @@ func updateScoreboardForContest(
 	if err != nil {
 		ctx.Log.Error(
 			"Error requesting scoreboard update",
-			map[string]interface{}{
+			map[string]any{
 				"contest": contestAlias,
 				"err":     err,
 			},
@@ -140,7 +140,7 @@ func updateScoreboardForContest(
 	if resp.StatusCode != 200 {
 		ctx.Log.Error(
 			"Failed to request scoreboard update",
-			map[string]interface{}{
+			map[string]any{
 				"contest":     contestAlias,
 				"status code": resp.StatusCode,
 			},
@@ -241,7 +241,7 @@ func main() {
 		if !errors.Is(err, http.ErrServerClosed) {
 			ctx.Log.Error(
 				"http listen and serve",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -272,7 +272,7 @@ func main() {
 		if err := decoder.Decode(&message); err != nil {
 			ctx.Log.Error(
 				"Error decoding broadcast message",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -281,7 +281,7 @@ func main() {
 		}
 		ctx.Log.Debug(
 			"/broadcast/",
-			map[string]interface{}{
+			map[string]any{
 				"message": message,
 			},
 		)
@@ -323,7 +323,7 @@ func main() {
 			if err != nil {
 				ctx.Log.Error(
 					"Failed to upgrade connection",
-					map[string]interface{}{
+					map[string]any{
 						"err": err,
 					},
 				)
@@ -351,7 +351,7 @@ func main() {
 		if err != nil {
 			ctx.Log.Error(
 				"Failed to create subscriber",
-				map[string]interface{}{
+				map[string]any{
 					"err": err,
 				},
 			)
@@ -405,7 +405,7 @@ func main() {
 
 	ctx.Log.Info(
 		"omegaUp broadcaster ready",
-		map[string]interface{}{
+		map[string]any{
 			"version":          ProgramVersion,
 			"broadcaster port": ctx.Config.Broadcaster.Port,
 			"events port":      ctx.Config.Broadcaster.EventsPort,

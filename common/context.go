@@ -301,7 +301,7 @@ func (ctx *Context) Wrap(c context.Context) *Context {
 // DebugContext returns a new Context with an additional handler with a more
 // verbose filter (using the Debug level) and a Buffer in which all logging
 // statements will be (also) written to.
-func (ctx *Context) DebugContext(logCtx map[string]interface{}) *Context {
+func (ctx *Context) DebugContext(logCtx map[string]any) *Context {
 	var buffer bytes.Buffer
 	childContext := &Context{
 		Context: ctx.Context,
