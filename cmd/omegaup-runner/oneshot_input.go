@@ -81,10 +81,6 @@ func (i *oneshotInput) Persist() error {
 	return nil
 }
 
-func (i *oneshotInput) Value() common.Input {
-	return i
-}
-
 func (i *oneshotInput) Verify() error {
 	// Always fail verification since we want any errors reading settings.json to
 	// be fatal. That is achieved by parsing and storing it on Persist().

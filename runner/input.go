@@ -322,21 +322,12 @@ func (input *Input) Release() {
 	input.Delete()
 }
 
-// Value implements the SizedEntry interface.
-func (input *Input) Value() common.Input {
-	return input
-}
-
 type cachedInput struct {
 	runnerBaseInput
 }
 
 func (input *cachedInput) Persist() error {
 	return common.ErrUnimplemented
-}
-
-func (input *cachedInput) Value() common.Input {
-	return input
 }
 
 // CachedInputFactory restores Inputs from a directory in the filesystem.
@@ -454,8 +445,4 @@ func (input *runnerTarInput) Persist() error {
 		uncompressedSize,
 		streamHash,
 	)
-}
-
-func (input *runnerTarInput) Value() common.Input {
-	return input
 }
