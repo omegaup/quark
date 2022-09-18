@@ -531,9 +531,7 @@ func runQueueLoop(
 					&grader.RunInfo{
 						ID:           dbRun.runID,
 						SubmissionID: dbRun.submissionID,
-						Result: runner.RunResult{
-							Verdict: "JE",
-						},
+						Result:       *runner.NewRunResult("JE", &big.Rat{}),
 					},
 				)
 				if err != nil {
@@ -562,9 +560,7 @@ func runQueueLoop(
 						&grader.RunInfo{
 							ID:           dbRun.runID,
 							SubmissionID: dbRun.submissionID,
-							Result: runner.RunResult{
-								Verdict: "JE",
-							},
+							Result:       *runner.NewRunResult("JE", &big.Rat{}),
 						},
 					)
 					if err != nil {
