@@ -301,11 +301,11 @@ func TestBroadcastRun(t *testing.T) {
 			defer ts.Close()
 
 			run := grader.RunInfo{
-				ID:           1,
-				GUID:         "1",
-				Run:          &common.Run{},
-				PenaltyType:  "none",
-				ScoreMode:    s.scoreMode,
+				ID:          1,
+				GUID:        "1",
+				Run:         &common.Run{},
+				PenaltyType: "none",
+				ScoreMode:   s.scoreMode,
 				Result: runner.RunResult{
 					Verdict:      s.verdict,
 					Score:        s.score,
