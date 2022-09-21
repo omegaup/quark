@@ -276,7 +276,7 @@ func broadcastRun(
 	}
 	score := base.RationalToFloat(run.Result.Score)
 	contestScore := base.RationalToFloat(run.Result.ContestScore)
-	if !run.PartialScore && score != 1 {
+	if run.ScoreMode == "all_or_nothing" && score != 1 {
 		score = 0
 		contestScore = 0
 	}
@@ -639,11 +639,11 @@ func newRunInfoFromID(
 	var problemset sql.NullInt64
 	var penaltyType sql.NullString
 	var contestPoints sql.NullFloat64
-	var partialScore sql.NullBool
+	var scoreMode sql.NullString
 	err := queryRowWithRetry(
 		db,
 		`SELECT
-			s.guid, c.alias, s.problemset_id, c.penalty_type, c.partial_score,
+			s.guid, c.alias, s.problemset_id, c.penalty_type, c.score_mode,
 			s.language, p.alias, pp.points, r.version, r.submission_id
 		FROM
 			Runs r
@@ -662,7 +662,7 @@ func newRunInfoFromID(
 		&contestName,
 		&problemset,
 		&penaltyType,
-		&partialScore,
+		&scoreMode,
 		&runInfo.Run.Language,
 		&runInfo.Run.ProblemName,
 		&contestPoints,
@@ -682,8 +682,8 @@ func newRunInfoFromID(
 	if penaltyType.Valid {
 		runInfo.PenaltyType = penaltyType.String
 	}
-	if partialScore.Valid {
-		runInfo.PartialScore = partialScore.Bool
+	if scoreMode.Valid {
+		runInfo.ScoreMode = scoreMode.String
 	}
 	if contestPoints.Valid {
 		runInfo.Run.MaxScore = base.FloatToRational(contestPoints.Float64)
