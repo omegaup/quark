@@ -91,6 +91,30 @@ func loadContext() error {
 	if err != nil {
 		return err
 	}
+
+	res, err := http.Get("https://ifconfig.me")
+	if err != nil {
+		ctx.Log.Error(
+			"Failed to get public IP",
+			map[string]any{
+				"err": err,
+			},
+		)
+	} else {
+		ip, err := io.ReadAll(res.Body)
+		res.Body.Close()
+		if err != nil {
+			ctx.Log.Error(
+				"Failed to read public IP",
+				map[string]any{
+					"err": err,
+				},
+			)
+		} else {
+			ctx.Config.Runner.PublicIP = strings.TrimSpace(string(ip))
+		}
+	}
+
 	globalContext.Store(ctx)
 	return nil
 }

@@ -184,6 +184,9 @@ func processRun(
 	if parentCtx.Config.Runner.Hostname != "" {
 		req.Header.Add("OmegaUp-Runner-Name", parentCtx.Config.Runner.Hostname)
 	}
+	if parentCtx.Config.Runner.PublicIP != "" {
+		req.Header.Add("OmegaUp-Runner-PublicIP", parentCtx.Config.Runner.PublicIP)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
