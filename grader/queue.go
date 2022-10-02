@@ -292,7 +292,7 @@ type RunInfo struct {
 	Artifacts    Artifacts
 	Priority     QueuePriority
 	PenaltyType  string
-	PartialScore bool
+	ScoreMode    string
 
 	CreationTime time.Time
 	QueueTime    time.Time
