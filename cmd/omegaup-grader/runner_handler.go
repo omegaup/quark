@@ -192,7 +192,7 @@ func registerRunnerHandlers(
 		if ok {
 			colon := strings.LastIndex(r.RemoteAddr, ":")
 			if colon != -1 {
-				m.RunnerObserve(r.RemoteAddr[:colon])
+				m.RunnerObserve(r.RemoteAddr[:colon] + ":6060")
 			}
 		}
 
