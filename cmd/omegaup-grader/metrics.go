@@ -100,7 +100,7 @@ var (
 				Help:      "Graders seen in the last 5 minutes",
 				Name:      "runner_up",
 			},
-			[]string{"runner"},
+			[]string{"runner_hostname", "runner_public_ip"},
 		),
 	}
 
@@ -182,9 +182,15 @@ var (
 	}
 )
 
+type observedRunner struct {
+	hostname string
+	publicIP string
+	lastSeen time.Time
+}
+
 type prometheusMetrics struct {
 	sync.Mutex
-	runnerLastSeen map[string]time.Time
+	runners map[string]observedRunner
 }
 
 func (p *prometheusMetrics) GaugeAdd(name string, value float64) {
@@ -205,9 +211,13 @@ func (p *prometheusMetrics) SummaryObserve(name string, value float64) {
 	}
 }
 
-func (p *prometheusMetrics) RunnerObserve(name string) {
+func (p *prometheusMetrics) RunnerObserve(hostname string, publicIP string) {
 	p.Lock()
-	p.runnerLastSeen[name] = time.Now()
+	p.runners[hostname] = observedRunner{
+		hostname: hostname,
+		publicIP: publicIP,
+		lastSeen: time.Now(),
+	}
 	p.Unlock()
 }
 
@@ -237,13 +247,13 @@ func setupMetrics(ctx *grader.Context) {
 	buildInfoCounter.Inc()
 
 	m := &prometheusMetrics{
-		runnerLastSeen: make(map[string]time.Time),
+		runners: make(map[string]observedRunner),
 	}
 	ctx.Metrics = m
 
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", promhttp.Handler())
-	metricsMux.HandleFunc("/metrics/runners", m.runners)
+	metricsMux.HandleFunc("/metrics/runners", m.runnersHandler)
 	go func() {
 		addr := fmt.Sprintf(":%d", ctx.Config.Metrics.Port)
 		err := http.ListenAndServe(addr, metricsMux)
@@ -284,14 +294,14 @@ func (p *prometheusMetrics) gaugesUpdate() {
 	cutoffTime := time.Now().Add(-3 * time.Minute)
 	shouldReset := false
 	p.Lock()
-	runners := make([]string, 0, len(p.runnerLastSeen))
-	for name, t := range p.runnerLastSeen {
-		if t.Before(cutoffTime) {
+	runners := make([]observedRunner, 0, len(p.runners))
+	for hostname, runner := range p.runners {
+		if runner.lastSeen.Before(cutoffTime) {
 			shouldReset = true
-			delete(p.runnerLastSeen, name)
+			delete(p.runners, hostname)
 			continue
 		}
-		runners = append(runners, name)
+		runners = append(runners, runner)
 	}
 	p.Unlock()
 
@@ -299,26 +309,35 @@ func (p *prometheusMetrics) gaugesUpdate() {
 	if shouldReset {
 		v.Reset()
 	}
-	for _, name := range runners {
-		v.WithLabelValues(name).Set(1.0)
+	for _, runner := range runners {
+		v.WithLabelValues(runner.hostname, runner.publicIP).Set(1.0)
 	}
 }
 
-func (p *prometheusMetrics) runners(w http.ResponseWriter, r *http.Request) {
+func (p *prometheusMetrics) runnersHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	w.Header().Add("Content-Type", "application/json")
 
-	var config staticConfig
+	var configs []staticConfig
 	cutoffTime := time.Now().Add(-3 * time.Minute)
 	p.Lock()
-	for name, t := range p.runnerLastSeen {
-		if t.Before(cutoffTime) {
-			delete(p.runnerLastSeen, name)
+	for hostname, runner := range p.runners {
+		if runner.lastSeen.Before(cutoffTime) {
+			delete(p.runners, hostname)
 			continue
 		}
-		config.Targets = append(config.Targets, name)
+		configs = append(
+			configs,
+			staticConfig{
+				Targets: []string{runner.publicIP},
+				Labels: map[string]string{
+					"__address__": runner.hostname,
+					"hostname":    runner.hostname,
+				},
+			},
+		)
 	}
 	p.Unlock()
 
-	json.NewEncoder(w).Encode([]staticConfig{config})
+	json.NewEncoder(w).Encode(configs)
 }
