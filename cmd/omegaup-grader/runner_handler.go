@@ -191,7 +191,7 @@ func registerRunnerHandlers(
 		if ok {
 			remoteAddr := r.Header.Get("OmegaUp-Runner-PublicIP")
 			if remoteAddr != "" {
-				m.RunnerObserve(remoteAddr + ":6060")
+				m.RunnerObserve(runnerName, remoteAddr+":6060")
 			}
 		}
 
