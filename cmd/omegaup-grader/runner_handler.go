@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/omegaup/quark/common"
@@ -185,6 +186,15 @@ func registerRunnerHandlers(
 				"client": runnerName,
 			},
 		)
+
+		// Add the runner to the list of known runners.
+		m, ok := ctx.Metrics.(*prometheusMetrics)
+		if ok {
+			colon := strings.LastIndex(r.RemoteAddr, ":")
+			if colon != -1 {
+				m.RunnerObserve(r.RemoteAddr[:colon])
+			}
+		}
 
 		runCtx, _, ok := runs.GetRun(
 			runnerName,

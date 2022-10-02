@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/omegaup/quark/grader"
@@ -15,6 +17,11 @@ import (
 	"github.com/shirou/gopsutil/load"
 	"github.com/shirou/gopsutil/mem"
 )
+
+type staticConfig struct {
+	Targets []string          `json:"targets"`
+	Labels  map[string]string `json:"labels,omitempty"`
+}
 
 var (
 	gauges = map[string]prometheus.Gauge{
@@ -83,6 +90,18 @@ var (
 			Help:      "The length of the high-priority queue",
 			Name:      "queue_high_length",
 		}),
+	}
+
+	gaugeVecs = map[string]*prometheus.GaugeVec{
+		"grader_runner_up": prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "quark",
+				Subsystem: "grader",
+				Help:      "Graders seen in the last 5 minutes",
+				Name:      "runner_up",
+			},
+			[]string{"runner"},
+		),
 	}
 
 	counters = map[string]prometheus.Counter{
@@ -164,6 +183,8 @@ var (
 )
 
 type prometheusMetrics struct {
+	sync.Mutex
+	runnerLastSeen map[string]time.Time
 }
 
 func (p *prometheusMetrics) GaugeAdd(name string, value float64) {
@@ -184,9 +205,18 @@ func (p *prometheusMetrics) SummaryObserve(name string, value float64) {
 	}
 }
 
+func (p *prometheusMetrics) RunnerObserve(name string) {
+	p.Lock()
+	p.runnerLastSeen[name] = time.Now()
+	p.Unlock()
+}
+
 func setupMetrics(ctx *grader.Context) {
 	for _, gauge := range gauges {
 		prometheus.MustRegister(gauge)
+	}
+	for _, gaugeVec := range gaugeVecs {
+		prometheus.MustRegister(gaugeVec)
 	}
 	for _, counter := range counters {
 		prometheus.MustRegister(counter)
@@ -206,10 +236,14 @@ func setupMetrics(ctx *grader.Context) {
 	prometheus.MustRegister(buildInfoCounter)
 	buildInfoCounter.Inc()
 
-	ctx.Metrics = &prometheusMetrics{}
+	m := &prometheusMetrics{
+		runnerLastSeen: make(map[string]time.Time),
+	}
+	ctx.Metrics = m
 
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsMux.HandleFunc("/metrics/runners", m.runners)
 	go func() {
 		addr := fmt.Sprintf(":%d", ctx.Config.Metrics.Port)
 		err := http.ListenAndServe(addr, metricsMux)
@@ -223,12 +257,16 @@ func setupMetrics(ctx *grader.Context) {
 		}
 	}()
 	go func() {
-		gaugesUpdate()
-		time.Sleep(time.Duration(1) * time.Minute)
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			m.gaugesUpdate()
+		}
 	}()
 }
 
-func gaugesUpdate() {
+func (p *prometheusMetrics) gaugesUpdate() {
 	if s, err := load.Avg(); err == nil {
 		gauges["cpu_load1"].Set(s.Load1)
 		gauges["cpu_load5"].Set(s.Load5)
@@ -242,4 +280,45 @@ func gaugesUpdate() {
 		gauges["disk_total"].Set(float64(s.Total))
 		gauges["disk_used"].Set(float64(s.Used))
 	}
+
+	cutoffTime := time.Now().Add(-3 * time.Minute)
+	shouldReset := false
+	p.Lock()
+	runners := make([]string, 0, len(p.runnerLastSeen))
+	for name, t := range p.runnerLastSeen {
+		if t.Before(cutoffTime) {
+			shouldReset = true
+			delete(p.runnerLastSeen, name)
+			continue
+		}
+		runners = append(runners, name)
+	}
+	p.Unlock()
+
+	v := gaugeVecs["grader_runner_up"]
+	if shouldReset {
+		v.Reset()
+	}
+	for _, name := range runners {
+		v.WithLabelValues(name).Set(1.0)
+	}
+}
+
+func (p *prometheusMetrics) runners(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	w.Header().Add("Content-Type", "application/json")
+
+	var config staticConfig
+	cutoffTime := time.Now().Add(-3 * time.Minute)
+	p.Lock()
+	for name, t := range p.runnerLastSeen {
+		if t.Before(cutoffTime) {
+			delete(p.runnerLastSeen, name)
+			continue
+		}
+		config.Targets = append(config.Targets, name)
+	}
+	p.Unlock()
+
+	json.NewEncoder(w).Encode([]staticConfig{config})
 }
