@@ -86,6 +86,7 @@ type TLSConfig struct {
 // RunnerConfig represents the configuration for the Runner.
 type RunnerConfig struct {
 	Hostname           string
+	PublicIP           string
 	GraderURL          string
 	RuntimePath        string
 	CompileTimeLimit   base.Duration
