@@ -684,6 +684,8 @@ func newRunInfoFromID(
 	}
 	if scoreMode.Valid {
 		runInfo.ScoreMode = scoreMode.String
+	} else {
+		runInfo.ScoreMode = "partial"
 	}
 	if contestPoints.Valid {
 		runInfo.Run.MaxScore = base.FloatToRational(contestPoints.Float64)
