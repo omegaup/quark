@@ -1,6 +1,7 @@
 package grader
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -260,18 +261,37 @@ func (a *SubmissionsArtifacts) GetSource(ctx *common.Context, guid string) (stri
 
 // PutSource writes the source of the submission to the filesystem (and maybe to S3).
 func (a *SubmissionsArtifacts) PutSource(ctx *common.Context, guid string, r io.Reader) error {
-	submissionKey := path.Join(
+	var buf bytes.Buffer
+	_, err := io.Copy(&buf, r)
+	if err != nil {
+		return fmt.Errorf("read: %w", err)
+	}
+
+	backupSubmissionKey := path.Join(
 		"submissions",
 		guid[:2],
 		guid[2:],
 	)
-	return putArtifact(
+	err = putArtifact(
 		ctx,
 		a.s3c,
 		"omegaup-backup",
-		path.Join("omegaup", submissionKey),
-		path.Join(ctx.Config.Grader.V1.RuntimePath, submissionKey),
-		r,
+		path.Join("omegaup", backupSubmissionKey),
+		path.Join(ctx.Config.Grader.V1.RuntimePath, backupSubmissionKey),
+		bytes.NewReader(buf.Bytes()),
+	)
+	if err != nil {
+		return fmt.Errorf("put omegaup-backup: %w", err)
+	}
+
+	// TODO: leave just this version once the migration is done.
+	return putArtifact(
+		ctx,
+		a.s3c,
+		"omegaup-submissions",
+		guid,
+		path.Join(ctx.Config.Grader.V1.RuntimePath, backupSubmissionKey),
+		bytes.NewReader(buf.Bytes()),
 	)
 }
 
