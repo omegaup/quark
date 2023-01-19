@@ -140,6 +140,8 @@ type OmegajailSandbox struct {
 	// AllowSigsysFallback allows omegajail to use the previous implementation of
 	// the sigsys detector if it's running on an older pre-5.13 kernel.
 	AllowSigsysFallback bool
+
+	DisableSandboxing bool
 }
 
 // NewOmegajailSandbox creates a new OmegajailSandbox.
@@ -371,6 +373,9 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 	omegajailFullParams := []string{path.Join(o.omegajailRoot, "bin/omegajail")}
 	if o.AllowSigsysFallback {
 		omegajailFullParams = append(omegajailFullParams, "--allow-sigsys-fallback")
+	}
+	if o.DisableSandboxing {
+		omegajailFullParams = append(omegajailFullParams, "--disable-sandboxing")
 	}
 	omegajailFullParams = append(omegajailFullParams, omegajailParams...)
 	ctx.Log.Debug(
