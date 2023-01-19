@@ -1,4 +1,4 @@
-FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.9.4 AS base
+FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.9.0 AS base
 
 FROM base AS builder
 
@@ -18,7 +18,7 @@ RUN mkdir /tmp/karel && \
 
 # Install a newer version of the omegajail binary.
 RUN rm -rf /var/lib/omegajail && \
-    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.9.1/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C /
+    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.9.4/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C /
 
 FROM base
 
