@@ -18,7 +18,7 @@ RUN mkdir /tmp/karel && \
 
 # Install a newer version of the omegajail binary.
 RUN rm -rf /var/lib/omegajail && \
-    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.9.4/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C /
+    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.10.0/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C /
 
 FROM base
 
