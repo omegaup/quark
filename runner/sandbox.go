@@ -374,6 +374,9 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 	if o.AllowSigsysFallback {
 		omegajailFullParams = append(omegajailFullParams, "--allow-sigsys-fallback")
 	}
+	if o.DisableSandboxing {
+		omegajailFullParams = append(omegajailFullParams, "--disable-sandboxing")
+	}
 	omegajailFullParams = append(omegajailFullParams, omegajailParams...)
 	ctx.Log.Debug(
 		"invoking",
