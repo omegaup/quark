@@ -1,6 +1,6 @@
 # Start from a Debian image with the latest version of Go installed
 # and a workspace (GOPATH) configured at /go.
-FROM golang
+FROM golang:bullseye
 
 # Dependencies for packages.
 RUN apt-get update && apt-get install -y --no-install-recommends libgcrypt-dev libgpg-error-dev pkg-config cmake && rm -rf /var/lib/apt/lists/*
