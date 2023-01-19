@@ -140,7 +140,7 @@ type OmegajailSandbox struct {
 	// AllowSigsysFallback allows omegajail to use the previous implementation of
 	// the sigsys detector if it's running on an older pre-5.13 kernel.
 	AllowSigsysFallback bool
-	
+
 	DisableSandboxing bool
 }
 
