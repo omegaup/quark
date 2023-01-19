@@ -730,6 +730,8 @@ func main() {
 		if *oneshot == "ci" {
 			// Allow sigsys to use the fallback detector when running in CI.
 			oj.AllowSigsysFallback = true
+			// Disable sandboxing when running inside Docker.
+			oj.DisableSandboxing = true
 		}
 		sandbox = oj
 	}
