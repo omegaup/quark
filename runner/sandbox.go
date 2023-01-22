@@ -384,7 +384,7 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 			"params": shellquote.Join(omegajailFullParams...),
 		},
 	)
-	cmd := exec.Command(omegajailFullParams[0], omegajailFullParams...)
+	cmd := exec.Command(omegajailFullParams[0], omegajailFullParams[1:]...)
 	omegajailErrorFile := errorFile + ".omegajail"
 	omegajailErrorFd, err := os.Create(omegajailErrorFile)
 	if err != nil {
