@@ -18,13 +18,16 @@ RUN mkdir /tmp/karel && \
 
 # Install a newer version of the omegajail binary.
 RUN rm -rf /var/lib/omegajail && \
-    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.10.1/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C /
+    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.10.1/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C / && \
+    curl -sL https://github.com/omegaup/libinteractive/releases/download/v2.0.29/libinteractive.jar \
+        -o /usr/share/java/libinteractive.jar && \
 
 FROM base
 
 COPY --from=builder /opt/nodejs/lib/node_modules/ /opt/nodejs/lib/node_modules/
 RUN rm -rf /var/lib/omegajail
 COPY --from=builder /var/lib/omegajail/ /var/lib/omegajail/
+COPY --from=builder /usr/share/java/libinteractive.jar /usr/share/java/libinteractive.jar
 RUN mkdir -p /etc/omegaup/runner /var/lib/omegaup
 RUN chmod 777 /var/lib/omegaup
 COPY bin/omegaup-runner /usr/bin/omegaup-runner
