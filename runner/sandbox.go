@@ -399,10 +399,24 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 		cmd.Stderr = omegajailErrorFd
 	}
 	if err := cmd.Run(); err != nil {
+		var output string
+		if omegajailErrorFd != nil {
+			b, err := os.ReadFile(omegajailErrorFile)
+			if err == nil {
+				output = string(b)
+			}
+		}
+		if output == "" {
+			b, err := os.ReadFile(errorFile)
+			if err == nil {
+				output = string(b)
+			}
+		}
 		ctx.Log.Error(
 			"Omegajail execution failed",
 			map[string]any{
 				"err": err,
+				"out": output,
 			},
 		)
 	}
