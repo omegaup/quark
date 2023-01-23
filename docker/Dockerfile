@@ -20,7 +20,7 @@ RUN mkdir /tmp/karel && \
 RUN rm -rf /var/lib/omegajail && \
     curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.10.1/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C / && \
     curl -sL https://github.com/omegaup/libinteractive/releases/download/v2.0.29/libinteractive.jar \
-        -o /usr/share/java/libinteractive.jar && \
+        -o /usr/share/java/libinteractive.jar
 
 FROM base
 
