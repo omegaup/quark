@@ -332,11 +332,52 @@ func (o *OmegajailSandbox) Run(
 		"--run", lang,
 		"--run-target", target,
 	}
-	for path, mountTarget := range extraMountPoints {
-		params = append(
-			params,
-			"--bind", fmt.Sprintf("%s:%s", path, mountTarget),
-		)
+	for mountSource, mountTarget := range extraMountPoints {
+		if o.DisableSandboxing {
+			// When we have sandboxing disabled, we can't bind-mount, so we symlink
+			// the targets instead.
+			relTarget, err := filepath.Rel("/home", mountTarget)
+			if err != nil {
+				err = errors.Wrapf(
+					err,
+					"filepath.Rel(%q, %q)", "/home", mountTarget,
+				)
+				return &RunMetadata{
+					Verdict:    "JE",
+					ExitStatus: -1,
+				}, err
+			}
+			symlinkTarget := path.Join(chdir, relTarget)
+			if st, err := os.Stat(symlinkTarget); err == nil && st.Mode().IsDir() {
+				err = os.Remove(symlinkTarget)
+				if err != nil {
+					err = errors.Wrapf(
+						err,
+						"remove(%q)", symlinkTarget,
+					)
+					return &RunMetadata{
+						Verdict:    "JE",
+						ExitStatus: -1,
+					}, err
+				}
+			}
+			err = os.Symlink(mountSource, symlinkTarget)
+			if err != nil {
+				err = errors.Wrapf(
+					err,
+					"symlink(%q, %q)", mountSource, symlinkTarget,
+				)
+				return &RunMetadata{
+					Verdict:    "JE",
+					ExitStatus: -1,
+				}, err
+			}
+		} else {
+			params = append(
+				params,
+				"--bind", fmt.Sprintf("%s:%s", mountSource, mountTarget),
+			)
+		}
 	}
 	if len(extraParams) > 0 {
 		params = append(params, "--")
@@ -385,6 +426,10 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 		},
 	)
 	cmd := exec.Command(omegajailFullParams[0], omegajailFullParams[1:]...)
+	cmd.Env = []string{
+		"RUST_BACKTRACE=1",
+		"RUST_LOG=debug",
+	}
 	omegajailErrorFile := errorFile + ".omegajail"
 	omegajailErrorFd, err := os.Create(omegajailErrorFile)
 	if err != nil {
