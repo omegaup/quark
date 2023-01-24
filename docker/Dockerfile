@@ -28,8 +28,10 @@ COPY --from=builder /opt/nodejs/lib/node_modules/ /opt/nodejs/lib/node_modules/
 RUN rm -rf /var/lib/omegajail
 COPY --from=builder /var/lib/omegajail/ /var/lib/omegajail/
 COPY --from=builder /usr/share/java/libinteractive.jar /usr/share/java/libinteractive.jar
-RUN mkdir -p /etc/omegaup/runner /var/lib/omegaup
-RUN chmod 777 /var/lib/omegaup
+RUN mkdir -p /etc/omegaup/runner /var/lib/omegaup && \
+    chmod 777 /var/lib/omegaup && \
+    mkdir -p /var/lib/omegajail/root/dev && \
+    mknod --mode=666 /var/lib/omegajail/root/dev/null c 1 3
 COPY bin/omegaup-runner /usr/bin/omegaup-runner
 COPY config.json /etc/omegaup/runner/config.json
 
