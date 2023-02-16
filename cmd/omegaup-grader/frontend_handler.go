@@ -344,7 +344,6 @@ func broadcastRun(
 	var scores map[string]float64
 	scores = make(map[string]float64)
 	for rows.Next() {
-		//var scorePerGroup scorePerGroup
 		err = rows.Scan(&groupName, &scoreByGroup)
 		if err != nil {
 			ctx.Log.Error(
