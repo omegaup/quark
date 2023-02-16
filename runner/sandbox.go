@@ -192,7 +192,6 @@ func (o *OmegajailSandbox) Compile(
 		"--root", o.omegajailRoot,
 		"--compile", lang,
 		"--compile-target", target,
-		"--disable-sandboxing", strconv.FormatBool(true),
 	}
 	for _, inputFile := range inputFiles {
 		if !strings.HasPrefix(inputFile, chdir) {
@@ -330,7 +329,6 @@ func (o *OmegajailSandbox) Run(
 		"--root", o.omegajailRoot,
 		"--run", lang,
 		"--run-target", target,
-		"--disable-sandboxing", strconv.FormatBool(true),
 	}
 	for path, mountTarget := range extraMountPoints {
 		params = append(
