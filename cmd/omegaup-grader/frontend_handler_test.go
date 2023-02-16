@@ -194,6 +194,21 @@ func newInMemoryDB(t *testing.T, scoreMode string) *sql.DB {
 		) VALUES (
 			1, 1, "1", "1", "JE", "1970-01-01 00:00:00"
 		);
+		INSERT INTO Runs_Groups (
+			case_run_id, run_id, group_name, score, verdict
+		) VALUES (
+			1, 1, "easy", 0.1, "PA"
+		);
+		INSERT INTO Runs_Groups (
+			case_run_id, run_id, group_name, score, verdict
+		) VALUES (
+			2, 1, "medium", 0.2, "PA"
+		);
+		INSERT INTO Runs_Groups (
+			case_run_id, run_id, group_name, score, verdict
+		) VALUES (
+			3, 1, "sample", 0.3, "PA"
+		);
 		INSERT INTO Identities (
 			identity_id, username
 		) VALUES (
@@ -230,7 +245,7 @@ func TestUpdateDatabase(t *testing.T) {
 	); err != nil {
 		t.Fatalf("Error updating the database: %v", err)
 	}
-	if count != 0 {
+	if count != 3 {
 		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 0)
 	}
 
@@ -318,7 +333,7 @@ func TestUpdateDatabase(t *testing.T) {
 	); err != nil {
 		t.Fatalf("Error updating the database: %v", err)
 	}
-	if count != 2 {
+	if count != 5 {
 		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 2)
 	}
 	if err := queryRowWithRetry(
