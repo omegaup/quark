@@ -360,6 +360,7 @@ func TestBroadcastRun(t *testing.T) {
 		{scoreMode: "partial", verdict: "AC", score: big.NewRat(1, 1), expectedScore: 1.},
 		{scoreMode: "partial", verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.5},
 		{scoreMode: "all_or_nothing", verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.},
+		{scoreMode: "max_per_group", verdict: "PA", score: big.NewRat(1, 3), expectedScore: 0.3333333333333333},
 	}
 	for idx, s := range scenarios {
 		t.Run(fmt.Sprintf("%d: verdict=%s scoreMode=%s", idx, s.verdict, s.scoreMode), func(t *testing.T) {
