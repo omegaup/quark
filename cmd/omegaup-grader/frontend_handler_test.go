@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -352,15 +353,56 @@ func TestUpdateDatabase(t *testing.T) {
 func TestBroadcastRun(t *testing.T) {
 	ctx := newGraderContext(t)
 	scenarios := []struct {
-		scoreMode     string
-		verdict       string
-		score         *big.Rat
-		expectedScore float64
+		scoreMode      string
+		verdict        string
+		score          *big.Rat
+		expectedScore  float64
+		scorePerGropup map[string]float64
 	}{
-		{scoreMode: "partial", verdict: "AC", score: big.NewRat(1, 1), expectedScore: 1.},
-		{scoreMode: "partial", verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.5},
-		{scoreMode: "all_or_nothing", verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.},
-		{scoreMode: "max_per_group", verdict: "PA", score: big.NewRat(1, 3), expectedScore: 0.3333333333333333},
+		{
+			scoreMode:     "partial",
+			verdict:       "AC",
+			score:         big.NewRat(1, 1),
+			expectedScore: 1.,
+			scorePerGropup: map[string]float64{
+				"easy":   0.1,
+				"medium": 0.2,
+				"sample": 0.3,
+			},
+		},
+		{
+			scoreMode:     "partial",
+			verdict:       "PA",
+			score:         big.NewRat(1, 2),
+			expectedScore: 0.5,
+			scorePerGropup: map[string]float64{
+				"easy":   0.1,
+				"medium": 0.2,
+				"sample": 0.3,
+			},
+		},
+		{
+			scoreMode:     "all_or_nothing",
+			verdict:       "PA",
+			score:         big.NewRat(1, 2),
+			expectedScore: 0.,
+			scorePerGropup: map[string]float64{
+				"easy":   0.1,
+				"medium": 0.2,
+				"sample": 0.3,
+			},
+		},
+		{
+			scoreMode:     "max_per_group",
+			verdict:       "PA",
+			score:         big.NewRat(1, 3),
+			expectedScore: 0.3333333333333333,
+			scorePerGropup: map[string]float64{
+				"easy":   0.1,
+				"medium": 0.2,
+				"sample": 0.3,
+			},
+		},
 	}
 	for idx, s := range scenarios {
 		t.Run(fmt.Sprintf("%d: verdict=%s scoreMode=%s", idx, s.verdict, s.scoreMode), func(t *testing.T) {
@@ -411,13 +453,18 @@ func TestBroadcastRun(t *testing.T) {
 			}
 
 			for key, value := range map[string]any{
-				"guid":          "1",
-				"status":        "ready",
-				"verdict":       s.verdict,
-				"username":      "identity",
-				"score":         s.expectedScore,
-				"contest_score": s.expectedScore,
+				"guid":            "1",
+				"status":          "ready",
+				"verdict":         s.verdict,
+				"username":        "identity",
+				"score":           s.expectedScore,
+				"contest_score":   s.expectedScore,
+				"score_per_group": s.scorePerGropup,
 			} {
+				if key == "score_per_group" {
+					reflect.DeepEqual(value, runInfo[key])
+					continue
+				}
 				if runInfo[key] != value {
 					t.Errorf("message.%s=%v, want %v", key, runInfo[key], value)
 				}
