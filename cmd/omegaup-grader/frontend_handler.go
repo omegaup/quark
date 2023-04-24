@@ -69,11 +69,6 @@ type runGradeResource struct {
 	Filename string `json:"filename"`
 }
 
-type scorePerGroup struct {
-	GroupName string  `json:"group_name"`
-	Score     float64 `json:"score"`
-}
-
 func isRetriable(err error) bool {
 	var mErr *mysql.MySQLError
 	// ERROR 1205 (HY000): Lock wait timeout exceeded; try restarting transaction
