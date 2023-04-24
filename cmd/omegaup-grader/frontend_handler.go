@@ -327,9 +327,7 @@ func broadcastRun(
 	if err != nil {
 		return err
 	}
-	var groupName string
-	var scoreByGroup float64
-	rows, error := queryWithRetry(
+	rows, err := queryWithRetry(
 		db,
 		`SELECT
 			rg.group_name, rg.score
@@ -337,22 +335,17 @@ func broadcastRun(
 			Runs_Groups rg
 		WHERE
 			rg.run_id = ?;`, run.ID)
-	if error != nil {
-		return error
+	if err != nil {
+		return fmt.Errorf("failed to query run groups: %w", err)
 	}
 
-	var scores map[string]float64
-	scores = make(map[string]float64)
+	scores := make(map[string]float64)
 	for rows.Next() {
+		var groupName string
+		var scoreByGroup float64
 		err = rows.Scan(&groupName, &scoreByGroup)
 		if err != nil {
-			ctx.Log.Error(
-				"Failed to get run",
-				map[string]any{
-					"err": err,
-				},
-			)
-			continue
+			return fmt.Errorf("failed to scan run group: %w", err)
 		}
 		scores[groupName] = scoreByGroup
 	}

@@ -353,18 +353,18 @@ func TestUpdateDatabase(t *testing.T) {
 func TestBroadcastRun(t *testing.T) {
 	ctx := newGraderContext(t)
 	scenarios := []struct {
-		scoreMode      string
-		verdict        string
-		score          *big.Rat
-		expectedScore  float64
-		scorePerGropup map[string]float64
+		scoreMode     string
+		verdict       string
+		score         *big.Rat
+		expectedScore float64
+		scorePerGroup map[string]float64
 	}{
 		{
 			scoreMode:     "partial",
 			verdict:       "AC",
 			score:         big.NewRat(1, 1),
 			expectedScore: 1.,
-			scorePerGropup: map[string]float64{
+			scorePerGroup: map[string]float64{
 				"easy":   0.1,
 				"medium": 0.2,
 				"sample": 0.3,
@@ -375,7 +375,7 @@ func TestBroadcastRun(t *testing.T) {
 			verdict:       "PA",
 			score:         big.NewRat(1, 2),
 			expectedScore: 0.5,
-			scorePerGropup: map[string]float64{
+			scorePerGroup: map[string]float64{
 				"easy":   0.1,
 				"medium": 0.2,
 				"sample": 0.3,
@@ -386,7 +386,7 @@ func TestBroadcastRun(t *testing.T) {
 			verdict:       "PA",
 			score:         big.NewRat(1, 2),
 			expectedScore: 0.,
-			scorePerGropup: map[string]float64{
+			scorePerGroup: map[string]float64{
 				"easy":   0.1,
 				"medium": 0.2,
 				"sample": 0.3,
@@ -397,7 +397,7 @@ func TestBroadcastRun(t *testing.T) {
 			verdict:       "PA",
 			score:         big.NewRat(1, 3),
 			expectedScore: 0.3333333333333333,
-			scorePerGropup: map[string]float64{
+			scorePerGroup: map[string]float64{
 				"easy":   0.1,
 				"medium": 0.2,
 				"sample": 0.3,
@@ -452,19 +452,20 @@ func TestBroadcastRun(t *testing.T) {
 				t.Fatalf("Message does not contain a run entry: %v", encodedMessage)
 			}
 
+			if !reflect.DeepEqual(s.scorePerGroup, runInfo["score_per_group"]) {
+				t.Errorf("message.score_per_group=%v (type %T), want %v (type %T)",
+					runInfo["score_per_group"], runInfo["score_per_group"],
+					s.scorePerGroup, s.scorePerGroup)
+			}
+
 			for key, value := range map[string]any{
-				"guid":            "1",
-				"status":          "ready",
-				"verdict":         s.verdict,
-				"username":        "identity",
-				"score":           s.expectedScore,
-				"contest_score":   s.expectedScore,
-				"score_per_group": s.scorePerGropup,
+				"guid":          "1",
+				"status":        "ready",
+				"verdict":       s.verdict,
+				"username":      "identity",
+				"score":         s.expectedScore,
+				"contest_score": s.expectedScore,
 			} {
-				if key == "score_per_group" {
-					reflect.DeepEqual(value, runInfo[key])
-					continue
-				}
 				if runInfo[key] != value {
 					t.Errorf("message.%s=%v, want %v", key, runInfo[key], value)
 				}
