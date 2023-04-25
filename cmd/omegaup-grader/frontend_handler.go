@@ -254,21 +254,22 @@ func broadcastRun(
 		message.Contest = *run.Contest
 	}
 	type serializedRun struct {
-		User         string    `json:"username"`
-		Contest      *string   `json:"contest_alias,omitempty"`
-		Problemset   *int64    `json:"problemset,omitempty"`
-		Problem      string    `json:"alias"`
-		GUID         string    `json:"guid"`
-		Runtime      float64   `json:"runtime"`
-		Penalty      float64   `json:"penalty"`
-		Memory       base.Byte `json:"memory"`
-		Score        float64   `json:"score"`
-		ContestScore float64   `json:"contest_score"`
-		Status       string    `json:"status"`
-		Verdict      string    `json:"verdict"`
-		SubmitDelay  float64   `json:"submit_delay"`
-		Time         float64   `json:"time"`
-		Language     string    `json:"language"`
+		User          string             `json:"username"`
+		Contest       *string            `json:"contest_alias,omitempty"`
+		Problemset    *int64             `json:"problemset,omitempty"`
+		Problem       string             `json:"alias"`
+		GUID          string             `json:"guid"`
+		Runtime       float64            `json:"runtime"`
+		Penalty       float64            `json:"penalty"`
+		Memory        base.Byte          `json:"memory"`
+		Score         float64            `json:"score"`
+		ContestScore  float64            `json:"contest_score"`
+		Status        string             `json:"status"`
+		Verdict       string             `json:"verdict"`
+		SubmitDelay   float64            `json:"submit_delay"`
+		Time          float64            `json:"time"`
+		Language      string             `json:"language"`
+		ScorePerGroup map[string]float64 `json:"score_per_group"`
 	}
 	type runFinishedMessage struct {
 		Message string        `json:"message"`
@@ -283,20 +284,21 @@ func broadcastRun(
 	msg := runFinishedMessage{
 		Message: "/run/update/",
 		Run: serializedRun{
-			Contest:      run.Contest,
-			Problemset:   run.Problemset,
-			Problem:      run.Run.ProblemName,
-			GUID:         run.GUID,
-			Runtime:      run.Result.Time,
-			Memory:       run.Result.Memory,
-			Score:        score,
-			ContestScore: contestScore,
-			Status:       "ready",
-			Verdict:      run.Result.Verdict,
-			Language:     run.Run.Language,
-			Time:         -1,
-			SubmitDelay:  -1,
-			Penalty:      -1,
+			Contest:       run.Contest,
+			Problemset:    run.Problemset,
+			Problem:       run.Run.ProblemName,
+			GUID:          run.GUID,
+			Runtime:       run.Result.Time,
+			Memory:        run.Result.Memory,
+			Score:         score,
+			ContestScore:  contestScore,
+			Status:        "ready",
+			Verdict:       run.Result.Verdict,
+			Language:      run.Run.Language,
+			Time:          -1,
+			SubmitDelay:   -1,
+			Penalty:       -1,
+			ScorePerGroup: make(map[string]float64),
 		},
 	}
 	var runTime time.Time
@@ -320,6 +322,29 @@ func broadcastRun(
 	if err != nil {
 		return err
 	}
+	rows, err := queryWithRetry(
+		db,
+		`SELECT
+			rg.group_name, rg.score
+		FROM
+			Runs_Groups rg
+		WHERE
+			rg.run_id = ?;`, run.ID)
+	if err != nil {
+		return fmt.Errorf("failed to query run groups: %w", err)
+	}
+
+	scores := make(map[string]float64)
+	for rows.Next() {
+		var groupName string
+		var scoreByGroup float64
+		err = rows.Scan(&groupName, &scoreByGroup)
+		if err != nil {
+			return fmt.Errorf("failed to scan run group: %w", err)
+		}
+		scores[groupName] = scoreByGroup
+	}
+	msg.Run.ScorePerGroup = scores
 	msg.Run.Time = float64(runTime.Unix())
 	message.User = msg.Run.User
 	if run.Problemset != nil {

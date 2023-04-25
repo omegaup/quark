@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -194,6 +195,21 @@ func newInMemoryDB(t *testing.T, scoreMode string) *sql.DB {
 		) VALUES (
 			1, 1, "1", "1", "JE", "1970-01-01 00:00:00"
 		);
+		INSERT INTO Runs_Groups (
+			case_run_id, run_id, group_name, score, verdict
+		) VALUES (
+			1, 1, "easy", 0.1, "PA"
+		);
+		INSERT INTO Runs_Groups (
+			case_run_id, run_id, group_name, score, verdict
+		) VALUES (
+			2, 1, "medium", 0.2, "PA"
+		);
+		INSERT INTO Runs_Groups (
+			case_run_id, run_id, group_name, score, verdict
+		) VALUES (
+			3, 1, "sample", 0.3, "PA"
+		);
 		INSERT INTO Identities (
 			identity_id, username
 		) VALUES (
@@ -230,7 +246,7 @@ func TestUpdateDatabase(t *testing.T) {
 	); err != nil {
 		t.Fatalf("Error updating the database: %v", err)
 	}
-	if count != 0 {
+	if count != 3 {
 		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 0)
 	}
 
@@ -318,7 +334,7 @@ func TestUpdateDatabase(t *testing.T) {
 	); err != nil {
 		t.Fatalf("Error updating the database: %v", err)
 	}
-	if count != 2 {
+	if count != 5 {
 		t.Errorf("Wrong number of rows in the database. found %v, want %v", count, 2)
 	}
 	if err := queryRowWithRetry(
@@ -341,10 +357,52 @@ func TestBroadcastRun(t *testing.T) {
 		verdict       string
 		score         *big.Rat
 		expectedScore float64
+		scorePerGroup map[string]any
 	}{
-		{scoreMode: "partial", verdict: "AC", score: big.NewRat(1, 1), expectedScore: 1.},
-		{scoreMode: "partial", verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.5},
-		{scoreMode: "all_or_nothing", verdict: "PA", score: big.NewRat(1, 2), expectedScore: 0.},
+		{
+			scoreMode:     "partial",
+			verdict:       "AC",
+			score:         big.NewRat(1, 1),
+			expectedScore: 1.,
+			scorePerGroup: map[string]any{
+				"easy":   0.1,
+				"medium": 0.2,
+				"sample": 0.3,
+			},
+		},
+		{
+			scoreMode:     "partial",
+			verdict:       "PA",
+			score:         big.NewRat(1, 2),
+			expectedScore: 0.5,
+			scorePerGroup: map[string]any{
+				"easy":   0.1,
+				"medium": 0.2,
+				"sample": 0.3,
+			},
+		},
+		{
+			scoreMode:     "all_or_nothing",
+			verdict:       "PA",
+			score:         big.NewRat(1, 2),
+			expectedScore: 0.,
+			scorePerGroup: map[string]any{
+				"easy":   0.1,
+				"medium": 0.2,
+				"sample": 0.3,
+			},
+		},
+		{
+			scoreMode:     "max_per_group",
+			verdict:       "PA",
+			score:         big.NewRat(1, 3),
+			expectedScore: 0.3333333333333333,
+			scorePerGroup: map[string]any{
+				"easy":   0.1,
+				"medium": 0.2,
+				"sample": 0.3,
+			},
+		},
 	}
 	for idx, s := range scenarios {
 		t.Run(fmt.Sprintf("%d: verdict=%s scoreMode=%s", idx, s.verdict, s.scoreMode), func(t *testing.T) {
@@ -392,6 +450,12 @@ func TestBroadcastRun(t *testing.T) {
 			runInfo, ok := encodedMessage["run"].(map[string]any)
 			if !ok {
 				t.Fatalf("Message does not contain a run entry: %v", encodedMessage)
+			}
+
+			if !reflect.DeepEqual(s.scorePerGroup, runInfo["score_per_group"]) {
+				t.Errorf("message.score_per_group=%v (type %T), want %v (type %T)",
+					runInfo["score_per_group"], runInfo["score_per_group"],
+					s.scorePerGroup, s.scorePerGroup)
 			}
 
 			for key, value := range map[string]any{
