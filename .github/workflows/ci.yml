@@ -16,7 +16,7 @@ jobs:
           - 1.19
     name: Go ${{ matrix.go }}
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       - name: Check out code

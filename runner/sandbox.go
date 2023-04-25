@@ -140,6 +140,8 @@ type OmegajailSandbox struct {
 	// AllowSigsysFallback allows omegajail to use the previous implementation of
 	// the sigsys detector if it's running on an older pre-5.13 kernel.
 	AllowSigsysFallback bool
+
+	DisableSandboxing bool
 }
 
 // NewOmegajailSandbox creates a new OmegajailSandbox.
@@ -330,11 +332,52 @@ func (o *OmegajailSandbox) Run(
 		"--run", lang,
 		"--run-target", target,
 	}
-	for path, mountTarget := range extraMountPoints {
-		params = append(
-			params,
-			"--bind", fmt.Sprintf("%s:%s", path, mountTarget),
-		)
+	for mountSource, mountTarget := range extraMountPoints {
+		if o.DisableSandboxing {
+			// When we have sandboxing disabled, we can't bind-mount, so we symlink
+			// the targets instead.
+			relTarget, err := filepath.Rel("/home", mountTarget)
+			if err != nil {
+				err = errors.Wrapf(
+					err,
+					"filepath.Rel(%q, %q)", "/home", mountTarget,
+				)
+				return &RunMetadata{
+					Verdict:    "JE",
+					ExitStatus: -1,
+				}, err
+			}
+			symlinkTarget := path.Join(chdir, relTarget)
+			if st, err := os.Stat(symlinkTarget); err == nil && st.Mode().IsDir() {
+				err = os.Remove(symlinkTarget)
+				if err != nil {
+					err = errors.Wrapf(
+						err,
+						"remove(%q)", symlinkTarget,
+					)
+					return &RunMetadata{
+						Verdict:    "JE",
+						ExitStatus: -1,
+					}, err
+				}
+			}
+			err = os.Symlink(mountSource, symlinkTarget)
+			if err != nil {
+				err = errors.Wrapf(
+					err,
+					"symlink(%q, %q)", mountSource, symlinkTarget,
+				)
+				return &RunMetadata{
+					Verdict:    "JE",
+					ExitStatus: -1,
+				}, err
+			}
+		} else {
+			params = append(
+				params,
+				"--bind", fmt.Sprintf("%s:%s", mountSource, mountTarget),
+			)
+		}
 	}
 	if len(extraParams) > 0 {
 		params = append(params, "--")
@@ -372,6 +415,9 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 	if o.AllowSigsysFallback {
 		omegajailFullParams = append(omegajailFullParams, "--allow-sigsys-fallback")
 	}
+	if o.DisableSandboxing {
+		omegajailFullParams = append(omegajailFullParams, "--disable-sandboxing")
+	}
 	omegajailFullParams = append(omegajailFullParams, omegajailParams...)
 	ctx.Log.Debug(
 		"invoking",
@@ -379,7 +425,11 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 			"params": shellquote.Join(omegajailFullParams...),
 		},
 	)
-	cmd := exec.Command(omegajailFullParams[0], omegajailParams...)
+	cmd := exec.Command(omegajailFullParams[0], omegajailFullParams[1:]...)
+	cmd.Env = []string{
+		"RUST_BACKTRACE=1",
+		"RUST_LOG=debug",
+	}
 	omegajailErrorFile := errorFile + ".omegajail"
 	omegajailErrorFd, err := os.Create(omegajailErrorFile)
 	if err != nil {
@@ -394,10 +444,24 @@ func (o *OmegajailSandbox) invokeOmegajail(ctx *common.Context, omegajailParams 
 		cmd.Stderr = omegajailErrorFd
 	}
 	if err := cmd.Run(); err != nil {
+		var output string
+		if omegajailErrorFd != nil {
+			b, err := os.ReadFile(omegajailErrorFile)
+			if err == nil {
+				output = string(b)
+			}
+		}
+		if output == "" {
+			b, err := os.ReadFile(errorFile)
+			if err == nil {
+				output = string(b)
+			}
+		}
 		ctx.Log.Error(
 			"Omegajail execution failed",
 			map[string]any{
 				"err": err,
+				"out": output,
 			},
 		)
 	}

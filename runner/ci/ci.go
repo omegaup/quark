@@ -726,9 +726,10 @@ func NewRunConfig(files common.ProblemFiles, generateOutputFiles bool) (*RunConf
 		config.OutGeneratorConfig = &OutGeneratorConfig{
 			Solution: *solution,
 			Input: &common.LiteralInput{
-				Cases:     make(map[string]*common.LiteralCaseSettings),
-				Limits:    config.Input.Limits,
-				Validator: config.Input.Validator,
+				Cases:       make(map[string]*common.LiteralCaseSettings),
+				Limits:      config.Input.Limits,
+				Validator:   config.Input.Validator,
+				Interactive: config.Input.Interactive,
 			},
 		}
 		for _, filename := range files.Files() {

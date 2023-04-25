@@ -1,4 +1,4 @@
-FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.9.0 AS base
+FROM docker.pkg.github.com/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.10.0 AS base
 
 FROM base AS builder
 
@@ -18,15 +18,20 @@ RUN mkdir /tmp/karel && \
 
 # Install a newer version of the omegajail binary.
 RUN rm -rf /var/lib/omegajail && \
-    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.9.1/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C /
+    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.10.4/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C / && \
+    curl -sL https://github.com/omegaup/libinteractive/releases/download/v2.0.30/libinteractive.jar \
+        -o /usr/share/java/libinteractive.jar
 
 FROM base
 
 COPY --from=builder /opt/nodejs/lib/node_modules/ /opt/nodejs/lib/node_modules/
 RUN rm -rf /var/lib/omegajail
 COPY --from=builder /var/lib/omegajail/ /var/lib/omegajail/
-RUN mkdir -p /etc/omegaup/runner /var/lib/omegaup
-RUN chmod 777 /var/lib/omegaup
+COPY --from=builder /usr/share/java/libinteractive.jar /usr/share/java/libinteractive.jar
+RUN mkdir -p /etc/omegaup/runner /var/lib/omegaup && \
+    chmod 777 /var/lib/omegaup && \
+    mkdir -p /var/lib/omegajail/root/dev && \
+    mknod --mode=666 /var/lib/omegajail/root/dev/null c 1 3
 COPY bin/omegaup-runner /usr/bin/omegaup-runner
 COPY config.json /etc/omegaup/runner/config.json
 

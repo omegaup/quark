@@ -16,10 +16,10 @@ require (
 	github.com/omegaup/go-base/tracing/newrelic/v3 v3.3.7
 	github.com/omegaup/go-base/v3 v3.3.7
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.8.0
+	github.com/prometheus/client_golang v1.11.1
 	github.com/shirou/gopsutil v3.20.11+incompatible
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50
-	golang.org/x/net v0.0.0-20211209124913-491a49abca63
+	golang.org/x/net v0.7.0
 )
 
 require (
@@ -36,12 +36,12 @@ require (
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
-	github.com/prometheus/common v0.15.0 // indirect
-	github.com/prometheus/procfs v0.2.0 // indirect
-	golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9 // indirect
+	github.com/prometheus/common v0.26.0 // indirect
+	github.com/prometheus/procfs v0.6.0 // indirect
+	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/exp v0.0.0-20220916125017-b168a2c6b86b // indirect
-	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
-	golang.org/x/text v0.3.6 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	google.golang.org/genproto v0.0.0-20211223182754-3ac035c7e7cb // indirect
 	google.golang.org/grpc v1.43.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect

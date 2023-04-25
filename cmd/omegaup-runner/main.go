@@ -474,7 +474,9 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				"grade",
 				strconv.FormatUint(run.AttemptID, 10),
 			)
-			defer os.RemoveAll(runRoot)
+			if !ctx.Config.Runner.PreserveFiles {
+				defer os.RemoveAll(runRoot)
+			}
 
 			result, err := runner.Grade(ctx, nil, &run, inputRef.Input, sandbox)
 			if err != nil {
@@ -491,10 +493,18 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 				ctx.Log.Error(
 					"Error generating outputs",
 					map[string]any{
-						"config": runConfig.OutGeneratorConfig,
-						"err":    err,
+						"config":       runConfig.OutGeneratorConfig,
+						"compileError": result.CompileError,
+						"err":          err,
 					},
 				)
+				if result.CompileError != nil {
+					return errors.Errorf(
+						"expecting a verdict of {AC, PA, WA}; got %s:\n%q",
+						result.Verdict,
+						*result.CompileError,
+					)
+				}
 				return errors.Errorf(
 					"expecting a verdict of {AC, PA, WA}; got %s",
 					result.Verdict,
@@ -675,7 +685,9 @@ func runOneshotCI(ctx *common.Context, sandbox runner.Sandbox) *ci.Report {
 							},
 						)
 					}
-					os.RemoveAll(runRoot)
+					if !ctx.Config.Runner.PreserveFiles {
+						os.RemoveAll(runRoot)
+					}
 				}()
 			}
 
@@ -730,6 +742,8 @@ func main() {
 		if *oneshot == "ci" {
 			// Allow sigsys to use the fallback detector when running in CI.
 			oj.AllowSigsysFallback = true
+			// Disable sandboxing when running inside Docker.
+			oj.DisableSandboxing = true
 		}
 		sandbox = oj
 	}
@@ -745,7 +759,7 @@ func main() {
 			)
 			os.Exit(1)
 		}
-		if os.Getenv("PRESERVE") != "" {
+		if os.Getenv("PRESERVE") != "" || *oneshot == "ci" {
 			ctx.Config.Runner.PreserveFiles = true
 		}
 		if !ctx.Config.Runner.PreserveFiles {
@@ -799,7 +813,7 @@ func main() {
 			}
 			if *resultsOutputDirectory != "" {
 				{
-					f, err := os.Create(path.Join(*resultsOutputDirectory, "ci.log"))
+					err := os.WriteFile(path.Join(*resultsOutputDirectory, "ci.log"), ctx.LogBuffer(), 0o644)
 					if err != nil {
 						ctx.Log.Error(
 							"Failed to create log file",
@@ -807,17 +821,6 @@ func main() {
 								"err": err,
 							},
 						)
-					} else {
-						_, err = f.Write(ctx.LogBuffer())
-						f.Close()
-						if err != nil {
-							ctx.Log.Error(
-								"Failed to write log file",
-								map[string]any{
-									"err": err,
-								},
-							)
-						}
 					}
 				}
 				{
