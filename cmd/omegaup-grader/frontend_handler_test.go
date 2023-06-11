@@ -357,14 +357,14 @@ func TestBroadcastRun(t *testing.T) {
 		verdict       string
 		score         *big.Rat
 		expectedScore float64
-		scorePerGroup map[string]any
+		scoreByGroup  map[string]any
 	}{
 		{
 			scoreMode:     "partial",
 			verdict:       "AC",
 			score:         big.NewRat(1, 1),
 			expectedScore: 1.,
-			scorePerGroup: map[string]any{
+			scoreByGroup: map[string]any{
 				"easy":   0.1,
 				"medium": 0.2,
 				"sample": 0.3,
@@ -375,7 +375,7 @@ func TestBroadcastRun(t *testing.T) {
 			verdict:       "PA",
 			score:         big.NewRat(1, 2),
 			expectedScore: 0.5,
-			scorePerGroup: map[string]any{
+			scoreByGroup: map[string]any{
 				"easy":   0.1,
 				"medium": 0.2,
 				"sample": 0.3,
@@ -386,7 +386,7 @@ func TestBroadcastRun(t *testing.T) {
 			verdict:       "PA",
 			score:         big.NewRat(1, 2),
 			expectedScore: 0.,
-			scorePerGroup: map[string]any{
+			scoreByGroup: map[string]any{
 				"easy":   0.1,
 				"medium": 0.2,
 				"sample": 0.3,
@@ -397,7 +397,7 @@ func TestBroadcastRun(t *testing.T) {
 			verdict:       "PA",
 			score:         big.NewRat(1, 3),
 			expectedScore: 0.3333333333333333,
-			scorePerGroup: map[string]any{
+			scoreByGroup: map[string]any{
 				"easy":   0.1,
 				"medium": 0.2,
 				"sample": 0.3,
@@ -452,10 +452,10 @@ func TestBroadcastRun(t *testing.T) {
 				t.Fatalf("Message does not contain a run entry: %v", encodedMessage)
 			}
 
-			if !reflect.DeepEqual(s.scorePerGroup, runInfo["score_per_group"]) {
-				t.Errorf("message.score_per_group=%v (type %T), want %v (type %T)",
-					runInfo["score_per_group"], runInfo["score_per_group"],
-					s.scorePerGroup, s.scorePerGroup)
+			if !reflect.DeepEqual(s.scoreByGroup, runInfo["score_by_group"]) {
+				t.Errorf("message.score_by_group=%v (type %T), want %v (type %T)",
+					runInfo["score_by_group"], runInfo["score_by_group"],
+					s.scoreByGroup, s.scoreByGroup)
 			}
 
 			for key, value := range map[string]any{
