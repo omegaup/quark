@@ -277,9 +277,11 @@ func broadcastRun(
 	}
 	score := base.RationalToFloat(run.Result.Score)
 	contestScore := base.RationalToFloat(run.Result.ContestScore)
+	verdict := run.Result.Verdict
 	if run.ScoreMode == "all_or_nothing" && score != 1 {
 		score = 0
 		contestScore = 0
+		verdict = "WA"
 	}
 	msg := runFinishedMessage{
 		Message: "/run/update/",
@@ -293,7 +295,7 @@ func broadcastRun(
 			Score:        score,
 			ContestScore: contestScore,
 			Status:       "ready",
-			Verdict:      run.Result.Verdict,
+			Verdict:      verdict,
 			Language:     run.Run.Language,
 			Time:         -1,
 			SubmitDelay:  -1,

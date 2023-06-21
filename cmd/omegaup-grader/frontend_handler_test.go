@@ -383,7 +383,7 @@ func TestBroadcastRun(t *testing.T) {
 		},
 		{
 			scoreMode:     "all_or_nothing",
-			verdict:       "PA",
+			verdict:       "WA",
 			score:         big.NewRat(1, 2),
 			expectedScore: 0.,
 			scoreByGroup: map[string]any{
