@@ -93,7 +93,7 @@ func loadContext() error {
 		return err
 	}
 
-	res, err := http.Get("https://ifconfig.me")
+	res, err := http.Get("https://ifconfig.me/ip")
 	if err != nil {
 		ctx.Log.Error(
 			"Failed to get public IP",
