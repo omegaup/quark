@@ -36,6 +36,7 @@ import (
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	errors "github.com/pkg/errors"
+	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
 )
 
@@ -101,7 +102,7 @@ func loadContext() error {
 			},
 		)
 	} else {
-		ip, err := io.ReadAll(res.Body)
+		ipBytes, err := io.ReadAll(res.Body)
 		res.Body.Close()
 		if err != nil {
 			ctx.Log.Error(
@@ -111,7 +112,18 @@ func loadContext() error {
 				},
 			)
 		} else {
-			ctx.Config.Runner.PublicIP = strings.TrimSpace(string(ip))
+			ip := strings.TrimSpace(string(ipBytes))
+
+			if !httpguts.ValidHeaderFieldValue(ip) {
+				ctx.Log.Error(
+					"Public IP is invalid",
+					map[string]any{
+						"ip": ip,
+					},
+				)
+			} else {
+				ctx.Config.Runner.PublicIP = ip
+			}
 		}
 	}
 
