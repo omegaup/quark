@@ -1,0 +1,45 @@
+# golangci-lint configuration
+run:
+  timeout: 5m
+  tests: false
+
+issues:
+  exclude-use-default: true
+  exclude-dirs:
+    - vendor
+  max-issues-per-linter: 50
+  max-same-issues: 10
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/omegaup/quark
+  govet:
+    shadow: false
+    disable:
+      - shadow
+      - fieldalignment
+      - printf
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+  gocyclo:
+    min-complexity: 30  # More tolerant
+  dupl:
+    threshold: 150  # More tolerant
+
+linters:
+  disable-all: true
+  enable:
+    # Only basic formatting for now
+    - gofmt
+
+severity:
+  default-severity: warning

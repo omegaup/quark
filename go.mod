@@ -8,7 +8,7 @@ require (
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
-	github.com/libgit2/git2go/v33 v33.0.4
+	github.com/libgit2/git2go/v33 v33.0.9
 	github.com/mattn/go-sqlite3 v1.14.8
 	github.com/newrelic/go-agent/v3 v3.15.2
 	github.com/omegaup/githttp/v2 v2.4.14
