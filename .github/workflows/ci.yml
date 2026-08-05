@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
 
   test:
@@ -64,5 +68,19 @@ jobs:
             exit 1
           fi
 
-      - name: Upload code coverage
-        run: bash <(curl -s https://codecov.io/bash)
+      - name: Upload code coverage with OIDC
+        if: >-
+          github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: codecov/codecov-action@v6
+        with:
+          files: ./coverage.txt
+          use_oidc: true
+
+      - name: Upload code coverage from fork
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        uses: codecov/codecov-action@v6
+        with:
+          files: ./coverage.txt
