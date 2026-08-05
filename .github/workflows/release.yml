@@ -83,10 +83,14 @@ jobs:
             -tags=static \
             github.com/omegaup/quark/cmd/omegaup-broadcaster
           go build -o artifacts/runner/usr/bin/omegaup-runner \
-            -ldflags "-X main.ProgramVersion=${VERSION}" \
+            -ldflags "-linkmode external -extldflags '-static' -X main.ProgramVersion=${VERSION}" \
             -tags=static \
             github.com/omegaup/quark/cmd/omegaup-runner
 
+          if ldd artifacts/runner/usr/bin/omegaup-runner; then
+            echo 'omegaup-runner must be statically linked' >&2
+            exit 1
+          fi
           cp artifacts/runner/usr/bin/omegaup-runner docker/bin/omegaup-runner
           test "$(artifacts/runner/usr/bin/omegaup-runner -version)" = \
             "omegaup-runner ${VERSION}"
@@ -131,35 +135,27 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and publish runner sandbox image
+      - name: Build runner sandbox image
         uses: docker/build-push-action@v7
         with:
           context: docker
           file: docker/Dockerfile
           platforms: ${{ env.PLATFORM }}
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/runner-ci:${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/runner-ci:sha-${{ steps.version.outputs.revision }}
-            omegaup/runner-ci:${{ steps.version.outputs.version }}
-            omegaup/runner-ci:sha-${{ steps.version.outputs.revision }}
+          load: true
+          tags: omegaup/runner-ci:${{ steps.version.outputs.version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.version.outputs.revision }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
 
-      - name: Build and publish runner image
+      - name: Build runner image
         uses: docker/build-push-action@v7
         with:
           context: docker
           file: docker/Dockerfile.runner
           platforms: ${{ env.PLATFORM }}
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/runner:${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/runner:sha-${{ steps.version.outputs.revision }}
-            omegaup/runner:${{ steps.version.outputs.version }}
-            omegaup/runner:sha-${{ steps.version.outputs.revision }}
+          load: true
+          tags: omegaup/runner:${{ steps.version.outputs.version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.version.outputs.revision }}
@@ -176,6 +172,30 @@ jobs:
             /usr/bin/omegaup-runner -version)" = \
             "omegaup-runner ${VERSION}"
           test "$(docker image inspect "${image}" --format '{{.Architecture}}')" = amd64
+          test "$(docker run --rm --platform linux/amd64 \
+            "omegaup/runner-ci:${VERSION}" -version)" = \
+            "omegaup-runner ${VERSION}"
+          test "$(docker image inspect "omegaup/runner-ci:${VERSION}" \
+            --format '{{.Architecture}}')" = amd64
+
+      - name: Publish verified runner images
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          REVISION: ${{ steps.version.outputs.revision }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in runner runner-ci; do
+            source_image="omegaup/${image}:${VERSION}"
+            docker push "${source_image}"
+            for target_image in \
+              "omegaup/${image}:sha-${REVISION}" \
+              "ghcr.io/${{ github.repository_owner }}/${image}:${VERSION}" \
+              "ghcr.io/${{ github.repository_owner }}/${image}:sha-${REVISION}"; do
+              docker tag "${source_image}" "${target_image}"
+              docker push "${target_image}"
+            done
+          done
 
       - name: Create or update GitHub release
         env:
