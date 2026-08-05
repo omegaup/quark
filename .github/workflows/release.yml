@@ -2,160 +2,195 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
-      - v*
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: '1.19'
+  PLATFORM: linux/amd64
 
 jobs:
-
   release:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Check out release tag
+        uses: actions/checkout@v4
         with:
-          fetch-depth: '0'
+          fetch-depth: 0
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "invalid release tag: ${version}" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "revision=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.19
-        id: go
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Install git2go
+        shell: bash
         run: |
-          export GOPATH="$(go env GOPATH)"
-          go mod edit -replace "github.com/libgit2/git2go/v33=${GOPATH}/src/github.com/libgit2/git2go"
-          git clone --recurse-submodules https://github.com/libgit2/git2go -b v33.0.4 "${GOPATH}/src/github.com/libgit2/git2go"
+          set -euo pipefail
+          git2go_path="$(go env GOPATH)/src/github.com/libgit2/git2go"
+          go mod edit -replace "github.com/libgit2/git2go/v33=${git2go_path}"
+          git clone --recurse-submodules \
+            --branch v33.0.4 \
+            https://github.com/libgit2/git2go \
+            "${git2go_path}"
           go get -d github.com/libgit2/git2go/v33
-          (cd "${GOPATH}/src/github.com/libgit2/git2go/" && USE_CHROMIUM_ZLIB=ON ./script/build-libgit2-static.sh)
+          cd "${git2go_path}"
+          USE_CHROMIUM_ZLIB=ON ./script/build-libgit2-static.sh
 
-      - name: Get dependencies
+      - name: Download dependencies
         run: go get -tags=static -t -v ./...
 
-      - name: Bump version and push tag
-        id: bump-version
-        uses: anothrNick/github-tag-action@43ed073f5c1445ca8b80d920ce2f8fa550ae4e8d
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WITH_V: true
-          DEFAULT_BUMP: patch
-          INITIAL_VERSION: 1.0.0
+      - name: Test runner
+        run: go test -tags=static ./cmd/omegaup-runner ./runner/...
 
-      - name: Build
+      - name: Build release binaries
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
         run: |
-          mkdir -p artifacts/backend/usr/bin/
+          set -euo pipefail
+          mkdir -p artifacts/backend/usr/bin artifacts/runner/usr/bin docker/bin
+
           go build -o artifacts/backend/usr/bin/omegaup-grader \
-            -ldflags "-X main.ProgramVersion=${{ steps.bump-version.outputs.tag }}" \
+            -ldflags "-X main.ProgramVersion=${VERSION}" \
             -tags=static \
             github.com/omegaup/quark/cmd/omegaup-grader
           go build -o artifacts/backend/usr/bin/omegaup-broadcaster \
-            -ldflags "-X main.ProgramVersion=${{ steps.bump-version.outputs.tag }}" \
+            -ldflags "-X main.ProgramVersion=${VERSION}" \
             -tags=static \
             github.com/omegaup/quark/cmd/omegaup-broadcaster
-
-          mkdir -p artifacts/runner/usr/bin/
           go build -o artifacts/runner/usr/bin/omegaup-runner \
-            -ldflags "-X main.ProgramVersion=${{ steps.bump-version.outputs.tag }}" \
+            -ldflags "-X main.ProgramVersion=${VERSION}" \
             -tags=static \
             github.com/omegaup/quark/cmd/omegaup-runner
 
-      - name: Package
-        run: |
-          tar -cJf omegaup-backend.tar.xz --owner=root:0 --group=root:0 -C artifacts/backend/ .
-          tar -cJf omegaup-runner.tar.xz --owner=root:0 --group=root:0 -C artifacts/runner/ .
-
-      - name: Create Release
-        id: create-release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.bump-version.outputs.tag }}
-          release_name: ${{ steps.bump-version.outputs.tag }}
-          draft: false
-          prerelease: false
-
-      - name: Upload omegaup-backend.tar.xz Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.upload_url }}
-          asset_path: ./omegaup-backend.tar.xz
-          asset_name: omegaup-backend.tar.xz
-          asset_content_type: application/octet-stream
-
-      - name: Upload omegaup-runner.tar.xz Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.upload_url }}
-          asset_path: ./omegaup-runner.tar.xz
-          asset_name: omegaup-runner.tar.xz
-          asset_content_type: application/octet-stream
-
-      - name: Build Docker images
-        run: |
-          echo "${{ github.token }}" | \
-              docker login https://docker.pkg.github.com "--username=${{ github.actor }}" --password-stdin
-
-          mkdir -p docker/bin
           cp artifacts/runner/usr/bin/omegaup-runner docker/bin/omegaup-runner
-          docker build --tag omegaup/runner-ci docker/
-          docker build --tag omegaup/runner --build-arg RELEASE=${{ steps.bump-version.outputs.tag }} -f docker/Dockerfile.runner docker/
-          docker build --tag omegaup/backend --build-arg RELEASE=${{ steps.bump-version.outputs.tag }} -f docker/Dockerfile.backend docker/
+          test "$(artifacts/runner/usr/bin/omegaup-runner -version)" = \
+            "omegaup-runner ${VERSION}"
 
-      - name: Push container images to GitHub registry
+      - name: Package release assets
         run: |
-          echo "${{ github.token }}" | \
-              docker login https://docker.pkg.github.com "--username=${{ github.actor }}" --password-stdin
+          tar -cJf omegaup-backend.tar.xz \
+            --owner=root:0 --group=root:0 -C artifacts/backend/ .
+          tar -cJf omegaup-runner.tar.xz \
+            --owner=root:0 --group=root:0 -C artifacts/runner/ .
 
-          container_name=docker.pkg.github.com/${{ github.repository }}/omegaup-runner-ci:${{ steps.bump-version.outputs.tag }}
-          docker tag omegaup/runner-ci "${container_name}"
-          docker push "${container_name}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-          container_name=docker.pkg.github.com/${{ github.repository }}/runner:${{ steps.bump-version.outputs.tag }}
-          docker tag omegaup/runner "${container_name}"
-          docker push "${container_name}"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-          container_name=docker.pkg.github.com/${{ github.repository }}/backend:${{ steps.bump-version.outputs.tag }}
-          docker tag omegaup/backend "${container_name}"
-          docker push "${container_name}"
-
-      - name: Push container images to Docker registry
+      - name: Check Docker Hub credentials are configured
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        shell: bash
         run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | \
-              docker login "--username=${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          set -euo pipefail
+          test -n "${DOCKER_USERNAME}" || {
+            echo 'DOCKER_USERNAME is not configured' >&2
+            exit 1
+          }
+          test -n "${DOCKER_PASSWORD}" || {
+            echo 'DOCKER_PASSWORD is not configured' >&2
+            exit 1
+          }
 
-          container_name=omegaup/runner-ci:${{ steps.bump-version.outputs.tag }}
-          docker tag omegaup/runner-ci "${container_name}"
-          docker push "${container_name}"
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-          container_name=omegaup/runner:${{ steps.bump-version.outputs.tag }}
-          docker tag omegaup/runner "${container_name}"
-          docker push "${container_name}"
+      - name: Build and publish runner sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/Dockerfile
+          platforms: ${{ env.PLATFORM }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/runner-ci:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/runner-ci:sha-${{ steps.version.outputs.revision }}
+            omegaup/runner-ci:${{ steps.version.outputs.version }}
+            omegaup/runner-ci:sha-${{ steps.version.outputs.revision }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.version.outputs.revision }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
 
-          container_name=omegaup/backend:${{ steps.bump-version.outputs.tag }}
-          docker tag omegaup/backend "${container_name}"
-          docker push "${container_name}"
+      - name: Build and publish runner image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/Dockerfile.runner
+          platforms: ${{ env.PLATFORM }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/runner:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/runner:sha-${{ steps.version.outputs.revision }}
+            omegaup/runner:${{ steps.version.outputs.version }}
+            omegaup/runner:sha-${{ steps.version.outputs.revision }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.version.outputs.revision }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
 
-      - name: Update k8s sandbox manifests
+      - name: Verify runner image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
         run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-          sudo mv kustomize /usr/local/bin/
+          set -euo pipefail
+          image="omegaup/runner:${VERSION}"
+          test "$(docker run --rm --platform linux/amd64 "${image}" \
+            /usr/bin/omegaup-runner -version)" = \
+            "omegaup-runner ${VERSION}"
+          test "$(docker image inspect "${image}" --format '{{.Architecture}}')" = amd64
 
-          git clone --depth=1 https://omegaup-bot:${{ secrets.OMEGAUPBOT_RELEASE_TOKEN }}@github.com/omegaup/prod /tmp/prod
-          TAG="${{ steps.bump-version.outputs.tag }}"
-          (cd /tmp/prod/k8s/omegaup/overlays/sandbox/backend &&
-           git config --local user.name "omegaup-bot" && \
-           git config --local user.email "omegaup-bot@users.noreply.github.com" && \
-           kustomize edit set image \
-             "omegaup/backend:${TAG}" \
-             "omegaup/runner:${TAG}"
-           sed -i "s/app.kubernetes.io\/version: .*/app.kubernetes.io\/version: ${TAG}/" grader-deployment.yaml broadcaster-deployment.yaml runner-deployment.yaml &&
-           git commit -am "backend sandbox release ${TAG}" &&
-           git push)
-          rm -rf /tmp/prod
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${VERSION}" >/dev/null 2>&1; then
+            gh release upload "${VERSION}" \
+              omegaup-backend.tar.xz omegaup-runner.tar.xz --clobber
+          else
+            gh release create "${VERSION}" \
+              omegaup-backend.tar.xz omegaup-runner.tar.xz \
+              --verify-tag \
+              --generate-notes \
+              --title "${VERSION}"
+          fi

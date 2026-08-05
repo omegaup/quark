@@ -11,17 +11,13 @@ RUN apt-get update -y && \
     apt-get autoremove -y && \
     apt-get clean
 
-RUN curl -sL https://github.com/omegaup/quark/releases/download/v1.4.0/omegaup-runner.tar.xz | tar xJ -C /
 RUN mkdir -p /etc/omegaup/runner
 
 RUN useradd --create-home --shell=/bin/bash ubuntu && \
     mkdir -p /var/log/omegaup /var/lib/omegaup && \
     chown -R ubuntu /var/log/omegaup /var/lib/omegaup
 
-ARG RELEASE
-ENV RELEASE=$RELEASE
-RUN curl -sL https://github.com/omegaup/quark/releases/download/${RELEASE}/omegaup-runner.tar.xz | \
-        tar xJ -C /
+COPY bin/omegaup-runner /usr/bin/omegaup-runner
 
 USER ubuntu
 WORKDIR /var/lib/omegaup
