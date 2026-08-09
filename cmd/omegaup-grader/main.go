@@ -164,9 +164,9 @@ func queueEventsProcessor(events <-chan *grader.QueueEvent) {
 					ctx.Metrics.SummaryObserve("grader_queue_high_delay_seconds", event.Delta.Seconds())
 				}
 			case grader.QueueEventTypeRetried:
-				ctx.Metrics.GaugeAdd("grader_runs_retry", 1)
+				ctx.Metrics.CounterAdd("grader_runs_retry", 1)
 			case grader.QueueEventTypeAbandoned:
-				ctx.Metrics.GaugeAdd("grader_runs_abandoned", 1)
+				ctx.Metrics.CounterAdd("grader_runs_abandoned", 1)
 			}
 		}
 	}
