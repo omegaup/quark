@@ -102,6 +102,24 @@ jobs:
           tar -cJf omegaup-runner.tar.xz \
             --owner=root:0 --group=root:0 -C artifacts/runner/ .
 
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${VERSION}" >/dev/null 2>&1; then
+            gh release upload "${VERSION}" \
+              omegaup-backend.tar.xz omegaup-runner.tar.xz --clobber
+          else
+            gh release create "${VERSION}" \
+              omegaup-backend.tar.xz omegaup-runner.tar.xz \
+              --verify-tag \
+              --generate-notes \
+              --title "${VERSION}"
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -134,6 +152,21 @@ jobs:
           registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build backend image
+        uses: docker/build-push-action@v7
+        with:
+          context: docker
+          file: docker/Dockerfile.backend
+          platforms: ${{ env.PLATFORM }}
+          load: true
+          build-args: |
+            RELEASE=${{ steps.version.outputs.version }}
+          tags: omegaup/backend:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.version.outputs.revision }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
 
       - name: Build runner sandbox image
         uses: docker/build-push-action@v7
@@ -176,16 +209,31 @@ jobs:
             "omegaup/runner-ci:${VERSION}" -version)" = \
             "omegaup-runner ${VERSION}"
           test "$(docker image inspect "omegaup/runner-ci:${VERSION}" \
-            --format '{{.Architecture}}')" = amd64
+              --format '{{.Architecture}}')" = amd64
 
-      - name: Publish verified runner images
+      - name: Verify backend image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="omegaup/backend:${VERSION}"
+          test "$(docker run --rm --platform linux/amd64 "${image}" \
+            /usr/bin/omegaup-grader -version)" = \
+            "omegaup-grader ${VERSION}"
+          test "$(docker run --rm --platform linux/amd64 "${image}" \
+            /usr/bin/omegaup-broadcaster -version)" = \
+            "omegaup-broadcaster ${VERSION}"
+          test "$(docker image inspect "${image}" --format '{{.Architecture}}')" = amd64
+
+      - name: Publish verified images
         env:
           VERSION: ${{ steps.version.outputs.version }}
           REVISION: ${{ steps.version.outputs.revision }}
         shell: bash
         run: |
           set -euo pipefail
-          for image in runner runner-ci; do
+          for image in backend runner runner-ci; do
             source_image="omegaup/${image}:${VERSION}"
             docker push "${source_image}"
             for target_image in \
@@ -196,21 +244,3 @@ jobs:
               docker push "${target_image}"
             done
           done
-
-      - name: Create or update GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if gh release view "${VERSION}" >/dev/null 2>&1; then
-            gh release upload "${VERSION}" \
-              omegaup-backend.tar.xz omegaup-runner.tar.xz --clobber
-          else
-            gh release create "${VERSION}" \
-              omegaup-backend.tar.xz omegaup-runner.tar.xz \
-              --verify-tag \
-              --generate-notes \
-              --title "${VERSION}"
-          fi
