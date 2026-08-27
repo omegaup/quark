@@ -1,4 +1,4 @@
-FROM ghcr.io/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.10.0 AS base
+FROM ghcr.io/omegaup/omegajail/omegajail-builder-rootfs-runtime:v3.11.0 AS base
 
 FROM base AS builder
 
@@ -23,7 +23,7 @@ RUN mkdir /tmp/karel && \
 
 # Install a newer version of the omegajail binary.
 RUN rm -rf /var/lib/omegajail && \
-    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.10.10/omegajail-jammy-distrib-x86_64.tar.xz | tar xJ -C / && \
+    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.11.0/omegajail-jammy-distrib-x86_64.tar.xz | tar xJ -C / && \
     curl -sL https://github.com/omegaup/libinteractive/releases/download/v2.0.30/libinteractive.jar \
         -o /usr/share/java/libinteractive.jar
 
