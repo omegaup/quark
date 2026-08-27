@@ -583,7 +583,7 @@ func parseMetaFile(
 		meta.Verdict = "RTE"
 	}
 
-	if lang == "kj" || lang == "kp" {
+	if lang == "kj" || lang == "kp" || lang == "rk" {
 		// Karel programs have a unique exit status per each one of the failure
 		// modes. Map 1 (INSTRUCTION) to TLE.
 		if meta.ExitStatus == 1 {

@@ -82,3 +82,15 @@ func TestLiteralInputWithExpectedStderr(t *testing.T) {
 	}
 	defer inputRef.Release()
 }
+
+func TestReKarelLanguage(t *testing.T) {
+	if err := validateLanguage("rk"); err != nil {
+		t.Fatalf("validateLanguage(\"rk\") = %q, expected nil", err)
+	}
+	if extension := LanguageFileExtension("rk"); extension != "rk" {
+		t.Fatalf("LanguageFileExtension(\"rk\") = %q, expected \"rk\"", extension)
+	}
+	if language := FileExtensionLanguage("rk"); language != "rk" {
+		t.Fatalf("FileExtensionLanguage(\"rk\") = %q, expected \"rk\"", language)
+	}
+}

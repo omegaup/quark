@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -149,6 +150,83 @@ func (wrapper *fakeSandboxWrapper) name() string {
 	return "FakeSandbox"
 }
 
+type recordingSandbox struct {
+	mu                sync.Mutex
+	compileLanguages  []string
+	compileInputFiles [][]string
+	runLanguages      []string
+}
+
+func (sandbox *recordingSandbox) Supported() bool {
+	return true
+}
+
+func (sandbox *recordingSandbox) writeToFile(path, contents string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.WriteString(contents); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (sandbox *recordingSandbox) Compile(
+	ctx *common.Context,
+	lang string,
+	inputFiles []string,
+	chdir, outputFile, errorFile, metaFile, target string,
+	extraFlags []string,
+) (*RunMetadata, error) {
+	sandbox.mu.Lock()
+	sandbox.compileLanguages = append(sandbox.compileLanguages, lang)
+	sandbox.compileInputFiles = append(sandbox.compileInputFiles, append([]string{}, inputFiles...))
+	sandbox.mu.Unlock()
+
+	for _, ff := range []struct {
+		path     string
+		contents string
+	}{
+		{outputFile, ""},
+		{errorFile, ""},
+		{metaFile, "status:0"},
+	} {
+		if err := sandbox.writeToFile(ff.path, ff.contents); err != nil {
+			return nil, err
+		}
+	}
+	return &RunMetadata{Verdict: "OK"}, nil
+}
+
+func (sandbox *recordingSandbox) Run(
+	ctx *common.Context,
+	limits *common.LimitsSettings,
+	lang, chdir, inputFile, outputFile, errorFile, metaFile, target string,
+	originalInputFile, originalOutputFile, runMetaFile *string,
+	extraParams []string,
+	extraMountPoints map[string]string,
+) (*RunMetadata, error) {
+	sandbox.mu.Lock()
+	sandbox.runLanguages = append(sandbox.runLanguages, lang)
+	sandbox.mu.Unlock()
+
+	for _, ff := range []struct {
+		path     string
+		contents string
+	}{
+		{outputFile, "3"},
+		{errorFile, ""},
+		{metaFile, "status:0"},
+	} {
+		if err := sandbox.writeToFile(ff.path, ff.contents); err != nil {
+			return nil, err
+		}
+	}
+	return &RunMetadata{Verdict: "OK"}, nil
+}
+
 func newRunnerContext(t *testing.T) (*common.Context, error) {
 	dirname, err := ioutil.TempDir("/tmp", strings.ReplaceAll(t.Name(), "/", "_"))
 	if err != nil {
@@ -167,6 +245,70 @@ func newRunnerContext(t *testing.T) (*common.Context, error) {
 	ctx.Config.Runner.PreserveFiles = os.Getenv("PRESERVE") != ""
 
 	return ctx, nil
+}
+
+func TestGradePreservesReKarelLanguage(t *testing.T) {
+	ctx, err := newRunnerContext(t)
+	if err != nil {
+		t.Fatalf("RunnerContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+	defer os.RemoveAll(ctx.Config.Runner.RuntimePath)
+
+	inputManager := common.NewInputManager(ctx)
+	AplusB, err := common.NewLiteralInputFactory(
+		&common.LiteralInput{
+			Cases: map[string]*common.LiteralCaseSettings{
+				"0": {Input: "1 2", ExpectedOutput: "3", Weight: big.NewRat(1, 1)},
+			},
+			Validator: &common.LiteralValidatorSettings{
+				Name: common.ValidatorNameTokenNumeric,
+			},
+		},
+		ctx.Config.Runner.RuntimePath,
+		common.LiteralPersistRunner,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create Input: %q", err)
+	}
+
+	inputRef, err := inputManager.Add(AplusB.Hash(), AplusB)
+	if err != nil {
+		t.Fatalf("Failed to open problem: %q", err)
+	}
+	defer inputRef.Release()
+
+	sandbox := &recordingSandbox{}
+	results, err := Grade(
+		ctx,
+		&bytes.Buffer{},
+		&common.Run{
+			AttemptID: 1,
+			Language:  "rk",
+			InputHash: inputRef.Input.Hash(),
+			Source:    "class program { program () { turnoff(); } }",
+			MaxScore:  big.NewRat(1, 1),
+		},
+		inputRef.Input,
+		sandbox,
+	)
+	if err != nil {
+		t.Fatalf("Failed to run ReKarel preservation test: %q", err)
+	}
+	if results.Verdict != "AC" {
+		t.Fatalf("results.Verdict = %q, expected AC", results.Verdict)
+	}
+	if len(sandbox.compileLanguages) != 1 || sandbox.compileLanguages[0] != "rk" {
+		t.Fatalf("compileLanguages = %v, expected [rk]", sandbox.compileLanguages)
+	}
+	if len(sandbox.compileInputFiles) != 1 ||
+		len(sandbox.compileInputFiles[0]) != 1 ||
+		path.Base(sandbox.compileInputFiles[0][0]) != "Main.rk" {
+		t.Fatalf("compileInputFiles = %v, expected Main.rk", sandbox.compileInputFiles)
+	}
+	if len(sandbox.runLanguages) != 1 || sandbox.runLanguages[0] != "rk" {
+		t.Fatalf("runLanguages = %v, expected [rk]", sandbox.runLanguages)
+	}
 }
 
 func TestGrade(t *testing.T) {

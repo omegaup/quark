@@ -14,17 +14,25 @@ RUN mkdir /tmp/karel && \
     echo '{"dependencies":{"karel":"1.1.0"}}' > /tmp/karel/package.json && \
     (cd /tmp/karel && /opt/nodejs/bin/npm install) && \
     mv /tmp/karel/node_modules/* /opt/nodejs/lib/node_modules/ && \
-    rm -rf /tmp/karel
+    rm -rf /tmp/karel && \
+    curl -sSL https://github.com/omegaup/karel.js/releases/download/v1.2.8/karel \
+        -o /opt/nodejs/karel.wasm && \
+    curl -sSL https://github.com/omegaup/karel.js/releases/download/v1.2.8/karel.js.tar.xz \
+        | tar -xJ -C /opt/nodejs && \
+    chmod +x /opt/nodejs/karel.wasm /opt/nodejs/karel.js
 
 # Install a newer version of the omegajail binary.
 RUN rm -rf /var/lib/omegajail && \
-    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.10.4/omegajail-focal-distrib-x86_64.tar.xz | tar xJ -C / && \
+    curl -sSL https://github.com/omegaup/omegajail/releases/download/v3.10.10/omegajail-jammy-distrib-x86_64.tar.xz | tar xJ -C / && \
     curl -sL https://github.com/omegaup/libinteractive/releases/download/v2.0.30/libinteractive.jar \
         -o /usr/share/java/libinteractive.jar
 
 FROM base
 
 COPY --from=builder /opt/nodejs/lib/node_modules/ /opt/nodejs/lib/node_modules/
+COPY --from=builder /opt/nodejs/karel.js /opt/nodejs/karel.js
+COPY --from=builder /opt/nodejs/karel.wasm /opt/nodejs/karel.wasm
+COPY --from=builder /opt/nodejs/*.node /opt/nodejs/
 RUN rm -rf /var/lib/omegajail
 COPY --from=builder /var/lib/omegajail/ /var/lib/omegajail/
 COPY --from=builder /usr/share/java/libinteractive.jar /usr/share/java/libinteractive.jar

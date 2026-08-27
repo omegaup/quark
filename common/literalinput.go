@@ -181,7 +181,7 @@ type LiteralRun struct {
 
 func validateLanguage(lang string) error {
 	switch lang {
-	case "c", "c11-gcc", "c11-clang", "cpp", "cpp11", "cpp17-gcc", "cpp17-clang", "kj", "kp", "java", "py", "py2", "py3", "pas", "rb", "cat":
+	case "c", "c11-gcc", "c11-clang", "cpp", "cpp11", "cpp17-gcc", "cpp17-clang", "kj", "kp", "rk", "java", "py", "py2", "py3", "pas", "rb", "cat":
 		return nil
 	default:
 		return fmt.Errorf("invalid language %q", lang)

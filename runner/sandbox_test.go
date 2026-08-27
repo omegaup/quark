@@ -55,6 +55,12 @@ func TestParseMetaFile(t *testing.T) {
 			func(meta *RunMetadata) bool { return meta.Verdict == "RTE" },
 		},
 		{
+			"status:1",
+			"rk",
+			nil,
+			func(meta *RunMetadata) bool { return meta.Verdict == "TLE" },
+		},
+		{
 			"status:0\ntime:1000000",
 			"c",
 			nil,
