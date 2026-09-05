@@ -27,6 +27,7 @@ import (
 
 	base "github.com/omegaup/go-base/v3"
 	"github.com/omegaup/quark/broadcaster"
+	"github.com/omegaup/quark/common"
 	"github.com/omegaup/quark/grader"
 	"github.com/omegaup/quark/runner"
 )
@@ -1254,6 +1255,68 @@ func registerFrontendHandlers(
 		}
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
+	})))
+
+	mux.Handle(ctx.Tracing.WrapHandle("/metrics/advanced/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx = ctx.Wrap(r.Context())
+		ctx.Log.Info("/metrics/advanced/", nil)
+		
+		// Get comprehensive metrics snapshot
+		metricsCollector := common.GetGlobalAdvancedMetrics()
+		snapshot := metricsCollector.GetMetricsSnapshot()
+		
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		
+		if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+			ctx.Log.Error("Error encoding advanced metrics", map[string]any{"err": err})
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"status":"error","message":"%s"}`, err.Error())
+			return
+		}
+	})))
+
+	mux.Handle(ctx.Tracing.WrapHandle("/alerts/status/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx = ctx.Wrap(r.Context())
+		ctx.Log.Info("/alerts/status/", nil)
+		
+		metricsCollector := common.GetGlobalAdvancedMetrics()
+		
+		// Create alert status response
+		alertStatus := map[string]interface{}{
+			"timestamp": time.Now().UTC(),
+			"total_alerts_triggered": metricsCollector.GetMetricsSnapshot()["alerts_triggered"],
+			"operations": make(map[string]interface{}),
+		}
+		
+		// Get Apdex scores for key operations
+		keyOperations := []string{"getPendingRunsBatch", "processPendingRunsAsync", "run_grade", "submission_source"}
+		
+		for _, operation := range keyOperations {
+			apdexScore := metricsCollector.GetApdexScore(operation)
+			alertStatus["operations"].(map[string]interface{})[operation] = map[string]interface{}{
+				"apdex_score": apdexScore,
+				"alert_status": func() string {
+					if apdexScore < 0.5 {
+						return "CRITICAL"
+					} else if apdexScore < 0.7 {
+						return "WARNING"  
+					} else if apdexScore < 0.9 {
+						return "GOOD"
+					}
+					return "EXCELLENT"
+				}(),
+			}
+		}
+		
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		
+		if err := json.NewEncoder(w).Encode(alertStatus); err != nil {
+			ctx.Log.Error("Error encoding alert status", map[string]any{"err": err})
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	})))
 
 	mux.Handle(ctx.Tracing.WrapHandle("/reload-config/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
