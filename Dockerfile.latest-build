@@ -1,0 +1,24 @@
+FROM golang:1.22-bullseye
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake pkg-config libssl-dev zlib1g-dev libssh2-1-dev \
+    default-jre dos2unix git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /root
+RUN git clone https://github.com/libgit2/libgit2.git \
+ && cd libgit2 \
+ && git checkout v1.3.0 \
+ && cmake -B build -S . -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
+ && cmake --build build -j \
+ && cmake --install build \
+ && ldconfig
+
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+
+WORKDIR /app
+COPY . .
+
+# (optional) Normalize test problem files if needed
+# RUN dos2unix common/testdata/problemfiles/cases/*.in common/testdata/problemfiles/cases/*.out || true
+
