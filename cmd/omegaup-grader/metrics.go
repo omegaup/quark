@@ -52,12 +52,12 @@ var (
 		}),
 		"disk_total": prometheus.NewGauge(prometheus.GaugeOpts{
 			Subsystem: "os",
-			Help:      "Total amount of RAM",
+			Help:      "Total amount of disk space",
 			Name:      "disk_total",
 		}),
 		"disk_used": prometheus.NewGauge(prometheus.GaugeOpts{
 			Subsystem: "os",
-			Help:      "RAM used by programs",
+			Help:      "Disk space used by programs",
 			Name:      "disk_used",
 		}),
 		"grader_queue_total_length": prometheus.NewGauge(prometheus.GaugeOpts{
