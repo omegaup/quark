@@ -666,6 +666,12 @@ func (queue *Queue) enqueue(runCtx *RunContext, priority QueuePriority) bool {
 	select {
 	case queue.runs[priority] <- runCtx:
 		queue.ready <- struct{}{}
+		runCtx.RunInfo.QueueTime = time.Now()
+		queue.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+			Priority: priority,
+			Type:     QueueEventTypeQueueAdded,
+		})
 		return true
 	default:
 		// There is no space left in the queue.
