@@ -544,9 +544,12 @@ func (queue *Queue) GetRun(
 	for i := range queue.runs {
 		select {
 		case runCtx := <-queue.runs[i]:
+			// Use QueuePriority(i) instead of runCtx.RunInfo.Priority because a
+			// requeued run may have a different original priority than the queue
+			// it was actually placed in and dequeued from.
 			queue.queueManager.AddEvent(&QueueEvent{
 				Delta:    time.Now().Sub(runCtx.RunInfo.QueueTime),
-				Priority: runCtx.RunInfo.Priority,
+				Priority: QueuePriority(i),
 				Type:     QueueEventTypeQueueRemoved,
 			})
 			inflight := monitor.Add(runCtx, runner)
@@ -666,6 +669,11 @@ func (queue *Queue) enqueue(runCtx *RunContext, priority QueuePriority) bool {
 	select {
 	case queue.runs[priority] <- runCtx:
 		queue.ready <- struct{}{}
+		queue.queueManager.AddEvent(&QueueEvent{
+			Delta:    time.Now().Sub(runCtx.RunInfo.CreationTime),
+			Priority: priority,
+			Type:     QueueEventTypeQueueAdded,
+		})
 		return true
 	default:
 		// There is no space left in the queue.
