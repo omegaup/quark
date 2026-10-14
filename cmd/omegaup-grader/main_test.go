@@ -203,6 +203,28 @@ func TestQueueEventsProcessorQueueRemovedUpdatesPriorityGauge(t *testing.T) {
 	}
 }
 
+func TestQueueEventsProcessorRemovedBeforeAddedEventuallyBalances(t *testing.T) {
+	// Regression test: QueueRemoved can arrive before QueueAdded because they
+	// are emitted from different goroutines. The gauge may transiently dip to
+	// -1, but after both events are processed the net sum must be 0.
+	metrics := &recordingMetrics{}
+	feedQueueEvents(
+		metrics,
+		&grader.QueueEvent{
+			Type:     grader.QueueEventTypeQueueRemoved,
+			Priority: grader.QueuePriorityNormal,
+		},
+		&grader.QueueEvent{
+			Type:     grader.QueueEventTypeQueueAdded,
+			Priority: grader.QueuePriorityNormal,
+		},
+	)
+
+	if got := metrics.gaugeTotal("grader_queue_normal_length"); got != 0 {
+		t.Errorf("grader_queue_normal_length after Removed-then-Added = %f, want 0 (out-of-order events must cancel out)", got)
+	}
+}
+
 func TestQueueEventsProcessorAddedAddedRemovedNetsToOne(t *testing.T) {
 	metrics := &recordingMetrics{}
 	feedQueueEvents(
