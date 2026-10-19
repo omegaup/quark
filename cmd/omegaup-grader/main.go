@@ -137,6 +137,21 @@ func readBase64File(filename string) (string, error) {
 	return buf.String(), nil
 }
 
+func queueLengthGauge(priority grader.QueuePriority) (string, bool) {
+	switch priority {
+	case grader.QueuePriorityEphemeral:
+		return "grader_queue_ephemeral_length", true
+	case grader.QueuePriorityLow:
+		return "grader_queue_low_length", true
+	case grader.QueuePriorityNormal:
+		return "grader_queue_normal_length", true
+	case grader.QueuePriorityHigh:
+		return "grader_queue_high_length", true
+	default:
+		return "", false
+	}
+}
+
 func queueEventsProcessor(events <-chan *grader.QueueEvent) {
 	ctx := graderContext()
 	for {
@@ -152,7 +167,14 @@ func queueEventsProcessor(events <-chan *grader.QueueEvent) {
 			case grader.QueueEventTypeManagerRemoved:
 				ctx.Metrics.GaugeAdd("grader_queue_total_length", -1)
 				ctx.Metrics.SummaryObserve("grader_time_to_verdict_seconds", event.Delta.Seconds())
+			case grader.QueueEventTypeQueueAdded:
+				if gauge, ok := queueLengthGauge(event.Priority); ok {
+					ctx.Metrics.GaugeAdd(gauge, 1)
+				}
 			case grader.QueueEventTypeQueueRemoved:
+				if gauge, ok := queueLengthGauge(event.Priority); ok {
+					ctx.Metrics.GaugeAdd(gauge, -1)
+				}
 				ctx.Metrics.SummaryObserve("grader_queue_delay_seconds", event.Delta.Seconds())
 				switch event.Priority {
 				case grader.QueuePriorityEphemeral:

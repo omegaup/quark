@@ -400,3 +400,177 @@ func TestGetRunEmitsQueueRemovedUsingQueueTime(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueAddedEmittedForEachPriority(t *testing.T) {
+	ctx, err := newGraderContext(t)
+	if err != nil {
+		t.Fatalf("GraderContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
+
+	queue, err := ctx.QueueManager.Get(DefaultQueueName)
+	if err != nil {
+		t.Fatalf("default queue not found")
+	}
+
+	events := make(chan *QueueEvent, 64)
+	ctx.QueueManager.AddEventListener(events)
+
+	priorities := []QueuePriority{
+		QueuePriorityHigh,
+		QueuePriorityNormal,
+		QueuePriorityLow,
+		QueuePriorityEphemeral,
+	}
+
+	for _, priority := range priorities {
+		addRun(t, ctx, queue, priority)
+		ev := waitForQueueEvent(t, events, QueueEventTypeQueueAdded)
+		if ev.Priority != priority {
+			t.Errorf("got QueueAdded priority %v, want %v", ev.Priority, priority)
+		}
+	}
+}
+
+func TestQueueLengthsMatchQueueInfo(t *testing.T) {
+	ctx, err := newGraderContext(t)
+	if err != nil {
+		t.Fatalf("GraderContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
+
+	queue, err := ctx.QueueManager.Get(DefaultQueueName)
+	if err != nil {
+		t.Fatalf("default queue not found")
+	}
+
+	events := make(chan *QueueEvent, 64)
+	ctx.QueueManager.AddEventListener(events)
+
+	lengths := make(map[QueuePriority]int)
+	priorities := []QueuePriority{
+		QueuePriorityHigh,
+		QueuePriorityNormal,
+		QueuePriorityLow,
+		QueuePriorityEphemeral,
+	}
+
+	for _, priority := range priorities {
+		addRun(t, ctx, queue, priority)
+		ev := waitForQueueEvent(t, events, QueueEventTypeQueueAdded)
+		lengths[ev.Priority]++
+	}
+
+	queueInfo := ctx.QueueManager.GetQueueInfo()[DefaultQueueName]
+	for _, priority := range priorities {
+		if lengths[priority] != 1 {
+			t.Errorf("priority %v length from events = %d, want 1", priority, lengths[priority])
+		}
+		if queueInfo.Lengths[priority] != 1 {
+			t.Errorf("priority %v length from queueInfo = %d, want 1", priority, queueInfo.Lengths[priority])
+		}
+		if lengths[priority] != queueInfo.Lengths[priority] {
+			t.Errorf("priority %v events length %d != queueInfo length %d", priority, lengths[priority], queueInfo.Lengths[priority])
+		}
+	}
+
+	closeNotifier := make(chan bool, 1)
+	for i := 0; i < len(priorities); i++ {
+		runCtx, _, ok := queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
+		if !ok {
+			t.Fatalf("failed to dequeue run %d", i)
+		}
+		defer ctx.InflightMonitor.Remove(runCtx.RunInfo.Run.AttemptID)
+		ev := waitForQueueEvent(t, events, QueueEventTypeQueueRemoved)
+		lengths[ev.Priority]--
+	}
+
+	queueInfo = ctx.QueueManager.GetQueueInfo()[DefaultQueueName]
+	for _, priority := range priorities {
+		if lengths[priority] != 0 {
+			t.Errorf("priority %v length from events = %d after dequeue, want 0", priority, lengths[priority])
+		}
+		if queueInfo.Lengths[priority] != 0 {
+			t.Errorf("priority %v length from queueInfo = %d after dequeue, want 0", priority, queueInfo.Lengths[priority])
+		}
+	}
+}
+
+func TestQueueRequeuePriorityEvents(t *testing.T) {
+	ctx, err := newGraderContext(t)
+	if err != nil {
+		t.Fatalf("GraderContext creation failed with %q", err)
+	}
+	defer ctx.Close()
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(ctx.Config.Grader.RuntimePath)
+	}
+
+	queue, err := ctx.QueueManager.Get(DefaultQueueName)
+	if err != nil {
+		t.Fatalf("default queue not found")
+	}
+
+	events := make(chan *QueueEvent, 64)
+	ctx.QueueManager.AddEventListener(events)
+
+	lengths := make(map[QueuePriority]int)
+	applyEvent := func(ev *QueueEvent) {
+		if ev.Type == QueueEventTypeQueueAdded {
+			lengths[ev.Priority]++
+		} else if ev.Type == QueueEventTypeQueueRemoved {
+			lengths[ev.Priority]--
+		}
+	}
+
+	// Add a Normal run
+	addRun(t, ctx, queue, QueuePriorityNormal)
+	ev := waitForQueueEvent(t, events, QueueEventTypeQueueAdded)
+	applyEvent(ev)
+
+	// GetRun it
+	closeNotifier := make(chan bool, 1)
+	runCtx, _, ok := queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
+	if !ok {
+		t.Fatal("expected run from queue")
+	}
+	ev = waitForQueueEvent(t, events, QueueEventTypeQueueRemoved)
+	applyEvent(ev)
+
+	// Requeue(false)
+	if !runCtx.Requeue(false) {
+		t.Fatal("failed to requeue run")
+	}
+	ev = waitForQueueEvent(t, events, QueueEventTypeQueueAdded)
+	applyEvent(ev)
+
+	// Normal should be 0, High should be 1
+	if lengths[QueuePriorityNormal] != 0 {
+		t.Errorf("Normal queue length = %d, want 0", lengths[QueuePriorityNormal])
+	}
+	if lengths[QueuePriorityHigh] != 1 {
+		t.Errorf("High queue length = %d, want 1", lengths[QueuePriorityHigh])
+	}
+
+	// GetRun again
+	runCtx2, _, ok := queue.GetRun("test", ctx.InflightMonitor, closeNotifier)
+	if !ok {
+		t.Fatal("expected requeued run from queue")
+	}
+	defer ctx.InflightMonitor.Remove(runCtx2.RunInfo.Run.AttemptID)
+	ev = waitForQueueEvent(t, events, QueueEventTypeQueueRemoved)
+	applyEvent(ev)
+
+	// Everything should be 0
+	for p := QueuePriority(0); p < QueueCount; p++ {
+		if lengths[p] != 0 {
+			t.Errorf("priority %v length = %d, want 0", p, lengths[p])
+		}
+	}
+}
