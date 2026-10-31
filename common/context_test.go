@@ -45,7 +45,6 @@ func TestConfigSerializability(t *testing.T) {
 	}
 }
 
-
 func TestEphemeralRequestLimitDefault(t *testing.T) {
 	config := DefaultConfig()
 	expected := base.Byte(2) * base.Mebibyte

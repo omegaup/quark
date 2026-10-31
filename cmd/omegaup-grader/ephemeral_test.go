@@ -217,7 +217,6 @@ func TestEphemeralGrader(t *testing.T) {
 	}
 }
 
-
 func TestEphemeralGraderOversizedRequest(t *testing.T) {
 	ctx := newGraderContext(t)
 	if !ctx.Config.Runner.PreserveFiles {
