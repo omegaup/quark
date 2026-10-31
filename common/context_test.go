@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	base "github.com/omegaup/go-base/v3"
 )
 
 func newTestingContext() *Context {
@@ -40,5 +42,14 @@ func TestConfigSerializability(t *testing.T) {
 	serializedConfig := ctx.Config.String()
 	if len(serializedConfig) == 0 {
 		t.Errorf("Serialized config empty")
+	}
+}
+
+
+func TestEphemeralRequestLimitDefault(t *testing.T) {
+	config := DefaultConfig()
+	expected := base.Byte(2) * base.Mebibyte
+	if config.Grader.Ephemeral.EphemeralRequestLimit != expected {
+		t.Errorf("Expected EphemeralRequestLimit %v, got %v", expected, config.Grader.Ephemeral.EphemeralRequestLimit)
 	}
 }

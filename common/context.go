@@ -46,7 +46,11 @@ type V1Config struct {
 
 // GraderEphemeralConfig represents the configuration for the Grader web interface.
 type GraderEphemeralConfig struct {
-	EphemeralSizeLimit   base.Byte
+	EphemeralSizeLimit    base.Byte
+	// EphemeralRequestLimit bounds the incoming HTTP request body size for
+	// ephemeral runs. The default (2 MiB) is provisional and has not been
+	// validated against real workloads yet.
+	EphemeralRequestLimit base.Byte
 	CaseTimeLimit        base.Duration
 	OverallWallTimeLimit base.Duration
 	MemoryLimit          base.Byte
@@ -182,7 +186,8 @@ var defaultConfig = Config{
 			UpdateDatabase:   true,
 		},
 		Ephemeral: GraderEphemeralConfig{
-			EphemeralSizeLimit:   base.Gibibyte,
+			EphemeralSizeLimit:    base.Gibibyte,
+			EphemeralRequestLimit: base.Byte(2) * base.Mebibyte,
 			CaseTimeLimit:        base.Duration(time.Duration(10) * time.Second),
 			OverallWallTimeLimit: base.Duration(time.Duration(10) * time.Second),
 			MemoryLimit:          base.Gibibyte,

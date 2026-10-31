@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"io"
 	"math/big"
 	"mime/multipart"
@@ -349,7 +350,22 @@ func (h *ephemeralRunHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		var ephemeralRunRequest grader.EphemeralRunRequest
+		if ctx.Config.Grader.Ephemeral.EphemeralRequestLimit > 0 {
+			r.Body = http.MaxBytesReader(w, r.Body, int64(ctx.Config.Grader.Ephemeral.EphemeralRequestLimit))
+		}
 		if err = json.NewDecoder(r.Body).Decode(&ephemeralRunRequest); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				ctx.Log.Error(
+					"Request body exceeded limit",
+					map[string]any{
+						"err":   err,
+						"limit": ctx.Config.Grader.Ephemeral.EphemeralRequestLimit,
+					},
+				)
+				w.WriteHeader(http.StatusRequestEntityTooLarge)
+				return
+			}
 			ctx.Log.Error(
 				"Error decoding run request",
 				map[string]any{
