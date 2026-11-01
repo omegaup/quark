@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -217,6 +218,24 @@ func TestEphemeralGrader(t *testing.T) {
 	}
 }
 
+// snapshotPaths returns every path under root, so tests can detect files
+// created (or left behind) by a request.
+func snapshotPaths(t *testing.T, root string) map[string]struct{} {
+	t.Helper()
+	paths := map[string]struct{}{}
+	err := filepath.Walk(root, func(p string, _ os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		paths[p] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Failed to walk %s: %v", root, err)
+	}
+	return paths
+}
+
 func TestEphemeralGraderOversizedRequest(t *testing.T) {
 	ctx := newGraderContext(t)
 	if !ctx.Config.Runner.PreserveFiles {
@@ -263,6 +282,7 @@ func TestEphemeralGraderOversizedRequest(t *testing.T) {
 		},
 		Body: ioutil.NopCloser(bytes.NewBufferString(body)),
 	}
+	before := snapshotPaths(t, ctx.Config.Grader.RuntimePath)
 	res, err := ts.Client().Do(req)
 	if err != nil {
 		t.Fatalf("Failed to execute request: %v", err)
@@ -273,11 +293,12 @@ func TestEphemeralGraderOversizedRequest(t *testing.T) {
 		t.Fatalf("Expected status %v, got %v", http.StatusRequestEntityTooLarge, res.StatusCode)
 	}
 
-	// Verify that no run artifacts were created on disk.
-	ephemeralPath := path.Join(ctx.Config.Grader.RuntimePath, "ephemeral")
-	entries, err := ioutil.ReadDir(ephemeralPath)
-	if err == nil && len(entries) > 0 {
-		t.Fatalf("Expected no ephemeral run artifacts, found %d entries", len(entries))
+	// Verify the rejected request left nothing behind.
+	after := snapshotPaths(t, ctx.Config.Grader.RuntimePath)
+	for p := range after {
+		if _, ok := before[p]; !ok {
+			t.Errorf("Rejected request left behind %q", p)
+		}
 	}
 }
 
