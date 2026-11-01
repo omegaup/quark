@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/omegaup/quark/common"
@@ -154,6 +156,160 @@ func TestEphemeralGrader(t *testing.T) {
 	if !ctx.Config.Runner.PreserveFiles {
 		defer os.RemoveAll(path.Dir(ctx.Config.Grader.RuntimePath))
 	}
+	ephemeralRunManager := grader.NewEphemeralRunManager(ctx)
+	if err := ephemeralRunManager.Initialize(); err != nil {
+		t.Fatalf("Failed to fully initalize the ephemeral run manager: %s", err)
+	}
+	mux := http.NewServeMux()
+	registerEphemeralHandlers(ctx, mux, ephemeralRunManager)
+	registerRunnerHandlers(ctx, mux, nil, true)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	go func() {
+		err := runnerRequestRun(t, ctx, ts)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	prePushURL, err := url.Parse(ts.URL + "/ephemeral/run/new/")
+	if err != nil {
+		panic(err)
+	}
+	req := &http.Request{
+		Method: "POST",
+		URL:    prePushURL,
+		Header: map[string][]string{
+			"Content-Type": {"application/json"},
+		},
+		Body: ioutil.NopCloser(bytes.NewBufferString(`
+			{
+				"source": "print 3",
+				"language": "py",
+				"input": {
+					"cases": {
+						"0": {
+							"in": "1 2",
+							"out": "3",
+							"weight": 1
+						},
+						"1": {
+							"in": "2 3",
+							"out": "5",
+							"weight": 1
+						}
+					}
+				}
+			}
+		`)),
+	}
+	res, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("Failed to create ephemeral run request: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("Failed to request ephemeral run: Status %v, headers: %v", res.StatusCode, res.Header)
+	}
+
+	if _, err := ioutil.ReadAll(res.Body); err != nil {
+		t.Fatalf("Failed to read all: %v", err)
+	}
+}
+
+// snapshotPaths returns every path under root, so tests can detect files
+// created (or left behind) by a request.
+func snapshotPaths(t *testing.T, root string) map[string]struct{} {
+	t.Helper()
+	paths := map[string]struct{}{}
+	err := filepath.Walk(root, func(p string, _ os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		paths[p] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Failed to walk %s: %v", root, err)
+	}
+	return paths
+}
+
+func TestEphemeralGraderOversizedRequest(t *testing.T) {
+	ctx := newGraderContext(t)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(path.Dir(ctx.Config.Grader.RuntimePath))
+	}
+	// Configure a small 1 KiB request limit for the test.
+	ctx.Config.Grader.Ephemeral.EphemeralRequestLimit = 1024
+
+	ephemeralRunManager := grader.NewEphemeralRunManager(ctx)
+	if err := ephemeralRunManager.Initialize(); err != nil {
+		t.Fatalf("Failed to fully initalize the ephemeral run manager: %s", err)
+	}
+	mux := http.NewServeMux()
+	registerEphemeralHandlers(ctx, mux, ephemeralRunManager)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	prePushURL, err := url.Parse(ts.URL + "/ephemeral/run/new/")
+	if err != nil {
+		panic(err)
+	}
+
+	// Create an oversized body (> 1 KiB limit).
+	oversizedInput := strings.Repeat("A", 2048)
+	body := fmt.Sprintf(`{
+		"source": "print 3",
+		"language": "py",
+		"input": {
+			"cases": {
+				"0": {
+					"in": %q,
+					"out": "3",
+					"weight": 1
+				}
+			}
+		}
+	}`, oversizedInput)
+
+	req := &http.Request{
+		Method: "POST",
+		URL:    prePushURL,
+		Header: map[string][]string{
+			"Content-Type": {"application/json"},
+		},
+		Body: ioutil.NopCloser(bytes.NewBufferString(body)),
+	}
+	before := snapshotPaths(t, ctx.Config.Grader.RuntimePath)
+	res, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("Expected status %v, got %v", http.StatusRequestEntityTooLarge, res.StatusCode)
+	}
+
+	// Verify the rejected request left nothing behind.
+	after := snapshotPaths(t, ctx.Config.Grader.RuntimePath)
+	for p := range after {
+		if _, ok := before[p]; !ok {
+			t.Errorf("Rejected request left behind %q", p)
+		}
+	}
+}
+
+func TestEphemeralGraderRequestLimit(t *testing.T) {
+	ctx := newGraderContext(t)
+	if !ctx.Config.Runner.PreserveFiles {
+		defer os.RemoveAll(path.Dir(ctx.Config.Grader.RuntimePath))
+	}
+	// Explicitly set a custom limit that allows normal requests.
+	ctx.Config.Grader.Ephemeral.EphemeralRequestLimit = 1048576
+
 	ephemeralRunManager := grader.NewEphemeralRunManager(ctx)
 	if err := ephemeralRunManager.Initialize(); err != nil {
 		t.Fatalf("Failed to fully initalize the ephemeral run manager: %s", err)

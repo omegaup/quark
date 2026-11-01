@@ -46,15 +46,19 @@ type V1Config struct {
 
 // GraderEphemeralConfig represents the configuration for the Grader web interface.
 type GraderEphemeralConfig struct {
-	EphemeralSizeLimit   base.Byte
-	CaseTimeLimit        base.Duration
-	OverallWallTimeLimit base.Duration
-	MemoryLimit          base.Byte
-	PingPeriod           base.Duration
-	Port                 uint16
-	Proxied              bool
-	TLS                  TLSConfig // only used if Proxied == false
-	WriteDeadline        base.Duration
+	EphemeralSizeLimit base.Byte
+	// EphemeralRequestLimit bounds the incoming HTTP request body size for
+	// ephemeral runs. The default (2 MiB) is provisional and has not been
+	// validated against real workloads yet.
+	EphemeralRequestLimit base.Byte
+	CaseTimeLimit         base.Duration
+	OverallWallTimeLimit  base.Duration
+	MemoryLimit           base.Byte
+	PingPeriod            base.Duration
+	Port                  uint16
+	Proxied               bool
+	TLS                   TLSConfig // only used if Proxied == false
+	WriteDeadline         base.Duration
 }
 
 // GraderCIConfig represents the configuration for the Grader CI.
@@ -182,13 +186,14 @@ var defaultConfig = Config{
 			UpdateDatabase:   true,
 		},
 		Ephemeral: GraderEphemeralConfig{
-			EphemeralSizeLimit:   base.Gibibyte,
-			CaseTimeLimit:        base.Duration(time.Duration(10) * time.Second),
-			OverallWallTimeLimit: base.Duration(time.Duration(10) * time.Second),
-			MemoryLimit:          base.Gibibyte,
-			Port:                 36663,
-			PingPeriod:           base.Duration(time.Duration(30) * time.Second),
-			Proxied:              true,
+			EphemeralSizeLimit:    base.Gibibyte,
+			EphemeralRequestLimit: base.Byte(2) * base.Mebibyte,
+			CaseTimeLimit:         base.Duration(time.Duration(10) * time.Second),
+			OverallWallTimeLimit:  base.Duration(time.Duration(10) * time.Second),
+			MemoryLimit:           base.Gibibyte,
+			Port:                  36663,
+			PingPeriod:            base.Duration(time.Duration(30) * time.Second),
+			Proxied:               true,
 			TLS: TLSConfig{
 				CertFile: "/etc/omegaup/grader/web-certificate.pem",
 				KeyFile:  "/etc/omegaup/grader/web-key.pem",
