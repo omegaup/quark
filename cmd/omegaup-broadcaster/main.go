@@ -290,9 +290,15 @@ func main() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		// TODO(lhchavez): Figure out a better way of checking this.
-		if len(message.Contest) > 0 && strings.Contains(message.Message, "\"message\":\"/run/update/\"") {
-			contestChan <- message.Contest
+		type payload struct {
+			Message string `json:"message"`
+		}
+
+		var p payload
+		if err := json.Unmarshal([]byte(message.Message), &p); err == nil {
+			if len(message.Contest) > 0 && strings.HasPrefix(p.Message, "/run/update/") {
+				contestChan <- message.Contest
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
