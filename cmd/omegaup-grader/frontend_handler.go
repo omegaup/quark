@@ -827,6 +827,7 @@ func broadcast(
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		return fmt.Errorf(
 			"Request to broadcast failed with error code %d",
